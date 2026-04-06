@@ -1,0 +1,5 @@
+.env
+state.json
+test_board.png
+__pycache__/
+*.pyc
