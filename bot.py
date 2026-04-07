@@ -1,3 +1,11 @@
+import sys
+# cairocffi wirft OSError wenn Cairo-DLL fehlt – vor svglib/reportlab blockieren,
+# damit rlPyCairo auf pycairo zurückfällt (pycairo bündelt Cairo in seinem Wheel).
+try:
+    import cairocffi  # noqa: F401
+except (OSError, ImportError):
+    sys.modules['cairocffi'] = None  # type: ignore[assignment]
+
 import discord
 from discord.ext import tasks, commands
 import requests
@@ -6,8 +14,11 @@ import chess.pgn
 import io
 import os
 import json
+import tempfile
 from datetime import time
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageChops, ImageOps
+from svglib.svglib import svg2rlg
+from reportlab.graphics import renderPM
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -57,64 +68,120 @@ def parse_games(pgn_text: str) -> list:
     return games
 
 # ---------------------------------------------------------------------------
-# Board-Bild (Pillow, keine externen Systemlibs nötig)
+# Board-Bild (Lichess cburnett-Figuren via SVG-Download)
 # ---------------------------------------------------------------------------
 
-_SQ_SIZE  = 56
-_LIGHT    = (240, 217, 181)
-_DARK     = (181, 136, 99)
-_W_PIECE  = (255, 255, 255)
-_B_PIECE  = (20,  20,  20)
-_OUTLINE  = (80,  80,  80)
+_SQ         = 60
+_MAR        = 22
+_LIGHT      = (240, 217, 181)
+_DARK       = (181, 136,  99)
+_BORDER_BG  = ( 49,  46,  43)
+_LABEL_COL  = (210, 185, 150)
 
-_GLYPHS = {
-    chess.PAWN:   ('P', 'p'),
-    chess.KNIGHT: ('N', 'n'),
-    chess.BISHOP: ('B', 'b'),
-    chess.ROOK:   ('R', 'r'),
-    chess.QUEEN:  ('Q', 'q'),
-    chess.KING:   ('K', 'k'),
+_PIECE_CODES = {
+    (chess.KING,   chess.WHITE): 'wK',
+    (chess.QUEEN,  chess.WHITE): 'wQ',
+    (chess.ROOK,   chess.WHITE): 'wR',
+    (chess.BISHOP, chess.WHITE): 'wB',
+    (chess.KNIGHT, chess.WHITE): 'wN',
+    (chess.PAWN,   chess.WHITE): 'wP',
+    (chess.KING,   chess.BLACK): 'bK',
+    (chess.QUEEN,  chess.BLACK): 'bQ',
+    (chess.ROOK,   chess.BLACK): 'bR',
+    (chess.BISHOP, chess.BLACK): 'bB',
+    (chess.KNIGHT, chess.BLACK): 'bN',
+    (chess.PAWN,   chess.BLACK): 'bP',
 }
 
-def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    for path in [
-        'C:/Windows/Fonts/arialbd.ttf',
-        'C:/Windows/Fonts/arial.ttf',
-        'C:/Windows/Fonts/DejaVuSans-Bold.ttf',
-    ]:
+_piece_cache: dict[str, Image.Image] = {}
+
+def _svg_to_pil(svg_bytes: bytes, size: int) -> Image.Image:
+    """SVG-Bytes → PIL RGBA-Bild.
+    Doppel-Render (schwarz + weiß) für artefaktfreies Alpha."""
+    with tempfile.NamedTemporaryFile(suffix='.svg', mode='wb', delete=False) as f:
+        f.write(svg_bytes)
+        tmp = f.name
+    try:
+        drawing = svg2rlg(tmp)
+    finally:
+        os.unlink(tmp)
+    sx = size / drawing.width
+    sy = size / drawing.height
+    drawing.width  = size
+    drawing.height = size
+    drawing.transform = (sx, 0, 0, sy, 0, 0)
+
+    def render(bg: int) -> Image.Image:
+        buf = io.BytesIO()
+        renderPM.drawToFile(drawing, buf, fmt='PNG', bg=bg)
+        buf.seek(0)
+        return Image.open(buf).convert('RGB')
+
+    img_black = render(0x000000)
+    img_white = render(0xFFFFFF)
+    # Alpha = 255 - Differenz: transparent wo Hintergrund durchscheint
+    alpha = ImageOps.invert(ImageChops.difference(img_white, img_black).convert('L'))
+    result = img_black.convert('RGBA')
+    result.putalpha(alpha)
+    return result
+
+def _get_piece(code: str, size: int) -> Image.Image:
+    if code not in _piece_cache:
+        url  = f'https://lichess1.org/assets/piece/cburnett/{code}.svg'
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        _piece_cache[code] = _svg_to_pil(resp.content, size)
+        print(f'[Figuren] {code} geladen')
+    return _piece_cache[code]
+
+def _label_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    for p in ['C:/Windows/Fonts/arialbd.ttf', 'C:/Windows/Fonts/arial.ttf']:
         try:
-            return ImageFont.truetype(path, size)
+            return ImageFont.truetype(p, size)
         except Exception:
             pass
     return ImageFont.load_default()
 
 def board_image(game: chess.pgn.Game) -> io.BytesIO:
-    """PNG der Endstellung als einfaches Brett-Bild erzeugen."""
-    board = game.end().board()
-    s = _SQ_SIZE
-    size = s * 8
-    img  = Image.new('RGB', (size, size))
-    draw = ImageDraw.Draw(img)
-    font = _load_font(s - 8)
+    """PNG der Endstellung mit Lichess-Figuren (cburnett) und Koordinaten."""
+    board  = game.end().board()
+    s, m   = _SQ, _MAR
+    total  = s * 8 + m * 2
+    img    = Image.new('RGB', (total, total), _BORDER_BG)
+    draw   = ImageDraw.Draw(img)
+    font   = _label_font(m - 5)
+    p_size = s - 4  # Figur etwas kleiner als Feld
 
     for sq in chess.SQUARES:
-        f = chess.square_file(sq)
-        r = chess.square_rank(sq)
-        x, y = f * s, (7 - r) * s
-        fill = _LIGHT if (f + r) % 2 == 1 else _DARK
-        draw.rectangle([x, y, x + s - 1, y + s - 1], fill=fill)
+        f  = chess.square_file(sq)
+        r  = chess.square_rank(sq)
+        x  = m + f * s
+        y  = m + (7 - r) * s
+        sq_color = _LIGHT if (f + r) % 2 == 1 else _DARK
+        draw.rectangle([x, y, x + s - 1, y + s - 1], fill=sq_color)
 
         piece = board.piece_at(sq)
-        if piece:
-            char = _GLYPHS[piece.piece_type][0 if piece.color == chess.WHITE else 1]
-            color = _W_PIECE if piece.color == chess.WHITE else _B_PIECE
-            bb = draw.textbbox((0, 0), char, font=font)
-            tw, th = bb[2] - bb[0], bb[3] - bb[1]
-            tx, ty = x + (s - tw) // 2, y + (s - th) // 2
-            # Outline für bessere Lesbarkeit
-            for dx, dy in ((-1,-1),(1,-1),(-1,1),(1,1)):
-                draw.text((tx + dx, ty + dy), char, font=font, fill=_OUTLINE)
-            draw.text((tx, ty), char, font=font, fill=color)
+        if not piece:
+            continue
+        code      = _PIECE_CODES[(piece.piece_type, piece.color)]
+        piece_img = _get_piece(code, p_size)
+        offset    = (s - p_size) // 2
+        img.paste(piece_img, (x + offset, y + offset), piece_img)
+
+    # Koordinaten
+    for f in range(8):
+        lbl = chr(ord('a') + f)
+        bb  = draw.textbbox((0, 0), lbl, font=font)
+        lw  = bb[2] - bb[0]
+        cx  = m + f * s + s // 2
+        draw.text((cx - lw // 2, m + 8 * s + 4), lbl, font=font, fill=_LABEL_COL)
+
+    for r in range(8):
+        lbl = str(r + 1)
+        bb  = draw.textbbox((0, 0), lbl, font=font)
+        lh  = bb[3] - bb[1]
+        cy  = m + (7 - r) * s + s // 2
+        draw.text((5, cy - lh // 2), lbl, font=font, fill=_LABEL_COL)
 
     buf = io.BytesIO()
     img.save(buf, format='PNG')
