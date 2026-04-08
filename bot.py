@@ -370,6 +370,39 @@ def pick_random_line() -> tuple[str, chess.pgn.Game] | None:
     save_puzzle_state({'posted': list(posted)})
     return choice_id, choice_game
 
+def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
+    """Spiel auf erste [%tqu]-Stellung kürzen.
+    Ohne [%tqu]-Annotation → Original unverändert zurückgeben."""
+    node = game
+    while True:
+        if '[%tqu' in (node.comment or ''):
+            break
+        if not node.variations:
+            return game  # kein Trainingskommentar → Original
+        node = node.variations[0]
+
+    if node is game:
+        return game  # [%tqu] schon im Root-Kommentar → keine Kürzung nötig
+
+    new_game = chess.pgn.Game()
+    new_game.setup(node.board())
+    for key, val in game.headers.items():
+        new_game.headers[key] = val
+    new_game.comment = node.comment
+
+    def _copy(src: chess.pgn.GameNode, dst: chess.pgn.GameNode):
+        for var in src.variations:
+            child = dst.add_variation(
+                var.move,
+                comment=var.comment,
+                starting_comment=var.starting_comment,
+                nags=list(var.nags),
+            )
+            _copy(var, child)
+
+    _copy(node, new_game)
+    return new_game
+
 def _clean_pgn_for_lichess(pgn_text: str) -> str:
     """ChessBase-spezifische Annotationen entfernen, die Lichess nicht versteht."""
     # [%tqu ...] entfernen
@@ -516,6 +549,7 @@ async def post_puzzle(channel: discord.TextChannel):
         return
 
     _, game = result
+    game = _trim_to_training_position(game)
     url = upload_to_lichess(game)
 
     h = dict(game.headers)
