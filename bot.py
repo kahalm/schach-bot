@@ -7,6 +7,21 @@ except (OSError, ImportError):
     sys.modules['cairocffi'] = None  # type: ignore[assignment]
 
 import logging
+import sys
+
+# python-chess schreibt "empty fen while parsing" direkt auf stdout/stderr –
+# nicht über das logging-Modul. Beide Streams filtern.
+class _SuppressEmptyFen:
+    _MSG = 'empty fen while parsing'
+    def __init__(self, stream): self._s = stream
+    def write(self, s):
+        if self._MSG not in s: self._s.write(s)
+    def flush(self): self._s.flush()
+    def __getattr__(self, n): return getattr(self._s, n)
+
+sys.stdout = _SuppressEmptyFen(sys.stdout)
+sys.stderr = _SuppressEmptyFen(sys.stderr)
+
 import discord
 from discord.ext import tasks, commands
 import requests
@@ -25,9 +40,6 @@ from reportlab.graphics import renderPM
 
 from dotenv import load_dotenv
 load_dotenv()
-
-# python-chess gibt "empty fen while parsing" als WARNING aus – unterdrücken
-logging.getLogger('chess.pgn').setLevel(logging.ERROR)
 
 DISCORD_TOKEN   = os.getenv('DISCORD_TOKEN')
 STUDY_ID        = os.getenv('LICHESS_STUDY_ID', 'ndPgby4a')
