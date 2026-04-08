@@ -53,6 +53,12 @@ curl -O https://raw.githubusercontent.com/kahalm/schach-bot/main/requirements.tx
 
 **2. Install dependencies**
 
+On Linux, install the required system libraries first:
+```bash
+sudo apt install python3-venv libcairo2-dev pkg-config python3-dev -y
+```
+
+Then create a virtual environment and install the Python packages:
 ```bash
 python3 -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
