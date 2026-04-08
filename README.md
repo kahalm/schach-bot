@@ -36,10 +36,19 @@ A Discord bot with two daily chess features:
 
 ## Installation
 
-**1. Clone the repository**
+You only need **two files** from this repository: `bot.py` and `requirements.txt`. Everything else is created automatically at runtime.
+
+**1. Download the two files**
+
+Either clone the full repository:
 ```bash
-git clone https://github.com/YOURNAME/schach-bot.git
+git clone https://github.com/kahalm/schach-bot.git
 cd schach-bot
+```
+Or download just the two files directly:
+```bash
+curl -O https://raw.githubusercontent.com/kahalm/schach-bot/main/bot.py
+curl -O https://raw.githubusercontent.com/kahalm/schach-bot/main/requirements.txt
 ```
 
 **2. Install dependencies**
@@ -47,15 +56,25 @@ cd schach-bot
 pip install -r requirements.txt
 ```
 
-**3. Create configuration**
-```bash
-cp .env.example .env
+**3. Create a `.env` file**
+
+Create a file named `.env` in the same folder as `bot.py` and fill in your values:
+```env
+DISCORD_TOKEN=your_discord_bot_token
+LICHESS_STUDY_ID=ndPgby4a
+CHANNEL_ID=123456789012345678
+POST_HOUR=8
+POST_MINUTE=0
+LICHESS_TOKEN=your_lichess_token
+BOOKS_DIR=books
+PUZZLE_HOUR=9
+PUZZLE_MINUTE=0
 ```
-Open `.env` in a text editor and fill in the values (see table below).
+See the [Configuration](#configuration) table for details on each variable.
 
 **4. Add PGN books** *(for the puzzle feature)*
 
-Place one or more `.pgn` files in the `books/` folder. The bot expects Chessable/piratechess-style PGN with `[%tqu]` training annotations. Each annotated position becomes a puzzle candidate.
+Create a `books/` folder and place one or more `.pgn` files inside. The bot expects Chessable/piratechess-style PGN with `[%tqu]` training annotations. Each annotated position becomes a puzzle candidate.
 
 **5. Run the bot**
 ```bash
