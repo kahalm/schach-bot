@@ -805,15 +805,15 @@ async def on_message(message: discord.Message):
 
 # --- Slash-Commands ---
 
-@tree.command(name='partie', description='Nächste Partie aus der Lichess-Studie posten')
+@tree.command(name='partie', description='Nächste Partie aus der Lichess-Studie per DM senden')
 async def cmd_partie(interaction: discord.Interaction):
-    await interaction.response.defer()
+    await interaction.response.defer(ephemeral=True)
     try:
         state = load_state()
         games = parse_games(fetch_all_chapters(STUDY_ID))
 
         if not games:
-            await interaction.followup.send('⚠️ Keine Kapitel in der Studie gefunden.')
+            await interaction.followup.send('⚠️ Keine Kapitel in der Studie gefunden.', ephemeral=True)
             return
 
         idx  = state.get('chapter_index', 0) % len(games)
@@ -821,9 +821,10 @@ async def cmd_partie(interaction: discord.Interaction):
         state['chapter_index'] = idx + 1
         save_state(state)
 
-        await post_chapter(interaction.channel, game)
+        dm = await interaction.user.create_dm()
+        await post_chapter(dm, game)
         await interaction.followup.send(
-            f'✅ Kapitel {idx + 1}/{len(games)} gepostet.', ephemeral=True
+            f'✅ Kapitel {idx + 1}/{len(games)} wurde dir per DM gesendet.', ephemeral=True
         )
     except Exception as e:
         await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
@@ -831,7 +832,7 @@ async def cmd_partie(interaction: discord.Interaction):
 
 @tree.command(name='studie', description='Info zur aktuell konfigurierten Lichess-Studie')
 async def cmd_studie(interaction: discord.Interaction):
-    await interaction.response.defer()
+    await interaction.response.defer(ephemeral=True)
     try:
         games = parse_games(fetch_all_chapters(STUDY_ID))
         state = load_state()
@@ -845,7 +846,7 @@ async def cmd_studie(interaction: discord.Interaction):
         embed.add_field(name='Study-ID',      value=STUDY_ID,       inline=True)
         embed.add_field(name='Kapitel gesamt', value=str(len(games)), inline=True)
         embed.add_field(name='Nächstes',       value=f'#{idx + 1}',  inline=True)
-        await interaction.followup.send(embed=embed)
+        await interaction.followup.send(embed=embed, ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
 
@@ -863,10 +864,11 @@ async def cmd_reset(interaction: discord.Interaction):
     buch='Buchnummer aus /books (Standard: alle Bücher)',
 )
 async def cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: int = 0):
-    await interaction.response.defer()
+    await interaction.response.defer(ephemeral=True)
     try:
-        await post_puzzle(interaction.channel, count=anzahl, book_idx=buch)
-        await interaction.followup.send(f'✅ {anzahl} Puzzle(s) gepostet.', ephemeral=True)
+        dm = await interaction.user.create_dm()
+        await post_puzzle(dm, count=anzahl, book_idx=buch)
+        await interaction.followup.send(f'✅ {anzahl} Puzzle(s) wurde(n) dir per DM gesendet.', ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
 
@@ -912,7 +914,7 @@ async def cmd_help(interaction: discord.Interaction):
     embed = discord.Embed(title='♟️ Bot-Befehle', color=0x4e9e4e)
     embed.add_field(
         name='/partie',
-        value='Nächste Partie aus der Lichess-Studie sofort posten.',
+        value='Nächste Partie aus der Lichess-Studie per DM senden.',
         inline=False,
     )
     embed.add_field(
@@ -922,7 +924,7 @@ async def cmd_help(interaction: discord.Interaction):
     )
     embed.add_field(
         name='/puzzle [anzahl] [buch]',
-        value='Zufälliges Puzzle posten.\n'
+        value='Zufälliges Puzzle per DM senden.\n'
               '`anzahl` — 1–20 Puzzles in einer Studie (Standard: 1)\n'
               '`buch` — Nur aus diesem Buch (Nummer aus `/books`, Standard: alle)',
         inline=False,
