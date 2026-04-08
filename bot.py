@@ -49,6 +49,7 @@ POST_MINUTE     = int(os.getenv('POST_MINUTE', '0'))
 
 LICHESS_TOKEN     = os.getenv('LICHESS_TOKEN', '')
 BOOKS_DIR         = os.getenv('BOOKS_DIR', 'books')
+PUZZLE_STUDY_ID   = os.getenv('PUZZLE_STUDY_ID', '')
 PUZZLE_HOUR       = int(os.getenv('PUZZLE_HOUR', '9'))
 PUZZLE_MINUTE     = int(os.getenv('PUZZLE_MINUTE', '0'))
 PUZZLE_STATE_FILE = 'puzzle_state.json'
@@ -357,17 +358,21 @@ def upload_to_lichess(game: chess.pgn.Game) -> str | None:
     if LICHESS_TOKEN:
         auth_headers['Authorization'] = f'Bearer {LICHESS_TOKEN}'
 
-    # Neue Studie anlegen (benötigt LICHESS_TOKEN mit study:write)
+    # Kapitel in Studie importieren (benötigt LICHESS_TOKEN mit study:write)
     if LICHESS_TOKEN:
         try:
-            r = requests.post(
-                'https://lichess.org/api/study',
-                data={'name': study_name, 'visibility': 'unlisted'},
-                headers=auth_headers,
-                timeout=15,
-            )
-            r.raise_for_status()
-            study_id = r.json().get('id', '')
+            # Bestehende Studie nutzen oder neue anlegen
+            if PUZZLE_STUDY_ID:
+                study_id = PUZZLE_STUDY_ID
+            else:
+                r = requests.post(
+                    'https://lichess.org/api/study',
+                    data={'name': study_name, 'visibility': 'unlisted'},
+                    headers=auth_headers,
+                    timeout=15,
+                )
+                r.raise_for_status()
+                study_id = r.json().get('id', '')
             if study_id:
                 r2 = requests.post(
                     f'https://lichess.org/api/study/{study_id}/import-pgn',
@@ -382,7 +387,7 @@ def upload_to_lichess(game: chess.pgn.Game) -> str | None:
                     return f'https://lichess.org/study/{study_id}/{chapter_id}'
                 return f'https://lichess.org/study/{study_id}'
         except Exception as e:
-            print(f'[Fehler] Lichess-Study-Anlegen: {e}')
+            print(f'[Fehler] Lichess-Study-Upload: {e}')
             # Fallback auf standalone Import
 
     # Fallback: einfacher Spielimport ohne Account
