@@ -49,6 +49,7 @@ POST_MINUTE     = int(os.getenv('POST_MINUTE', '0'))
 
 LICHESS_TOKEN     = os.getenv('LICHESS_TOKEN', '')
 BOOKS_DIR         = os.getenv('BOOKS_DIR', 'books')
+PUZZLE_STUDY_ID   = os.getenv('PUZZLE_STUDY_ID', '')
 PUZZLE_HOUR       = int(os.getenv('PUZZLE_HOUR', '9'))
 PUZZLE_MINUTE     = int(os.getenv('PUZZLE_MINUTE', '0'))
 PUZZLE_STATE_FILE = 'puzzle_state.json'
@@ -348,6 +349,28 @@ def upload_to_lichess(game: chess.pgn.Game) -> str | None:
     headers = {}
     if LICHESS_TOKEN:
         headers['Authorization'] = f'Bearer {LICHESS_TOKEN}'
+
+    # Studie-Import bevorzugen (PUZZLE_STUDY_ID + Token vorhanden)
+    if PUZZLE_STUDY_ID and LICHESS_TOKEN:
+        h = dict(game.headers)
+        chapter_name = h.get('White', h.get('Event', 'Puzzle'))
+        try:
+            resp = requests.post(
+                f'https://lichess.org/api/study/{PUZZLE_STUDY_ID}/import-pgn',
+                data={'pgn': pgn_text, 'name': chapter_name},
+                headers=headers,
+                timeout=15,
+            )
+            resp.raise_for_status()
+            chapters = resp.json().get('chapters', [])
+            if chapters:
+                chapter_id = chapters[-1].get('id', '')
+                if chapter_id:
+                    return f'https://lichess.org/study/{PUZZLE_STUDY_ID}/{chapter_id}'
+            return f'https://lichess.org/study/{PUZZLE_STUDY_ID}'
+        except Exception as e:
+            print(f'[Fehler] Lichess-Study-Upload: {e}')
+            # Fallback auf standalone Import
 
     try:
         resp = requests.post(
