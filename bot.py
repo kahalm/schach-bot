@@ -65,7 +65,7 @@ import re
 import tempfile
 import time as _time_mod
 from collections import defaultdict
-from datetime import time, date as _date
+from datetime import time, date as _date, datetime as _datetime
 from PIL import Image, ImageDraw, ImageFont, ImageChops, ImageOps
 from svglib.svglib import svg2rlg
 from reportlab.graphics import renderPM
@@ -469,7 +469,7 @@ def _lichess_set_cooldown():
     with open(LICHESS_COOLDOWN_FILE, 'w') as f:
         json.dump({'until': until}, f)
     log.warning('Lichess 429 – Cooldown bis %s gesetzt.',
-                _date.fromtimestamp(until).strftime('%H:%M'))
+                _datetime.fromtimestamp(until).strftime('%H:%M'))
 
 
 def _lichess_request(method: str, url: str, **kwargs):
@@ -606,11 +606,15 @@ def upload_to_lichess(game: chess.pgn.Game,
                 if chapter_id:
                     return f'https://lichess.org/study/{study_id}/{chapter_id}'
                 return f'https://lichess.org/study/{study_id}'
+        except LichessRateLimitError:
+            return None  # Cooldown bereits geloggt
         except Exception as e:
             log.error('Lichess-Study-Upload fehlgeschlagen: %s', e)
             # Fallback auf standalone Import
 
-    # Fallback: einfacher Spielimport ohne Account
+    # Fallback: einfacher Spielimport ohne Account (nur wenn kein Cooldown)
+    if _lichess_rate_limited():
+        return None
     try:
         resp = _lichess_request(
             'POST', 'https://lichess.org/api/import',
@@ -701,6 +705,8 @@ def upload_many_to_lichess(
             )
 
         return f'https://lichess.org/study/{study_id}'
+    except LichessRateLimitError:
+        return None  # Cooldown bereits geloggt
     except Exception as e:
         log.error('Multi-Upload fehlgeschlagen: %s', e)
         return None
