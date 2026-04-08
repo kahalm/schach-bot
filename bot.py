@@ -14,8 +14,10 @@ import chess.pgn
 import io
 import os
 import json
+import random
+import re
 import tempfile
-from datetime import time
+from datetime import time, date as _date
 from PIL import Image, ImageDraw, ImageFont, ImageChops, ImageOps
 from svglib.svglib import svg2rlg
 from reportlab.graphics import renderPM
@@ -28,6 +30,12 @@ STUDY_ID        = os.getenv('LICHESS_STUDY_ID', 'ndPgby4a')
 CHANNEL_ID      = int(os.getenv('CHANNEL_ID', '0'))
 POST_HOUR       = int(os.getenv('POST_HOUR', '8'))
 POST_MINUTE     = int(os.getenv('POST_MINUTE', '0'))
+
+LICHESS_TOKEN     = os.getenv('LICHESS_TOKEN', '')
+BOOKS_DIR         = os.getenv('BOOKS_DIR', 'books')
+PUZZLE_HOUR       = int(os.getenv('PUZZLE_HOUR', '9'))
+PUZZLE_MINUTE     = int(os.getenv('PUZZLE_MINUTE', '0'))
+PUZZLE_STATE_FILE = 'puzzle_state.json'
 
 STATE_FILE = 'state.json'
 
@@ -142,9 +150,8 @@ def _label_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
             pass
     return ImageFont.load_default()
 
-def board_image(game: chess.pgn.Game) -> io.BytesIO:
-    """PNG der Endstellung mit Lichess-Figuren (cburnett) und Koordinaten."""
-    board  = game.end().board()
+def _render_board(board: chess.Board) -> io.BytesIO:
+    """PNG einer Stellung mit Lichess-Figuren (cburnett) und Koordinaten."""
     s, m   = _SQ, _MAR
     total  = s * 8 + m * 2
     img    = Image.new('RGB', (total, total), _BORDER_BG)
@@ -187,6 +194,10 @@ def board_image(game: chess.pgn.Game) -> io.BytesIO:
     img.save(buf, format='PNG')
     buf.seek(0)
     return buf
+
+def board_image(game: chess.pgn.Game) -> io.BytesIO:
+    """PNG der Endstellung mit Lichess-Figuren (cburnett) und Koordinaten."""
+    return _render_board(game.end().board())
 
 # ---------------------------------------------------------------------------
 # Discord-Embed formatieren
@@ -247,6 +258,151 @@ async def post_chapter(channel: discord.TextChannel, game: chess.pgn.Game):
         await channel.send(embed=embed)
 
 # ---------------------------------------------------------------------------
+# Bücher & Puzzle
+# ---------------------------------------------------------------------------
+
+def load_puzzle_state() -> dict:
+    if os.path.exists(PUZZLE_STATE_FILE):
+        with open(PUZZLE_STATE_FILE) as f:
+            return json.load(f)
+    return {'posted': []}
+
+def save_puzzle_state(state: dict):
+    with open(PUZZLE_STATE_FILE, 'w') as f:
+        json.dump(state, f, indent=2)
+
+def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
+    """Alle Linien aus .pgn-Dateien in BOOKS_DIR laden."""
+    lines = []
+    if not os.path.isdir(BOOKS_DIR):
+        return lines
+    for filename in sorted(os.listdir(BOOKS_DIR)):
+        if not filename.endswith('.pgn'):
+            continue
+        filepath = os.path.join(BOOKS_DIR, filename)
+        with open(filepath, encoding='utf-8', errors='replace') as f:
+            pgn_text = f.read()
+        stream = io.StringIO(pgn_text)
+        while True:
+            game = chess.pgn.read_game(stream)
+            if game is None:
+                break
+            round_header = game.headers.get('Round', '')
+            line_id = f"{filename}:{round_header}"
+            lines.append((line_id, game))
+    return lines
+
+def pick_random_line() -> tuple[str, chess.pgn.Game] | None:
+    """Zufällige noch nicht gepostete Linie wählen; bei Erschöpfung Reset."""
+    all_lines = load_all_lines()
+    if not all_lines:
+        return None
+    state = load_puzzle_state()
+    posted = set(state.get('posted', []))
+
+    remaining = [(lid, g) for lid, g in all_lines if lid not in posted]
+    if not remaining:
+        # Alle gepostet → von vorne
+        posted = set()
+        remaining = all_lines
+        print('[Puzzle] Alle Linien gepostet – starte von vorne.')
+
+    choice_id, choice_game = random.choice(remaining)
+    posted.add(choice_id)
+    save_puzzle_state({'posted': list(posted)})
+    return choice_id, choice_game
+
+def _clean_pgn_for_lichess(pgn_text: str) -> str:
+    """ChessBase-spezifische Annotationen entfernen, die Lichess nicht versteht."""
+    # [%tqu ...] entfernen
+    pgn_text = re.sub(r'\[%tqu\b[^\]]*\]', '', pgn_text)
+    # leere Kommentare {} entfernen
+    pgn_text = re.sub(r'\{\s*\}', '', pgn_text)
+    return pgn_text
+
+def upload_to_lichess(game: chess.pgn.Game) -> str | None:
+    """Spiel auf Lichess importieren und URL zurückgeben."""
+    exporter = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
+    pgn_text = game.accept(exporter)
+    pgn_text = _clean_pgn_for_lichess(pgn_text)
+
+    headers = {}
+    if LICHESS_TOKEN:
+        headers['Authorization'] = f'Bearer {LICHESS_TOKEN}'
+
+    try:
+        resp = requests.post(
+            'https://lichess.org/api/import',
+            data={'pgn': pgn_text},
+            headers=headers,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return resp.json().get('url')
+    except Exception as e:
+        print(f'[Fehler] Lichess-Upload: {e}')
+        return None
+
+def build_puzzle_embed(game: chess.pgn.Game, url: str | None) -> discord.Embed:
+    h = dict(game.headers)
+    line_name  = h.get('White', h.get('Event', 'Linie'))
+    event_name = h.get('Event', '')
+    black_name = h.get('Black', '')
+
+    if len(line_name) > 80:
+        line_name = line_name[:77] + '...'
+
+    embed = discord.Embed(
+        title=f'🧩 {line_name}',
+        color=0x7fa650,
+        url=url or None,
+    )
+
+    book_info = black_name or event_name
+    if book_info:
+        embed.add_field(name='📖 Kapitel', value=book_info, inline=False)
+
+    if url:
+        embed.add_field(name='🔗 Lichess', value=f'[Linie öffnen]({url})', inline=False)
+
+    embed.set_footer(text='🧩 Tägliches Puzzle')
+    return embed
+
+async def post_puzzle(channel: discord.TextChannel):
+    """Zufällige Linie auswählen, auf Lichess hochladen und als Thread posten."""
+    result = pick_random_line()
+    if result is None:
+        await channel.send('⚠️ Keine Puzzle-Linien gefunden. Bitte .pgn-Dateien in den `books/`-Ordner legen.')
+        return
+
+    _, game = result
+    url = upload_to_lichess(game)
+
+    h = dict(game.headers)
+    event = h.get('Event', 'Puzzle')
+    today = _date.today().strftime('%d.%m.%Y')
+    thread_name = f'{event} – {today}'
+    if len(thread_name) > 100:
+        thread_name = thread_name[:97] + '...'
+
+    embed = build_puzzle_embed(game, url)
+
+    try:
+        img  = _render_board(game.board())
+        file = discord.File(img, filename='board.png')
+        embed.set_image(url='attachment://board.png')
+
+        thread = await channel.create_thread(
+            name=thread_name,
+            type=discord.ChannelType.public_thread,
+            auto_archive_duration=1440,
+        )
+        await thread.send(file=file, embed=embed)
+    except Exception as e:
+        print(f'[Fehler] post_puzzle: {e}')
+        raise
+
+# ---------------------------------------------------------------------------
 # Bot
 # ---------------------------------------------------------------------------
 
@@ -259,6 +415,7 @@ async def on_ready():
     await tree.sync()
     print(f'✅ Bot online als {bot.user}')
     daily_task.start()
+    puzzle_task.start()
 
 # --- Slash-Commands ---
 
@@ -313,7 +470,17 @@ async def cmd_reset(interaction: discord.Interaction):
     save_state({'chapter_index': 0})
     await interaction.response.send_message('🔄 Zähler zurückgesetzt – startet wieder bei Kapitel 1.', ephemeral=True)
 
-# --- Täglicher Task ---
+
+@tree.command(name='puzzle', description='Zufälliges Puzzle aus den Büchern posten')
+async def cmd_puzzle(interaction: discord.Interaction):
+    await interaction.response.defer()
+    try:
+        await post_puzzle(interaction.channel)
+        await interaction.followup.send('✅ Puzzle gepostet.', ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
+
+# --- Tägliche Tasks ---
 
 @tasks.loop(time=time(hour=POST_HOUR, minute=POST_MINUTE))
 async def daily_task():
@@ -333,6 +500,18 @@ async def daily_task():
         await post_chapter(channel, game)
     except Exception as e:
         print(f'[Fehler] daily_task: {e}')
+
+
+@tasks.loop(time=time(hour=PUZZLE_HOUR, minute=PUZZLE_MINUTE))
+async def puzzle_task():
+    channel = bot.get_channel(CHANNEL_ID)
+    if not channel:
+        print(f'[Warnung] Channel {CHANNEL_ID} nicht gefunden.')
+        return
+    try:
+        await post_puzzle(channel)
+    except Exception as e:
+        print(f'[Fehler] puzzle_task: {e}')
 
 # ---------------------------------------------------------------------------
 
