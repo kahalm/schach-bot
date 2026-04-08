@@ -89,6 +89,9 @@ DM_STATE_FILE     = 'dm_state.json'
 
 STATE_FILE = 'state.json'
 
+# Lichess Rate-Limit-Cooldown: Zeitstempel des letzten 429, None = kein Cooldown
+_lichess_rate_limit_until: float = 0.0
+
 # ---------------------------------------------------------------------------
 # State  (welches Kapitel wurde zuletzt gepostet)
 # ---------------------------------------------------------------------------
@@ -441,18 +444,28 @@ def _clean_pgn_for_lichess(pgn_text: str) -> str:
     pgn_text = re.sub(r'\{\s*\}', '', pgn_text)
     return pgn_text
 
-def _lichess_request(method: str, url: str, retries: int = 3, **kwargs):
-    """Lichess-API-Request mit automatischem Retry bei 429 (Rate Limit)."""
-    for attempt in range(retries):
-        resp = requests.request(method, url, **kwargs)
-        if resp.status_code == 429:
-            wait = int(resp.headers.get('Retry-After', 60))
-            log.warning('Lichess Rate Limit – warte %ds (Versuch %d/%d)', wait, attempt + 1, retries)
-            _time_mod.sleep(wait)
-            continue
-        return resp
-    resp.raise_for_status()
+_LICHESS_COOLDOWN_SECS = 3600  # 1 Stunde
+
+
+def _lichess_rate_limited() -> bool:
+    """True wenn Lichess gerade im Rate-Limit-Cooldown ist."""
+    return _time_mod.monotonic() < _lichess_rate_limit_until
+
+
+def _lichess_request(method: str, url: str, **kwargs):
+    """Lichess-API-Request. Bei 429 wird ein 1h-Cooldown gesetzt und eine
+    LichessRateLimitError-Exception geworfen."""
+    global _lichess_rate_limit_until
+    resp = requests.request(method, url, **kwargs)
+    if resp.status_code == 429:
+        _lichess_rate_limit_until = _time_mod.monotonic() + _LICHESS_COOLDOWN_SECS
+        log.warning('Lichess 429 – Cooldown für %ds gesetzt.', _LICHESS_COOLDOWN_SECS)
+        raise LichessRateLimitError()
     return resp
+
+
+class LichessRateLimitError(Exception):
+    pass
 
 
 def upload_to_lichess(game: chess.pgn.Game,
@@ -462,7 +475,12 @@ def upload_to_lichess(game: chess.pgn.Game,
     game         – gekürztes Spiel ab Trainingsposition (Gamebook-Kapitel 1)
     context_game – vollständiges Originalspiel als Kapitel 2 (optional,
                    nur sinnvoll wenn Trainingsposition nicht am Anfang liegt)
+    Gibt None zurück wenn Lichess im Cooldown ist.
     """
+    if _lichess_rate_limited():
+        remaining = int(_lichess_rate_limit_until - _time_mod.monotonic())
+        log.info('Lichess-Upload übersprungen (Cooldown noch %ds).', remaining)
+        return None
     try:
         exporter = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
         pgn_text = game.accept(exporter)
@@ -597,6 +615,10 @@ def upload_many_to_lichess(
     puzzles: list[tuple[chess.pgn.Game, chess.pgn.Game | None]],
 ) -> str | None:
     """Mehrere Puzzles als Gamebook-Kapitel in eine gemeinsame Lichess-Studie laden."""
+    if _lichess_rate_limited():
+        remaining = int(_lichess_rate_limit_until - _time_mod.monotonic())
+        log.info('Lichess-Multi-Upload übersprungen (Cooldown noch %ds).', remaining)
+        return None
     if not puzzles:
         return None
     if len(puzzles) == 1:
