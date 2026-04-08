@@ -12,7 +12,7 @@ import sys
 # python-chess schreibt "empty fen while parsing" direkt auf stdout/stderr –
 # nicht über das logging-Modul. Beide Streams filtern.
 class _SuppressEmptyFen:
-    _SUPPRESS = ('empty fen while parsing', 'illegal san:')
+    _SUPPRESS = ('empty fen while parsing', 'illegal san:', 'no matching legal move', 'ambiguous san:')
     def __init__(self, stream): self._s = stream
     def write(self, s):
         if not any(p in s for p in self._SUPPRESS):
@@ -305,7 +305,10 @@ def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
             pgn_text = f.read()
         stream = io.StringIO(pgn_text)
         while True:
-            game = chess.pgn.read_game(stream)
+            try:
+                game = chess.pgn.read_game(stream)
+            except Exception:
+                continue  # malformierten Eintrag überspringen, Stream läuft weiter
             if game is None:
                 break
             # Überspringen wenn FEN-Header vorhanden aber leer
@@ -346,8 +349,12 @@ def _clean_pgn_for_lichess(pgn_text: str) -> str:
 
 def upload_to_lichess(game: chess.pgn.Game) -> str | None:
     """Neue Lichess-Studie anlegen, PGN importieren und Kapitel-URL zurückgeben."""
-    exporter = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
-    pgn_text = game.accept(exporter)
+    try:
+        exporter = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
+        pgn_text = game.accept(exporter)
+    except Exception as e:
+        print(f'[Fehler] PGN-Export: {e}')
+        return None
     pgn_text = _clean_pgn_for_lichess(pgn_text)
 
     h = dict(game.headers)
