@@ -62,6 +62,7 @@ import json
 import random
 import re
 import tempfile
+import time as _time_mod
 from collections import defaultdict
 from datetime import time, date as _date
 from PIL import Image, ImageDraw, ImageFont, ImageChops, ImageOps
@@ -439,6 +440,20 @@ def _clean_pgn_for_lichess(pgn_text: str) -> str:
     pgn_text = re.sub(r'\{\s*\}', '', pgn_text)
     return pgn_text
 
+def _lichess_request(method: str, url: str, retries: int = 3, **kwargs):
+    """Lichess-API-Request mit automatischem Retry bei 429 (Rate Limit)."""
+    for attempt in range(retries):
+        resp = requests.request(method, url, **kwargs)
+        if resp.status_code == 429:
+            wait = int(resp.headers.get('Retry-After', 60))
+            log.warning('Lichess Rate Limit – warte %ds (Versuch %d/%d)', wait, attempt + 1, retries)
+            _time_mod.sleep(wait)
+            continue
+        return resp
+    resp.raise_for_status()
+    return resp
+
+
 def upload_to_lichess(game: chess.pgn.Game,
                       context_game: chess.pgn.Game | None = None) -> str | None:
     """Neue Lichess-Studie anlegen, PGN importieren und Kapitel-URL zurückgeben.
@@ -492,8 +507,8 @@ def upload_to_lichess(game: chess.pgn.Game,
                 study_id = PUZZLE_STUDY_ID
                 default_chapter_id = ''
             else:
-                r = requests.post(
-                    'https://lichess.org/api/study',
+                r = _lichess_request(
+                    'POST', 'https://lichess.org/api/study',
                     data={
                         'name':       study_name,
                         'visibility': 'unlisted',
@@ -509,8 +524,8 @@ def upload_to_lichess(game: chess.pgn.Game,
                 r.raise_for_status()
                 study_id = r.json().get('id', '')
                 # Leeres Auto-Kapitel merken – ID aus ChapterURL extrahieren
-                pgn_resp = requests.get(
-                    f'https://lichess.org/api/study/{study_id}.pgn',
+                pgn_resp = _lichess_request(
+                    'GET', f'https://lichess.org/api/study/{study_id}.pgn',
                     headers=auth_headers,
                     timeout=10,
                 )
@@ -524,8 +539,8 @@ def upload_to_lichess(game: chess.pgn.Game,
 
             if study_id:
                 # Kapitel 1: Gamebook ab Trainingsposition
-                r2 = requests.post(
-                    f'https://lichess.org/api/study/{study_id}/import-pgn',
+                r2 = _lichess_request(
+                    'POST', f'https://lichess.org/api/study/{study_id}/import-pgn',
                     data={'pgn': pgn_text, 'name': line_name, 'mode': 'gamebook'},
                     headers=auth_headers,
                     timeout=15,
@@ -536,8 +551,8 @@ def upload_to_lichess(game: chess.pgn.Game,
 
                 # Kapitel 2: vollständiges Originalspiel (nur wenn vorhanden)
                 if context_pgn:
-                    r3 = requests.post(
-                        f'https://lichess.org/api/study/{study_id}/import-pgn',
+                    r3 = _lichess_request(
+                        'POST', f'https://lichess.org/api/study/{study_id}/import-pgn',
                         data={'pgn': context_pgn, 'name': context_name, 'mode': 'normal'},
                         headers=auth_headers,
                         timeout=15,
@@ -549,8 +564,8 @@ def upload_to_lichess(game: chess.pgn.Game,
 
                 # Leeres Auto-Kapitel löschen
                 if default_chapter_id:
-                    rd = requests.delete(
-                        f'https://lichess.org/api/study/{study_id}/{default_chapter_id}',
+                    rd = _lichess_request(
+                        'DELETE', f'https://lichess.org/api/study/{study_id}/{default_chapter_id}',
                         headers=auth_headers,
                         timeout=10,
                     )
@@ -565,8 +580,8 @@ def upload_to_lichess(game: chess.pgn.Game,
 
     # Fallback: einfacher Spielimport ohne Account
     try:
-        resp = requests.post(
-            'https://lichess.org/api/import',
+        resp = _lichess_request(
+            'POST', 'https://lichess.org/api/import',
             data={'pgn': pgn_text},
             headers=auth_headers,
             timeout=15,
@@ -593,8 +608,8 @@ def upload_many_to_lichess(
     study_name = f'Puzzles – {today}'
 
     try:
-        r = requests.post(
-            'https://lichess.org/api/study',
+        r = _lichess_request(
+            'POST', 'https://lichess.org/api/study',
             data={'name': study_name, 'visibility': 'unlisted', 'computer': 'everyone',
                   'explorer': 'everyone', 'cloneable': 'everyone',
                   'shareable': 'everyone', 'chat': 'everyone'},
@@ -606,8 +621,8 @@ def upload_many_to_lichess(
             return None
 
         # Leeres Auto-Kapitel merken
-        pgn_resp = requests.get(
-            f'https://lichess.org/api/study/{study_id}.pgn',
+        pgn_resp = _lichess_request(
+            'GET', f'https://lichess.org/api/study/{study_id}.pgn',
             headers=auth_headers, timeout=10,
         )
         default_chapter_id = ''
@@ -623,8 +638,8 @@ def upload_many_to_lichess(
                 pgn  = _clean_pgn_for_lichess(game.accept(exp))
                 h    = dict(game.headers)
                 name = h.get('White', h.get('Event', 'Puzzle'))[:70]
-                requests.post(
-                    f'https://lichess.org/api/study/{study_id}/import-pgn',
+                _lichess_request(
+                    'POST', f'https://lichess.org/api/study/{study_id}/import-pgn',
                     data={'pgn': pgn, 'name': name, 'mode': 'gamebook'},
                     headers=auth_headers, timeout=15,
                 ).raise_for_status()
@@ -633,18 +648,19 @@ def upload_many_to_lichess(
                     ctx_pgn = _clean_pgn_for_lichess(context.accept(ctx_exp))
                     ch      = dict(context.headers)
                     ctx_name = f'Partie: {ch.get("White", "Partie")[:64]}'
-                    requests.post(
-                        f'https://lichess.org/api/study/{study_id}/import-pgn',
+                    _lichess_request(
+                        'POST', f'https://lichess.org/api/study/{study_id}/import-pgn',
                         data={'pgn': ctx_pgn, 'name': ctx_name, 'mode': 'normal'},
                         headers=auth_headers, timeout=15,
                     )
             except Exception as e:
                 log.warning('Kapitel-Import übersprungen: %s', e)
+            _time_mod.sleep(1)  # kurze Pause zwischen Kapiteln gegen Rate Limit
 
         # Auto-Kapitel löschen
         if default_chapter_id:
-            requests.delete(
-                f'https://lichess.org/api/study/{study_id}/{default_chapter_id}',
+            _lichess_request(
+                'DELETE', f'https://lichess.org/api/study/{study_id}/{default_chapter_id}',
                 headers=auth_headers, timeout=10,
             )
 
