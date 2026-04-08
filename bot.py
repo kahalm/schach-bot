@@ -6,6 +6,7 @@ try:
 except (OSError, ImportError):
     sys.modules['cairocffi'] = None  # type: ignore[assignment]
 
+import logging
 import discord
 from discord.ext import tasks, commands
 import requests
@@ -24,6 +25,9 @@ from reportlab.graphics import renderPM
 
 from dotenv import load_dotenv
 load_dotenv()
+
+# python-chess gibt "empty fen while parsing" als WARNING aus – unterdrücken
+logging.getLogger('chess.pgn').setLevel(logging.ERROR)
 
 DISCORD_TOKEN   = os.getenv('DISCORD_TOKEN')
 STUDY_ID        = os.getenv('LICHESS_STUDY_ID', 'ndPgby4a')
@@ -287,8 +291,8 @@ def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
             game = chess.pgn.read_game(stream)
             if game is None:
                 break
-            # Nur überspringen wenn FEN-Header explizit leer ist
-            if game.headers.get('SetUp', '0') == '1' and not game.headers.get('FEN', '').strip():
+            # Überspringen wenn FEN-Header vorhanden aber leer
+            if 'FEN' in game.headers and not game.headers['FEN'].strip():
                 continue
             round_header = game.headers.get('Round', '')
             line_id = f"{filename}:{round_header}"
