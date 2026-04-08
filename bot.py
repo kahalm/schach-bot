@@ -382,14 +382,19 @@ def upload_to_lichess(game: chess.pgn.Game) -> str | None:
                 )
                 r.raise_for_status()
                 study_id = r.json().get('id', '')
-                # Leeres Auto-Kapitel merken (steht in der Study-PGN)
+                # Leeres Auto-Kapitel merken – ID aus ChapterURL extrahieren
                 pgn_resp = requests.get(
                     f'https://lichess.org/api/study/{study_id}.pgn',
                     headers=auth_headers,
                     timeout=10,
                 )
                 default_game = chess.pgn.read_game(io.StringIO(pgn_resp.text))
-                default_chapter_id = default_game.headers.get('ChapterId', '') if default_game else ''
+                if default_game:
+                    chapter_url_hdr = default_game.headers.get('ChapterURL', '')
+                    default_chapter_id = chapter_url_hdr.rstrip('/').split('/')[-1]
+                    print(f'[Puzzle] Leeres Auto-Kapitel: {default_chapter_id}')
+                else:
+                    default_chapter_id = ''
 
             if study_id:
                 r2 = requests.post(
@@ -404,11 +409,12 @@ def upload_to_lichess(game: chess.pgn.Game) -> str | None:
 
                 # Leeres Auto-Kapitel löschen
                 if default_chapter_id:
-                    requests.delete(
+                    rd = requests.delete(
                         f'https://lichess.org/api/study/{study_id}/{default_chapter_id}',
                         headers=auth_headers,
                         timeout=10,
                     )
+                    print(f'[Puzzle] Kapitel gelöscht: HTTP {rd.status_code}')
 
                 if chapter_id:
                     return f'https://lichess.org/study/{study_id}/{chapter_id}'
