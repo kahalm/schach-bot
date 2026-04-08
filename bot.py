@@ -384,23 +384,33 @@ def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
     if node is game:
         return game  # [%tqu] schon im Root-Kommentar → keine Kürzung nötig
 
+    tqu_board = node.board()
     new_game = chess.pgn.Game()
-    new_game.setup(node.board())
+    new_game.setup(tqu_board)
+    # Metadaten übernehmen – FEN und SetUp NICHT überschreiben (setup() hat sie korrekt gesetzt)
     for key, val in game.headers.items():
-        new_game.headers[key] = val
-    new_game.comment = node.comment
+        if key not in ('FEN', 'SetUp'):
+            new_game.headers[key] = val
+    # [%tqu]-Kommentar nicht weitergeben – wird beim Export sowieso entfernt
+    new_game.comment = ''
 
-    def _copy(src: chess.pgn.GameNode, dst: chess.pgn.GameNode):
+    def _copy(src: chess.pgn.GameNode, dst: chess.pgn.GameNode,
+              board: chess.Board):
+        """Baum ab src nach dst kopieren; board ist die Stellung bei dst."""
         for var in src.variations:
+            if var.move not in board.legal_moves:
+                continue  # illegale Varianten (Parsing-Fehler) überspringen
             child = dst.add_variation(
                 var.move,
                 comment=var.comment,
                 starting_comment=var.starting_comment,
                 nags=list(var.nags),
             )
-            _copy(var, child)
+            next_board = board.copy()
+            next_board.push(var.move)
+            _copy(var, child, next_board)
 
-    _copy(node, new_game)
+    _copy(node, new_game, tqu_board)
     return new_game
 
 def _clean_pgn_for_lichess(pgn_text: str) -> str:
@@ -411,8 +421,14 @@ def _clean_pgn_for_lichess(pgn_text: str) -> str:
     pgn_text = re.sub(r'\{\s*\}', '', pgn_text)
     return pgn_text
 
-def upload_to_lichess(game: chess.pgn.Game) -> str | None:
-    """Neue Lichess-Studie anlegen, PGN importieren und Kapitel-URL zurückgeben."""
+def upload_to_lichess(game: chess.pgn.Game,
+                      context_game: chess.pgn.Game | None = None) -> str | None:
+    """Neue Lichess-Studie anlegen, PGN importieren und Kapitel-URL zurückgeben.
+
+    game         – gekürztes Spiel ab Trainingsposition (Gamebook-Kapitel 1)
+    context_game – vollständiges Originalspiel als Kapitel 2 (optional,
+                   nur sinnvoll wenn Trainingsposition nicht am Anfang liegt)
+    """
     try:
         exporter = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
         pgn_text = game.accept(exporter)
@@ -428,6 +444,23 @@ def upload_to_lichess(game: chess.pgn.Game) -> str | None:
     study_name = f'{event_name} – {today}'
     if len(study_name) > 100:
         study_name = study_name[:97] + '...'
+
+    # Kontext-PGN vorbereiten (2. Kapitel: vollständiges Originalspiel)
+    context_pgn = None
+    context_name = None
+    if context_game is not None:
+        try:
+            ctx_exp = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
+            context_pgn = context_game.accept(ctx_exp)
+            context_pgn = _clean_pgn_for_lichess(context_pgn)
+            ch = dict(context_game.headers)
+            ctx_title = ch.get('White', ch.get('Event', 'Partie'))
+            if len(ctx_title) > 70:
+                ctx_title = ctx_title[:67] + '...'
+            context_name = f'Partie: {ctx_title}'
+        except Exception as e:
+            log.warning('Kontext-PGN-Export fehlgeschlagen: %s', e)
+            context_pgn = None
 
     auth_headers = {}
     if LICHESS_TOKEN:
@@ -472,6 +505,7 @@ def upload_to_lichess(game: chess.pgn.Game) -> str | None:
                     default_chapter_id = ''
 
             if study_id:
+                # Kapitel 1: Gamebook ab Trainingsposition
                 r2 = requests.post(
                     f'https://lichess.org/api/study/{study_id}/import-pgn',
                     data={'pgn': pgn_text, 'name': line_name, 'mode': 'gamebook'},
@@ -481,6 +515,19 @@ def upload_to_lichess(game: chess.pgn.Game) -> str | None:
                 r2.raise_for_status()
                 chapters = r2.json().get('chapters', [])
                 chapter_id = chapters[-1].get('id', '') if chapters else ''
+
+                # Kapitel 2: vollständiges Originalspiel (nur wenn vorhanden)
+                if context_pgn:
+                    r3 = requests.post(
+                        f'https://lichess.org/api/study/{study_id}/import-pgn',
+                        data={'pgn': context_pgn, 'name': context_name, 'mode': 'normal'},
+                        headers=auth_headers,
+                        timeout=15,
+                    )
+                    if r3.status_code == 200:
+                        log.info('Kontext-Kapitel importiert: %s', context_name)
+                    else:
+                        log.warning('Kontext-Kapitel Import HTTP %s', r3.status_code)
 
                 # Leeres Auto-Kapitel löschen
                 if default_chapter_id:
@@ -548,9 +595,11 @@ async def post_puzzle(channel: discord.TextChannel):
         await channel.send('⚠️ Keine Puzzle-Linien gefunden. Bitte .pgn-Dateien in den `books/`-Ordner legen.')
         return
 
-    _, game = result
-    game = _trim_to_training_position(game)
-    url = upload_to_lichess(game)
+    _, original_game = result
+    game = _trim_to_training_position(original_game)
+    # Originalspiel als Kontext-Kapitel mitgeben, wenn es tatsächlich gekürzt wurde
+    context = original_game if game is not original_game else None
+    url = upload_to_lichess(game, context_game=context)
 
     h = dict(game.headers)
     event = h.get('Event', 'Puzzle')

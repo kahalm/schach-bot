@@ -63,9 +63,18 @@ def main():
     print(f'FEN    : {h.get("FEN", "(Startstellung)")}')
     print()
 
-    # 2. Auf Lichess hochladen (neue Studie + Gamebook-Kapitel)
+    # 2. Auf Trainingsposition kürzen, dann hochladen
+    original_game = game
+    game = bot._trim_to_training_position(game)
+    trimmed = game is not original_game
+    h = dict(game.headers)
+    print(f'Getrimmt: {trimmed}')
+    print(f'Nach Trim FEN: {h.get("FEN", "(Startstellung)")}')
+    print()
+
+    context = original_game if trimmed else None
     print('Lade auf Lichess hoch...')
-    url = bot.upload_to_lichess(game)
+    url = bot.upload_to_lichess(game, context_game=context)
     if not url:
         print('FEHLER: Upload fehlgeschlagen.')
         return
@@ -84,20 +93,21 @@ def main():
         print(f'INFO: Kein Study-Link (Fallback-Import): {url}')
         return
 
-    # 4. Anzahl Kapitel pruefen (sollte genau 1 sein)
-    n = count_chapters(study_id)
-    status = 'OK' if n == 1 else 'WARN'
-    print(f'{status}  Kapitel in Studie: {n} (erwartet: 1)')
-
-    # 5. Kapiteldetails pruefen
-    if chapter_id:
-        print(f'Pruefe Kapitel {chapter_id}...')
-        data = verify_study(study_id, chapter_id)
-        if 'error' in data:
-            print(f'WARN: API-Antwort: {data}')
-        else:
-            print(f'OK  Name : {data.get("name", "?")}')
-            print(f'    Felder: {sorted(data.keys())}')
+    # 4. Kapitel per PGN-Export pruefen
+    headers_auth = {'Authorization': f'Bearer {LICHESS_TOKEN}'} if LICHESS_TOKEN else {}
+    r = requests.get(f'https://lichess.org/api/study/{study_id}.pgn',
+                     headers=headers_auth, timeout=10)
+    if r.status_code == 200:
+        pgn_text = r.text
+        n_chapters = pgn_text.count('[ChapterName "')
+        n_gamebook = pgn_text.count('[ChapterMode "gamebook"]')
+        has_fen    = '[SetUp "1"]' in pgn_text
+        expected   = 2 if trimmed else 1
+        ok = n_chapters == expected and n_gamebook == (1 if trimmed else 0) and has_fen == trimmed
+        print(f'{"OK" if ok else "WARN"}  Kapitel: {n_chapters} (erwartet: {expected}), '
+              f'Gamebook: {n_gamebook}, FEN-Setup: {has_fen}')
+    else:
+        print(f'WARN: PGN-Export HTTP {r.status_code}')
 
     print('\nFertig.')
 
