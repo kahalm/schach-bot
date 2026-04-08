@@ -620,17 +620,27 @@ async def post_puzzle(channel: discord.TextChannel):
 
     embed = build_puzzle_embed(game, url, turn=turn)
 
-    thread = await channel.create_thread(
-        name=thread_name,
-        type=discord.ChannelType.public_thread,
-        auto_archive_duration=1440,
-    )
-    if img:
-        file = discord.File(img, filename='board.png')
-        embed.set_image(url='attachment://board.png')
-        await thread.send(file=file, embed=embed)
+    # In DMs kein Thread erstellen – direkt antworten
+    is_dm = isinstance(channel, discord.DMChannel)
+    if is_dm:
+        if img:
+            file = discord.File(img, filename='board.png')
+            embed.set_image(url='attachment://board.png')
+            await channel.send(file=file, embed=embed)
+        else:
+            await channel.send(embed=embed)
     else:
-        await thread.send(embed=embed)
+        thread = await channel.create_thread(
+            name=thread_name,
+            type=discord.ChannelType.public_thread,
+            auto_archive_duration=1440,
+        )
+        if img:
+            file = discord.File(img, filename='board.png')
+            embed.set_image(url='attachment://board.png')
+            await thread.send(file=file, embed=embed)
+        else:
+            await thread.send(embed=embed)
 
 # ---------------------------------------------------------------------------
 # Bot
@@ -707,6 +717,44 @@ async def cmd_puzzle(interaction: discord.Interaction):
     try:
         await post_puzzle(interaction.channel)
         await interaction.followup.send('✅ Puzzle gepostet.', ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
+
+
+@tree.command(name='books', description='Alle verfügbaren Puzzle-Bücher anzeigen')
+async def cmd_buecher(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    try:
+        all_lines = load_all_lines()
+        posted    = set(load_puzzle_state().get('posted', []))
+
+        from collections import defaultdict
+        total_per_book:  dict[str, int] = defaultdict(int)
+        posted_per_book: dict[str, int] = defaultdict(int)
+        for lid, _ in all_lines:
+            book = lid.split(':')[0]
+            total_per_book[book] += 1
+            if lid in posted:
+                posted_per_book[book] += 1
+
+        if not total_per_book:
+            await interaction.followup.send(
+                '⚠️ Keine Bücher gefunden. Bitte .pgn-Dateien in den `books/`-Ordner legen.',
+                ephemeral=True,
+            )
+            return
+
+        embed = discord.Embed(title='📚 Puzzle-Bücher', color=0x7fa650)
+        for book in sorted(total_per_book):
+            name  = book.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+            total = total_per_book[book]
+            done  = posted_per_book[book]
+            embed.add_field(name=name, value=f'{done}/{total} gepostet', inline=False)
+
+        total_all = sum(total_per_book.values())
+        done_all  = sum(posted_per_book.values())
+        embed.set_footer(text=f'Gesamt: {done_all}/{total_all} Linien gepostet')
+        await interaction.followup.send(embed=embed, ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
 

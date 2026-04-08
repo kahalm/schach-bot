@@ -25,6 +25,7 @@ A Discord bot with two daily chess features:
 | `/partie` | Post the next chapter from the Lichess study immediately |
 | `/studie` | Show study info: total chapters and which comes next |
 | `/puzzle` | Post a random puzzle immediately |
+| `/books` | Show all puzzle books with posted/total counts |
 | `/reset` | Reset the chapter counter to 1 (admins only) |
 
 ## Requirements
