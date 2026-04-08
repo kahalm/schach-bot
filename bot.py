@@ -491,7 +491,7 @@ def upload_to_lichess(game: chess.pgn.Game,
     Gibt None zurück wenn Lichess im Cooldown ist.
     """
     if _lichess_rate_limited():
-        remaining = int(_lichess_rate_limit_until - _time_mod.monotonic())
+        remaining = int(_lichess_cooldown_until() - _time_mod.time())
         log.info('Lichess-Upload übersprungen (Cooldown noch %ds).', remaining)
         return None
     try:
@@ -633,7 +633,7 @@ def upload_many_to_lichess(
 ) -> str | None:
     """Mehrere Puzzles als Gamebook-Kapitel in eine gemeinsame Lichess-Studie laden."""
     if _lichess_rate_limited():
-        remaining = int(_lichess_rate_limit_until - _time_mod.monotonic())
+        remaining = int(_lichess_cooldown_until() - _time_mod.time())
         log.info('Lichess-Multi-Upload übersprungen (Cooldown noch %ds).', remaining)
         return None
     if not puzzles:
