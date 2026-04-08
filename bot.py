@@ -454,7 +454,7 @@ def _lichess_cooldown_until() -> float:
     try:
         with open(LICHESS_COOLDOWN_FILE) as f:
             return float(json.load(f).get('until', 0))
-    except (FileNotFoundError, (ValueError, KeyError)):
+    except (FileNotFoundError, ValueError, KeyError):
         return 0.0
 
 
