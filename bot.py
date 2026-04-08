@@ -878,6 +878,39 @@ async def cmd_buecher(interaction: discord.Interaction):
     except Exception as e:
         await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
 
+@tree.command(name='help', description='Alle verfügbaren Befehle anzeigen')
+async def cmd_help(interaction: discord.Interaction):
+    embed = discord.Embed(title='♟️ Bot-Befehle', color=0x4e9e4e)
+    embed.add_field(
+        name='/partie',
+        value='Nächste Partie aus der Lichess-Studie sofort posten.',
+        inline=False,
+    )
+    embed.add_field(
+        name='/studie',
+        value='Info zur Lichess-Studie: Kapitelanzahl und nächstes Kapitel.',
+        inline=False,
+    )
+    embed.add_field(
+        name='/puzzle [anzahl] [buch]',
+        value='Zufälliges Puzzle posten.\n'
+              '`anzahl` — 1–20 Puzzles in einer Studie (Standard: 1)\n'
+              '`buch` — Nur aus diesem Buch (Nummer aus `/books`, Standard: alle)',
+        inline=False,
+    )
+    embed.add_field(
+        name='/books',
+        value='Alle verfügbaren Puzzle-Bücher mit Fortschritt anzeigen.',
+        inline=False,
+    )
+    embed.add_field(
+        name='/reset',
+        value='Kapitel-Zähler zurücksetzen (nur Admins).',
+        inline=False,
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 # --- Tägliche Tasks ---
 
 @tasks.loop(time=time(hour=POST_HOUR, minute=POST_MINUTE))
