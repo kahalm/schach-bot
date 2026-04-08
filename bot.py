@@ -364,6 +364,7 @@ def upload_to_lichess(game: chess.pgn.Game) -> str | None:
             # Bestehende Studie nutzen oder neue anlegen
             if PUZZLE_STUDY_ID:
                 study_id = PUZZLE_STUDY_ID
+                default_chapter_id = ''
             else:
                 r = requests.post(
                     'https://lichess.org/api/study',
@@ -381,6 +382,15 @@ def upload_to_lichess(game: chess.pgn.Game) -> str | None:
                 )
                 r.raise_for_status()
                 study_id = r.json().get('id', '')
+                # Leeres Auto-Kapitel merken (steht in der Study-PGN)
+                pgn_resp = requests.get(
+                    f'https://lichess.org/api/study/{study_id}.pgn',
+                    headers=auth_headers,
+                    timeout=10,
+                )
+                default_game = chess.pgn.read_game(io.StringIO(pgn_resp.text))
+                default_chapter_id = default_game.headers.get('ChapterId', '') if default_game else ''
+
             if study_id:
                 r2 = requests.post(
                     f'https://lichess.org/api/study/{study_id}/import-pgn',
@@ -391,6 +401,15 @@ def upload_to_lichess(game: chess.pgn.Game) -> str | None:
                 r2.raise_for_status()
                 chapters = r2.json().get('chapters', [])
                 chapter_id = chapters[-1].get('id', '') if chapters else ''
+
+                # Leeres Auto-Kapitel löschen
+                if default_chapter_id:
+                    requests.delete(
+                        f'https://lichess.org/api/study/{study_id}/{default_chapter_id}',
+                        headers=auth_headers,
+                        timeout=10,
+                    )
+
                 if chapter_id:
                     return f'https://lichess.org/study/{study_id}/{chapter_id}'
                 return f'https://lichess.org/study/{study_id}'
