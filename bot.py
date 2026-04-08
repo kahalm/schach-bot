@@ -718,6 +718,9 @@ def build_puzzle_embed(game: chess.pgn.Game, url: str | None, turn: chess.Color 
 
     if url:
         embed.add_field(name='🔗 Lichess', value=f'[Linie öffnen]({url})', inline=False)
+    elif _lichess_rate_limited():
+        minutes = max(1, int((_lichess_rate_limit_until - _time_mod.monotonic()) / 60) + 1)
+        embed.add_field(name='⏳ Lichess', value=f'Nächster Link in ca. {minutes} Minuten', inline=False)
 
     embed.set_footer(text='🧩 Tägliches Puzzle')
     return embed
