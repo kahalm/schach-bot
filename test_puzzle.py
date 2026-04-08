@@ -7,7 +7,7 @@ import os
 import requests
 
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(dotenv_path='.env')
 
 # discord-Import ueberspringen damit bot.py importierbar ist ohne laufenden Bot
 import unittest.mock as _mock
@@ -68,8 +68,12 @@ def main():
     game = bot._trim_to_training_position(game)
     trimmed = game is not original_game
     h = dict(game.headers)
+    import chess as _chess
+    board = game.board()
+    am_zug = 'Schwarz' if board.turn == _chess.BLACK else 'Weiss'
     print(f'Getrimmt: {trimmed}')
     print(f'Nach Trim FEN: {h.get("FEN", "(Startstellung)")}')
+    print(f'Am Zug  : {am_zug}')
     print()
 
     context = original_game if trimmed else None
