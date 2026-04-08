@@ -371,7 +371,7 @@ def upload_to_lichess(game: chess.pgn.Game) -> str | None:
             if study_id:
                 r2 = requests.post(
                     f'https://lichess.org/api/study/{study_id}/import-pgn',
-                    data={'pgn': pgn_text, 'name': line_name, 'mode': 'practice'},
+                    data={'pgn': pgn_text, 'name': line_name},
                     headers=auth_headers,
                     timeout=15,
                 )
