@@ -287,6 +287,9 @@ def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
             game = chess.pgn.read_game(stream)
             if game is None:
                 break
+            # Nur überspringen wenn FEN-Header explizit leer ist
+            if game.headers.get('SetUp', '0') == '1' and not game.headers.get('FEN', '').strip():
+                continue
             round_header = game.headers.get('Round', '')
             line_id = f"{filename}:{round_header}"
             lines.append((line_id, game))
@@ -343,7 +346,7 @@ def upload_to_lichess(game: chess.pgn.Game) -> str | None:
         print(f'[Fehler] Lichess-Upload: {e}')
         return None
 
-def build_puzzle_embed(game: chess.pgn.Game, url: str | None) -> discord.Embed:
+def build_puzzle_embed(game: chess.pgn.Game, url: str | None, turn: chess.Color | None = None) -> discord.Embed:
     h = dict(game.headers)
     line_name  = h.get('White', h.get('Event', 'Linie'))
     event_name = h.get('Event', '')
@@ -361,6 +364,10 @@ def build_puzzle_embed(game: chess.pgn.Game, url: str | None) -> discord.Embed:
     book_info = black_name or event_name
     if book_info:
         embed.add_field(name='📖 Kapitel', value=book_info, inline=False)
+
+    if turn is not None:
+        turn_str = '⬜ Weiß am Zug' if turn == chess.WHITE else '⬛ Schwarz am Zug'
+        embed.add_field(name='Am Zug', value=turn_str, inline=True)
 
     if url:
         embed.add_field(name='🔗 Lichess', value=f'[Linie öffnen]({url})', inline=False)
@@ -385,22 +392,29 @@ async def post_puzzle(channel: discord.TextChannel):
     if len(thread_name) > 100:
         thread_name = thread_name[:97] + '...'
 
-    embed = build_puzzle_embed(game, url)
-
     try:
-        img  = _render_board(game.board())
+        board = game.board()
+        turn  = board.turn
+        img   = _render_board(board)
+    except Exception as e:
+        print(f'[Warnung] Board-Render fehlgeschlagen: {e}')
+        board = None
+        turn  = None
+        img   = None
+
+    embed = build_puzzle_embed(game, url, turn=turn)
+
+    thread = await channel.create_thread(
+        name=thread_name,
+        type=discord.ChannelType.public_thread,
+        auto_archive_duration=1440,
+    )
+    if img:
         file = discord.File(img, filename='board.png')
         embed.set_image(url='attachment://board.png')
-
-        thread = await channel.create_thread(
-            name=thread_name,
-            type=discord.ChannelType.public_thread,
-            auto_archive_duration=1440,
-        )
         await thread.send(file=file, embed=embed)
-    except Exception as e:
-        print(f'[Fehler] post_puzzle: {e}')
-        raise
+    else:
+        await thread.send(embed=embed)
 
 # ---------------------------------------------------------------------------
 # Bot
