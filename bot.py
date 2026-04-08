@@ -12,10 +12,14 @@ import sys
 # python-chess schreibt "empty fen while parsing" direkt auf stdout/stderr –
 # nicht über das logging-Modul. Beide Streams filtern.
 class _SuppressEmptyFen:
-    _MSG = 'empty fen while parsing'
+    _SUPPRESS = ('empty fen while parsing', 'illegal san:')
     def __init__(self, stream): self._s = stream
     def write(self, s):
-        if self._MSG not in s: self._s.write(s)
+        if not any(p in s for p in self._SUPPRESS):
+            try:
+                self._s.write(s)
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                self._s.write(s.encode('ascii', 'replace').decode('ascii'))
     def flush(self): self._s.flush()
     def __getattr__(self, n): return getattr(self._s, n)
 
