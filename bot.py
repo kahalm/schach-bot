@@ -62,6 +62,7 @@ import json
 import random
 import re
 import tempfile
+from collections import defaultdict
 from datetime import time, date as _date
 from PIL import Image, ImageDraw, ImageFont, ImageChops, ImageOps
 from svglib.svglib import svg2rlg
@@ -350,25 +351,41 @@ def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
             lines.append((line_id, game))
     return lines
 
-def pick_random_line() -> tuple[str, chess.pgn.Game] | None:
-    """Zufällige noch nicht gepostete Linie wählen; bei Erschöpfung Reset."""
+def pick_random_lines(count: int = 1,
+                      book_filename: str | None = None,
+                      ) -> list[tuple[str, chess.pgn.Game]]:
+    """Bis zu `count` zufällige noch nicht gepostete Linien wählen.
+
+    book_filename – nur Linien aus dieser Datei (None = alle Bücher).
+    """
     all_lines = load_all_lines()
+    if book_filename:
+        all_lines = [(lid, g) for lid, g in all_lines
+                     if lid.startswith(book_filename + ':')]
     if not all_lines:
-        return None
-    state = load_puzzle_state()
+        return []
+
+    state  = load_puzzle_state()
     posted = set(state.get('posted', []))
 
     remaining = [(lid, g) for lid, g in all_lines if lid not in posted]
     if not remaining:
-        # Alle gepostet → von vorne
-        posted = set()
+        posted    = set()
         remaining = all_lines
         log.info('Alle Linien gepostet – starte von vorne.')
 
-    choice_id, choice_game = random.choice(remaining)
-    posted.add(choice_id)
+    count  = max(1, min(count, len(remaining)))
+    chosen = random.sample(remaining, count)
+    for lid, _ in chosen:
+        posted.add(lid)
     save_puzzle_state({'posted': list(posted)})
-    return choice_id, choice_game
+    return chosen
+
+
+def pick_random_line() -> tuple[str, chess.pgn.Game] | None:
+    """Kompatibilitäts-Wrapper – wählt genau eine Linie."""
+    result = pick_random_lines(1)
+    return result[0] if result else None
 
 def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
     """Spiel auf erste [%tqu]-Stellung kürzen.
@@ -559,6 +576,83 @@ def upload_to_lichess(game: chess.pgn.Game,
         log.error('Lichess-Upload fehlgeschlagen: %s', e)
         return None
 
+def upload_many_to_lichess(
+    puzzles: list[tuple[chess.pgn.Game, chess.pgn.Game | None]],
+) -> str | None:
+    """Mehrere Puzzles als Gamebook-Kapitel in eine gemeinsame Lichess-Studie laden."""
+    if not puzzles:
+        return None
+    if len(puzzles) == 1:
+        return upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1])
+    if not LICHESS_TOKEN:
+        return upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1])
+
+    auth_headers = {'Authorization': f'Bearer {LICHESS_TOKEN}'}
+    today      = _date.today().strftime('%d.%m.%Y')
+    study_name = f'Puzzles – {today}'
+
+    try:
+        r = requests.post(
+            'https://lichess.org/api/study',
+            data={'name': study_name, 'visibility': 'unlisted', 'computer': 'everyone',
+                  'explorer': 'everyone', 'cloneable': 'everyone',
+                  'shareable': 'everyone', 'chat': 'everyone'},
+            headers=auth_headers, timeout=15,
+        )
+        r.raise_for_status()
+        study_id = r.json().get('id', '')
+        if not study_id:
+            return None
+
+        # Leeres Auto-Kapitel merken
+        pgn_resp = requests.get(
+            f'https://lichess.org/api/study/{study_id}.pgn',
+            headers=auth_headers, timeout=10,
+        )
+        default_chapter_id = ''
+        if pgn_resp.status_code == 200:
+            dg = chess.pgn.read_game(io.StringIO(pgn_resp.text))
+            if dg:
+                default_chapter_id = dg.headers.get('ChapterURL', '').rstrip('/').split('/')[-1]
+
+        # Kapitel importieren
+        for game, context in puzzles:
+            try:
+                exp  = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
+                pgn  = _clean_pgn_for_lichess(game.accept(exp))
+                h    = dict(game.headers)
+                name = h.get('White', h.get('Event', 'Puzzle'))[:70]
+                requests.post(
+                    f'https://lichess.org/api/study/{study_id}/import-pgn',
+                    data={'pgn': pgn, 'name': name, 'mode': 'gamebook'},
+                    headers=auth_headers, timeout=15,
+                ).raise_for_status()
+                if context is not None:
+                    ctx_exp = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
+                    ctx_pgn = _clean_pgn_for_lichess(context.accept(ctx_exp))
+                    ch      = dict(context.headers)
+                    ctx_name = f'Partie: {ch.get("White", "Partie")[:64]}'
+                    requests.post(
+                        f'https://lichess.org/api/study/{study_id}/import-pgn',
+                        data={'pgn': ctx_pgn, 'name': ctx_name, 'mode': 'normal'},
+                        headers=auth_headers, timeout=15,
+                    )
+            except Exception as e:
+                log.warning('Kapitel-Import übersprungen: %s', e)
+
+        # Auto-Kapitel löschen
+        if default_chapter_id:
+            requests.delete(
+                f'https://lichess.org/api/study/{study_id}/{default_chapter_id}',
+                headers=auth_headers, timeout=10,
+            )
+
+        return f'https://lichess.org/study/{study_id}'
+    except Exception as e:
+        log.error('Multi-Upload fehlgeschlagen: %s', e)
+        return None
+
+
 def build_puzzle_embed(game: chess.pgn.Game, url: str | None, turn: chess.Color | None = None) -> discord.Embed:
     h = dict(game.headers)
     line_name  = h.get('White', h.get('Event', 'Linie'))
@@ -588,59 +682,82 @@ def build_puzzle_embed(game: chess.pgn.Game, url: str | None, turn: chess.Color 
     embed.set_footer(text='🧩 Tägliches Puzzle')
     return embed
 
-async def post_puzzle(channel: discord.TextChannel):
-    """Zufällige Linie auswählen, auf Lichess hochladen und als Thread posten."""
-    result = pick_random_line()
-    if result is None:
+async def post_puzzle(channel, count: int = 1, book_idx: int = 0):
+    """Puzzles auswählen, auf Lichess hochladen und posten.
+
+    count    – Anzahl Puzzles (1–20).
+    book_idx – 1-basierte Buchnummer aus /books (0 = alle Bücher).
+    """
+    count = max(1, min(count, 20))
+
+    # Buch bestimmen
+    book_filename = None
+    if book_idx > 0:
+        if os.path.isdir(BOOKS_DIR):
+            books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
+            if 1 <= book_idx <= len(books):
+                book_filename = books[book_idx - 1]
+            else:
+                await channel.send(
+                    f'⚠️ Buch {book_idx} nicht gefunden. `/books` zeigt die verfügbaren Bücher.'
+                )
+                return
+
+    results = pick_random_lines(count, book_filename)
+    if not results:
         await channel.send('⚠️ Keine Puzzle-Linien gefunden. Bitte .pgn-Dateien in den `books/`-Ordner legen.')
         return
 
-    _, original_game = result
-    game = _trim_to_training_position(original_game)
-    # Originalspiel als Kontext-Kapitel mitgeben, wenn es tatsächlich gekürzt wurde
-    context = original_game if game is not original_game else None
-    url = upload_to_lichess(game, context_game=context)
+    # Trimmen
+    puzzles: list[tuple[chess.pgn.Game, chess.pgn.Game | None]] = []
+    for _, original_game in results:
+        game    = _trim_to_training_position(original_game)
+        context = original_game if game is not original_game else None
+        puzzles.append((game, context))
 
-    h = dict(game.headers)
+    # Upload (eine Studie für alle Puzzles)
+    if len(puzzles) == 1:
+        url = upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1])
+    else:
+        url = upload_many_to_lichess(puzzles)
+
+    # Thread-Name vom ersten Puzzle
+    h = dict(puzzles[0][0].headers)
     event = h.get('Event', 'Puzzle')
     today = _date.today().strftime('%d.%m.%Y')
     thread_name = f'{event} – {today}'
     if len(thread_name) > 100:
         thread_name = thread_name[:97] + '...'
 
-    try:
-        board = game.board()
-        turn  = board.turn
-        img   = _render_board(board)
-    except Exception as e:
-        log.warning('Board-Render fehlgeschlagen: %s', e)
-        board = None
-        turn  = None
-        img   = None
-
-    embed = build_puzzle_embed(game, url, turn=turn)
-
-    # In DMs kein Thread erstellen – direkt antworten
+    # Ziel: Thread (Server) oder direkt (DM)
     is_dm = isinstance(channel, discord.DMChannel)
     if is_dm:
-        if img:
-            file = discord.File(img, filename='board.png')
-            embed.set_image(url='attachment://board.png')
-            await channel.send(file=file, embed=embed)
-        else:
-            await channel.send(embed=embed)
+        target = channel
     else:
-        thread = await channel.create_thread(
+        target = await channel.create_thread(
             name=thread_name,
             type=discord.ChannelType.public_thread,
             auto_archive_duration=1440,
         )
+
+    # Alle Puzzles als einzelne Bilder posten
+    for game, _ in puzzles:
+        try:
+            board = game.board()
+            turn  = board.turn
+            img   = _render_board(board)
+        except Exception as e:
+            log.warning('Board-Render fehlgeschlagen: %s', e)
+            turn = None
+            img  = None
+
+        embed = build_puzzle_embed(game, url, turn=turn)
         if img:
             file = discord.File(img, filename='board.png')
             embed.set_image(url='attachment://board.png')
-            await thread.send(file=file, embed=embed)
+            await target.send(file=file, embed=embed)
         else:
-            await thread.send(embed=embed)
+            await target.send(embed=embed)
 
 # ---------------------------------------------------------------------------
 # Bot
@@ -711,12 +828,16 @@ async def cmd_reset(interaction: discord.Interaction):
     await interaction.response.send_message('🔄 Zähler zurückgesetzt – startet wieder bei Kapitel 1.', ephemeral=True)
 
 
-@tree.command(name='puzzle', description='Zufälliges Puzzle aus den Büchern posten')
-async def cmd_puzzle(interaction: discord.Interaction):
+@tree.command(name='puzzle', description='Puzzle(s) aus den Büchern posten')
+@discord.app_commands.describe(
+    anzahl='Anzahl Puzzles (1–20, Standard: 1)',
+    buch='Buchnummer aus /books (Standard: alle Bücher)',
+)
+async def cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: int = 0):
     await interaction.response.defer()
     try:
-        await post_puzzle(interaction.channel)
-        await interaction.followup.send('✅ Puzzle gepostet.', ephemeral=True)
+        await post_puzzle(interaction.channel, count=anzahl, book_idx=buch)
+        await interaction.followup.send(f'✅ {anzahl} Puzzle(s) gepostet.', ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
 
@@ -728,7 +849,6 @@ async def cmd_buecher(interaction: discord.Interaction):
         all_lines = load_all_lines()
         posted    = set(load_puzzle_state().get('posted', []))
 
-        from collections import defaultdict
         total_per_book:  dict[str, int] = defaultdict(int)
         posted_per_book: dict[str, int] = defaultdict(int)
         for lid, _ in all_lines:
@@ -745,11 +865,11 @@ async def cmd_buecher(interaction: discord.Interaction):
             return
 
         embed = discord.Embed(title='📚 Puzzle-Bücher', color=0x7fa650)
-        for book in sorted(total_per_book):
+        for i, book in enumerate(sorted(total_per_book), 1):
             name  = book.removesuffix('_firstkey.pgn').removesuffix('.pgn')
             total = total_per_book[book]
             done  = posted_per_book[book]
-            embed.add_field(name=name, value=f'{done}/{total} gepostet', inline=False)
+            embed.add_field(name=f'{i}: {name}', value=f'{done}/{total} gepostet', inline=False)
 
         total_all = sum(total_per_book.values())
         done_all  = sum(posted_per_book.values())
