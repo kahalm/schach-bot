@@ -367,7 +367,15 @@ def upload_to_lichess(game: chess.pgn.Game) -> str | None:
             else:
                 r = requests.post(
                     'https://lichess.org/api/study',
-                    data={'name': study_name, 'visibility': 'unlisted'},
+                    data={
+                        'name':       study_name,
+                        'visibility': 'unlisted',
+                        'computer':   'everyone',
+                        'explorer':   'everyone',
+                        'cloneable':  'everyone',
+                        'shareable':  'everyone',
+                        'chat':       'everyone',
+                    },
                     headers=auth_headers,
                     timeout=15,
                 )
