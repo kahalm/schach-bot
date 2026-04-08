@@ -55,6 +55,7 @@ import discord
 from discord.ext import tasks, commands
 import requests
 import chess
+import asyncio
 import chess.pgn
 import io
 import os
@@ -732,11 +733,16 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0):
         context = original_game if game is not original_game else None
         puzzles.append((game, context))
 
-    # Upload (eine Studie für alle Puzzles)
+    # Upload in Thread damit der Event Loop nicht blockiert
+    loop = asyncio.get_event_loop()
     if len(puzzles) == 1:
-        url = upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1])
+        url = await loop.run_in_executor(
+            None, lambda: upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1])
+        )
     else:
-        url = upload_many_to_lichess(puzzles)
+        url = await loop.run_in_executor(
+            None, lambda: upload_many_to_lichess(puzzles)
+        )
 
     # Thread-Name vom ersten Puzzle
     h = dict(puzzles[0][0].headers)
