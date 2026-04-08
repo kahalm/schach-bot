@@ -88,6 +88,47 @@ python bot.py          # inside the activated venv
 venv/bin/python bot.py
 ```
 
+## Running as a systemd Service (Linux)
+
+To keep the bot running permanently and restart it automatically after a reboot or crash:
+
+**1. Create the service file**
+```bash
+sudo nano /etc/systemd/system/schach-bot.service
+```
+
+```ini
+[Unit]
+Description=Schach Discord Bot
+After=network.target
+
+[Service]
+WorkingDirectory=/path/to/schach-bot
+ExecStart=/path/to/schach-bot/venv/bin/python bot.py
+Restart=on-failure
+User=youruser
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Replace `/path/to/schach-bot` and `youruser` with your actual path and username.
+
+**2. Enable and start**
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now schach-bot
+```
+
+**3. Useful commands**
+```bash
+sudo systemctl status schach-bot   # check if running
+sudo systemctl restart schach-bot  # restart after config changes
+journalctl -u schach-bot -f        # live log output
+```
+
+> The bot also writes its own rotating log to `bot.log` in the working directory.
+
 ## Configuration
 
 | Variable | Required | Description |
