@@ -85,12 +85,10 @@ PUZZLE_STUDY_ID   = os.getenv('PUZZLE_STUDY_ID', '')
 PUZZLE_HOUR       = int(os.getenv('PUZZLE_HOUR', '9'))
 PUZZLE_MINUTE     = int(os.getenv('PUZZLE_MINUTE', '0'))
 PUZZLE_STATE_FILE = 'puzzle_state.json'
-DM_STATE_FILE     = 'dm_state.json'
+DM_STATE_FILE            = 'dm_state.json'
+LICHESS_COOLDOWN_FILE    = 'lichess_cooldown.json'
 
 STATE_FILE = 'state.json'
-
-# Lichess Rate-Limit-Cooldown: Zeitstempel des letzten 429, None = kein Cooldown
-_lichess_rate_limit_until: float = 0.0
 
 # ---------------------------------------------------------------------------
 # State  (welches Kapitel wurde zuletzt gepostet)
@@ -447,25 +445,40 @@ def _clean_pgn_for_lichess(pgn_text: str) -> str:
 _LICHESS_COOLDOWN_SECS = 3600  # 1 Stunde
 
 
+class LichessRateLimitError(Exception):
+    pass
+
+
+def _lichess_cooldown_until() -> float:
+    """Liest den gespeicherten Cooldown-Zeitstempel (Unix-Zeit). 0 = kein Cooldown."""
+    try:
+        with open(LICHESS_COOLDOWN_FILE) as f:
+            return float(json.load(f).get('until', 0))
+    except (FileNotFoundError, (ValueError, KeyError)):
+        return 0.0
+
+
 def _lichess_rate_limited() -> bool:
     """True wenn Lichess gerade im Rate-Limit-Cooldown ist."""
-    return _time_mod.monotonic() < _lichess_rate_limit_until
+    return _time_mod.time() < _lichess_cooldown_until()
+
+
+def _lichess_set_cooldown():
+    """Setzt den Cooldown-Zeitstempel auf jetzt + 1h und schreibt ihn auf Disk."""
+    until = _time_mod.time() + _LICHESS_COOLDOWN_SECS
+    with open(LICHESS_COOLDOWN_FILE, 'w') as f:
+        json.dump({'until': until}, f)
+    log.warning('Lichess 429 – Cooldown bis %s gesetzt.',
+                _date.fromtimestamp(until).strftime('%H:%M'))
 
 
 def _lichess_request(method: str, url: str, **kwargs):
-    """Lichess-API-Request. Bei 429 wird ein 1h-Cooldown gesetzt und eine
-    LichessRateLimitError-Exception geworfen."""
-    global _lichess_rate_limit_until
+    """Lichess-API-Request. Bei 429 wird ein persistenter 1h-Cooldown gesetzt."""
     resp = requests.request(method, url, **kwargs)
     if resp.status_code == 429:
-        _lichess_rate_limit_until = _time_mod.monotonic() + _LICHESS_COOLDOWN_SECS
-        log.warning('Lichess 429 – Cooldown für %ds gesetzt.', _LICHESS_COOLDOWN_SECS)
+        _lichess_set_cooldown()
         raise LichessRateLimitError()
     return resp
-
-
-class LichessRateLimitError(Exception):
-    pass
 
 
 def upload_to_lichess(game: chess.pgn.Game,
@@ -719,7 +732,7 @@ def build_puzzle_embed(game: chess.pgn.Game, url: str | None, turn: chess.Color 
     if url:
         embed.add_field(name='🔗 Lichess', value=f'[Linie öffnen]({url})', inline=False)
     elif _lichess_rate_limited():
-        minutes = max(1, int((_lichess_rate_limit_until - _time_mod.monotonic()) / 60) + 1)
+        minutes = max(1, int((_lichess_cooldown_until() - _time_mod.time()) / 60) + 1)
         embed.add_field(name='⏳ Lichess', value=f'Nächster Link in ca. {minutes} Minuten', inline=False)
 
     embed.set_footer(text='🧩 Tägliches Puzzle')
