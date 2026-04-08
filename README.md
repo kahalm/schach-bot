@@ -52,9 +52,14 @@ curl -O https://raw.githubusercontent.com/kahalm/schach-bot/main/requirements.tx
 ```
 
 **2. Install dependencies**
+
 ```bash
+python3 -m venv venv
+source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
+
+> Activate the venv before each `python bot.py` call, or run `venv/bin/python bot.py` directly.
 
 **3. Create a `.env` file**
 
@@ -78,7 +83,9 @@ Create a `books/` folder and place one or more `.pgn` files inside. The bot expe
 
 **5. Run the bot**
 ```bash
-python bot.py
+python bot.py          # inside the activated venv
+# or without activating:
+venv/bin/python bot.py
 ```
 
 ## Configuration
