@@ -96,8 +96,30 @@ The bot locates the first `[%tqu]` annotation in each game, sets the FEN of that
 
 1. [Discord Developer Portal](https://discord.com/developers/applications) → your app → **OAuth2 → URL Generator**
 2. Scopes: `bot` + `applications.commands`
-3. Bot Permissions: `Send Messages`, `Embed Links`, `Attach Files`, `Create Public Threads`
+3. Bot Permissions (select all of the following):
+
+| Permission | Required for |
+|------------|-------------|
+| `Send Messages` | Posting daily game and puzzle |
+| `Embed Links` | Rich embeds with board image and Lichess link |
+| `Attach Files` | Board image upload |
+| `Create Public Threads` | Daily puzzle thread (current) |
+| `Create Private Threads` | Planned: personal training threads |
+| `Send Messages in Threads` | Posting inside threads |
+| `Manage Threads` | Archiving / closing threads |
+| `Send TTS Messages` | — |
+
+> **Note on DMs:** Sending direct messages to users requires no extra bot permission, but users must have *"Allow direct messages from server members"* enabled in their Discord privacy settings.
+
 4. Open the generated URL and select your server
+
+## Roadmap
+
+Planned extensions:
+
+- **Public training threads** — one thread per puzzle where all server members can discuss moves and post solutions
+- **Private training threads** — per-user threads visible only to the bot and that user, for personalised training feedback without spoiling the solution for others
+- **Direct messages (DMs)** — send a daily puzzle or a personalised hint directly to subscribed users; users can opt in/out via slash command
 
 ## Testing the Puzzle Feature
 
