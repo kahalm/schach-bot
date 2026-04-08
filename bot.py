@@ -8,8 +8,9 @@ except (OSError, ImportError):
 
 import logging
 import sys
+from logging.handlers import RotatingFileHandler
 
-# python-chess schreibt "empty fen while parsing" direkt auf stdout/stderr –
+# python-chess schreibt Parsing-Warnungen direkt auf stdout/stderr –
 # nicht über das logging-Modul. Beide Streams filtern.
 class _SuppressEmptyFen:
     _SUPPRESS = ('empty fen while parsing', 'illegal san:', 'no matching legal move', 'ambiguous san:')
@@ -25,6 +26,30 @@ class _SuppressEmptyFen:
 
 sys.stdout = _SuppressEmptyFen(sys.stdout)
 sys.stderr = _SuppressEmptyFen(sys.stderr)
+
+# ---------------------------------------------------------------------------
+# Rolling Log  (bot.log, max 1 MB, 5 Backups)
+# ---------------------------------------------------------------------------
+
+_log_fmt = logging.Formatter('%(asctime)s [%(levelname)-8s] %(message)s',
+                              datefmt='%Y-%m-%d %H:%M:%S')
+
+_file_handler = RotatingFileHandler(
+    'bot.log', maxBytes=1_000_000, backupCount=5, encoding='utf-8'
+)
+_file_handler.setFormatter(_log_fmt)
+_file_handler.setLevel(logging.DEBUG)
+
+# Terminal: nur WARNING+ (z.B. Book-Lesefehler)
+_term_handler = logging.StreamHandler(sys.stderr)
+_term_handler.setFormatter(_log_fmt)
+_term_handler.setLevel(logging.WARNING)
+
+log = logging.getLogger('schach-bot')
+log.setLevel(logging.DEBUG)
+log.addHandler(_file_handler)
+log.addHandler(_term_handler)
+log.propagate = False
 
 import discord
 from discord.ext import tasks, commands
@@ -160,7 +185,7 @@ def _get_piece(code: str, size: int) -> Image.Image:
         resp = requests.get(url, timeout=10)
         resp.raise_for_status()
         _piece_cache[code] = _svg_to_pil(resp.content, size)
-        print(f'[Figuren] {code} geladen')
+        log.info('Figur geladen: %s', code)
     return _piece_cache[code]
 
 def _label_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -275,7 +300,7 @@ async def post_chapter(channel: discord.TextChannel, game: chess.pgn.Game):
         embed.set_image(url='attachment://board.png')
         await channel.send(file=file, embed=embed)
     except Exception as e:
-        print(f'[Warnung] Kein Board-Bild: {e}')
+        log.warning('Kein Board-Bild: %s', e)
         await channel.send(embed=embed)
 
 # ---------------------------------------------------------------------------
@@ -296,18 +321,24 @@ def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
     """Alle Linien aus .pgn-Dateien in BOOKS_DIR laden."""
     lines = []
     if not os.path.isdir(BOOKS_DIR):
+        log.error('Books-Verzeichnis nicht gefunden: %s', BOOKS_DIR)
         return lines
     for filename in sorted(os.listdir(BOOKS_DIR)):
         if not filename.endswith('.pgn'):
             continue
         filepath = os.path.join(BOOKS_DIR, filename)
-        with open(filepath, encoding='utf-8', errors='replace') as f:
-            pgn_text = f.read()
+        try:
+            with open(filepath, encoding='utf-8', errors='replace') as f:
+                pgn_text = f.read()
+        except OSError as e:
+            log.error('Kann PGN-Datei nicht lesen: %s – %s', filepath, e)
+            continue
         stream = io.StringIO(pgn_text)
         while True:
             try:
                 game = chess.pgn.read_game(stream)
-            except Exception:
+            except Exception as e:
+                log.debug('Malformierter PGN-Eintrag in %s: %s', filename, e)
                 continue  # malformierten Eintrag überspringen, Stream läuft weiter
             if game is None:
                 break
@@ -332,7 +363,7 @@ def pick_random_line() -> tuple[str, chess.pgn.Game] | None:
         # Alle gepostet → von vorne
         posted = set()
         remaining = all_lines
-        print('[Puzzle] Alle Linien gepostet – starte von vorne.')
+        log.info('Alle Linien gepostet – starte von vorne.')
 
     choice_id, choice_game = random.choice(remaining)
     posted.add(choice_id)
@@ -353,7 +384,7 @@ def upload_to_lichess(game: chess.pgn.Game) -> str | None:
         exporter = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
         pgn_text = game.accept(exporter)
     except Exception as e:
-        print(f'[Fehler] PGN-Export: {e}')
+        log.error('PGN-Export fehlgeschlagen: %s', e)
         return None
     pgn_text = _clean_pgn_for_lichess(pgn_text)
 
@@ -403,7 +434,7 @@ def upload_to_lichess(game: chess.pgn.Game) -> str | None:
                 if default_game:
                     chapter_url_hdr = default_game.headers.get('ChapterURL', '')
                     default_chapter_id = chapter_url_hdr.rstrip('/').split('/')[-1]
-                    print(f'[Puzzle] Leeres Auto-Kapitel: {default_chapter_id}')
+                    log.info('Leeres Auto-Kapitel: %s', default_chapter_id)
                 else:
                     default_chapter_id = ''
 
@@ -425,13 +456,13 @@ def upload_to_lichess(game: chess.pgn.Game) -> str | None:
                         headers=auth_headers,
                         timeout=10,
                     )
-                    print(f'[Puzzle] Kapitel gelöscht: HTTP {rd.status_code}')
+                    log.info('Auto-Kapitel geloescht: HTTP %s', rd.status_code)
 
                 if chapter_id:
                     return f'https://lichess.org/study/{study_id}/{chapter_id}'
                 return f'https://lichess.org/study/{study_id}'
         except Exception as e:
-            print(f'[Fehler] Lichess-Study-Upload: {e}')
+            log.error('Lichess-Study-Upload fehlgeschlagen: %s', e)
             # Fallback auf standalone Import
 
     # Fallback: einfacher Spielimport ohne Account
@@ -445,7 +476,7 @@ def upload_to_lichess(game: chess.pgn.Game) -> str | None:
         resp.raise_for_status()
         return resp.json().get('url')
     except Exception as e:
-        print(f'[Fehler] Lichess-Upload: {e}')
+        log.error('Lichess-Upload fehlgeschlagen: %s', e)
         return None
 
 def build_puzzle_embed(game: chess.pgn.Game, url: str | None, turn: chess.Color | None = None) -> discord.Embed:
@@ -499,7 +530,7 @@ async def post_puzzle(channel: discord.TextChannel):
         turn  = board.turn
         img   = _render_board(board)
     except Exception as e:
-        print(f'[Warnung] Board-Render fehlgeschlagen: {e}')
+        log.warning('Board-Render fehlgeschlagen: %s', e)
         board = None
         turn  = None
         img   = None
@@ -529,7 +560,7 @@ tree = bot.tree
 @bot.event
 async def on_ready():
     await tree.sync()
-    print(f'✅ Bot online als {bot.user}')
+    log.info('Bot online als %s', bot.user)
     daily_task.start()
     puzzle_task.start()
 
@@ -602,7 +633,7 @@ async def cmd_puzzle(interaction: discord.Interaction):
 async def daily_task():
     channel = bot.get_channel(CHANNEL_ID)
     if not channel:
-        print(f'[Warnung] Channel {CHANNEL_ID} nicht gefunden.')
+        log.warning('Channel %s nicht gefunden.', CHANNEL_ID)
         return
     try:
         state = load_state()
@@ -615,19 +646,19 @@ async def daily_task():
         save_state(state)
         await post_chapter(channel, game)
     except Exception as e:
-        print(f'[Fehler] daily_task: {e}')
+        log.error('daily_task: %s', e)
 
 
 @tasks.loop(time=time(hour=PUZZLE_HOUR, minute=PUZZLE_MINUTE))
 async def puzzle_task():
     channel = bot.get_channel(CHANNEL_ID)
     if not channel:
-        print(f'[Warnung] Channel {CHANNEL_ID} nicht gefunden.')
+        log.warning('Channel %s nicht gefunden.', CHANNEL_ID)
         return
     try:
         await post_puzzle(channel)
     except Exception as e:
-        print(f'[Fehler] puzzle_task: {e}')
+        log.error('puzzle_task: %s', e)
 
 # ---------------------------------------------------------------------------
 
