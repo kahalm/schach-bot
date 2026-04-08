@@ -83,6 +83,7 @@ PUZZLE_STUDY_ID   = os.getenv('PUZZLE_STUDY_ID', '')
 PUZZLE_HOUR       = int(os.getenv('PUZZLE_HOUR', '9'))
 PUZZLE_MINUTE     = int(os.getenv('PUZZLE_MINUTE', '0'))
 PUZZLE_STATE_FILE = 'puzzle_state.json'
+DM_STATE_FILE     = 'dm_state.json'
 
 STATE_FILE = 'state.json'
 
@@ -773,6 +774,34 @@ async def on_ready():
     log.info('Bot online als %s', bot.user)
     daily_task.start()
     puzzle_task.start()
+
+
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author.bot:
+        return
+    if not isinstance(message.channel, discord.DMChannel):
+        return
+
+    # Erste DM → Bot stellt sich vor
+    try:
+        with open(DM_STATE_FILE) as f:
+            greeted: list = json.load(f).get('greeted', [])
+    except (FileNotFoundError, json.JSONDecodeError):
+        greeted = []
+
+    user_id = message.author.id
+    if user_id not in greeted:
+        greeted.append(user_id)
+        with open(DM_STATE_FILE, 'w') as f:
+            json.dump({'greeted': greeted}, f)
+        await message.channel.send(
+            'Hallo! Ich bin der Schach-Bot eurer Servergruppe. ♟️\n'
+            'Ich poste täglich eine Partie und ein Taktikrätsel.\n\n'
+            'Mit `/help` siehst du alle verfügbaren Befehle.'
+        )
+
+    await bot.process_commands(message)
 
 # --- Slash-Commands ---
 
