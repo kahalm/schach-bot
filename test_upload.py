@@ -32,9 +32,9 @@ import chess.pgn
 LICHESS_TOKEN = os.getenv('LICHESS_TOKEN', '')
 AUTH = {'Authorization': f'Bearer {LICHESS_TOKEN}'} if LICHESS_TOKEN else {}
 
-PASS = '✅'
-FAIL = '❌'
-WARN = '⚠️ '
+PASS = 'OK  '
+FAIL = 'FAIL'
+WARN = 'WARN'
 
 
 def _get_study_pgn(study_id: str) -> str | None:
@@ -163,6 +163,13 @@ def main():
 
     if not LICHESS_TOKEN:
         print(f'{WARN} Kein LICHESS_TOKEN – nur Fallback-Import moeglich, kein Gamebook-Test.')
+
+    if bot._lichess_rate_limited():
+        import time as _t
+        remaining = int((bot._lichess_cooldown_until() - _t.time()) / 60) + 1
+        print(f'{FAIL} Lichess-Cooldown aktiv – noch ca. {remaining} Minuten warten.')
+        print('       lichess_cooldown.json loeschen um Cooldown manuell zurueckzusetzen.')
+        return
 
     results = []
 
