@@ -580,6 +580,7 @@ def upload_to_lichess(game: chess.pgn.Game,
                 r2.raise_for_status()
                 chapters = r2.json().get('chapters', [])
                 chapter_id = chapters[-1].get('id', '') if chapters else ''
+                log.info('Gamebook-Kapitel importiert: %s (chapter_id=%s)', line_name, chapter_id)
 
                 # Kapitel 2: vollständiges Originalspiel (nur wenn vorhanden)
                 if context_pgn:
@@ -683,6 +684,7 @@ def upload_many_to_lichess(
                     data={'pgn': pgn, 'name': name, 'mode': 'gamebook'},
                     headers=auth_headers, timeout=15,
                 ).raise_for_status()
+                log.info('Gamebook-Kapitel importiert: %s', name)
                 if context is not None:
                     ctx_exp = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
                     ctx_pgn = _clean_pgn_for_lichess(context.accept(ctx_exp))
@@ -693,6 +695,9 @@ def upload_many_to_lichess(
                         data={'pgn': ctx_pgn, 'name': ctx_name, 'mode': 'normal'},
                         headers=auth_headers, timeout=15,
                     )
+                    log.info('Kontext-Kapitel importiert: %s', ctx_name)
+            except LichessRateLimitError:
+                raise  # nach oben weitergeben → Studie wird nicht halb gefüllt
             except Exception as e:
                 log.warning('Kapitel-Import übersprungen: %s', e)
             _time_mod.sleep(1)  # kurze Pause zwischen Kapiteln gegen Rate Limit
@@ -778,7 +783,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0):
         puzzles.append((game, context))
 
     # Upload in Thread damit der Event Loop nicht blockiert
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     if len(puzzles) == 1:
         url = await loop.run_in_executor(
             None, lambda: upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1])
