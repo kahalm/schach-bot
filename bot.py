@@ -1086,12 +1086,20 @@ async def cmd_buecher(interaction: discord.Interaction):
             )
             return
 
+        books_config = _load_books_config()
         embed = discord.Embed(title='📚 Puzzle-Bücher', color=0x7fa650)
         for i, book in enumerate(sorted(total_per_book), 1):
             name  = book.removesuffix('_firstkey.pgn').removesuffix('.pgn')
             total = total_per_book[book]
             done  = posted_per_book[book]
-            embed.add_field(name=f'{i}: {name}', value=f'{done}/{total} gepostet', inline=False)
+            meta  = books_config.get(book, {})
+            diff  = meta.get('difficulty', '')
+            rat   = meta.get('rating', 0)
+            stars = '★' * rat + '☆' * (10 - rat) if rat else ''
+            info  = f'{done}/{total} gepostet'
+            if diff:
+                info += f'\n{diff}  {stars}' if stars else f'\n{diff}'
+            embed.add_field(name=f'{i}: {name}', value=info, inline=False)
 
         total_all = sum(total_per_book.values())
         done_all  = sum(posted_per_book.values())
