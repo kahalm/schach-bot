@@ -168,9 +168,10 @@ The bot locates the first `[%tqu]` annotation in each game, sets the FEN of that
 
 ## Adding the Bot to a Discord Server
 
-1. [Discord Developer Portal](https://discord.com/developers/applications) → your app → **OAuth2 → URL Generator**
-2. Scopes: `bot` + `applications.commands`
-3. Bot Permissions (select all of the following):
+1. [Discord Developer Portal](https://discord.com/developers/applications) → your app
+2. **Bot → Privileged Gateway Intents** → enable **Message Content Intent** (required for DM greeting)
+3. **OAuth2 → URL Generator** → Scopes: `bot` + `applications.commands`
+4. Bot Permissions (select all of the following):
 
 | Permission | Required for |
 |------------|-------------|
@@ -185,7 +186,7 @@ The bot locates the first `[%tqu]` annotation in each game, sets the FEN of that
 
 > **Note on DMs:** Sending direct messages to users requires no extra bot permission, but users must have *"Allow direct messages from server members"* enabled in their Discord privacy settings.
 
-4. Open the generated URL and select your server
+5. Open the generated URL and select your server
 
 ## Roadmap
 

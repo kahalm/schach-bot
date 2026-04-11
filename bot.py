@@ -890,6 +890,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
 # ---------------------------------------------------------------------------
 
 intents = discord.Intents.default()
+intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 tree = bot.tree
 
