@@ -1,5 +1,23 @@
 .env
-state.json
-test_board.png
 __pycache__/
 *.pyc
+.claude/
+
+# Runtime state
+state.json
+puzzle_state.json
+dm_state.json
+user_studies.json
+lichess_cooldown.json
+
+# Logs
+bot.log
+bot.log.*
+
+# User books
+books/*.pgn
+books/*.ini
+books/*.pgi
+
+# Test artifacts
+test_*.png
