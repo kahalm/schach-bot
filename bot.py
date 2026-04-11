@@ -629,6 +629,11 @@ def upload_to_lichess(game: chess.pgn.Game,
                 chapter_id = chapters[-1].get('id', '') if chapters else ''
                 log.info('Gamebook-Kapitel importiert: %s (chapter_id=%s)', line_name, chapter_id)
 
+                # Studie voll → neue anlegen und nochmal versuchen
+                if not chapter_id and reuse_study_id:
+                    log.info('Studie %s voll – lege neue an.', reuse_study_id)
+                    return upload_to_lichess(game, context_game=context_game, reuse_study_id=None)
+
                 # Kapitel 2: vollständiges Originalspiel (nur wenn vorhanden)
                 if context_pgn:
                     r3 = _lichess_request(
@@ -731,12 +736,22 @@ def upload_many_to_lichess(
                 pgn  = _clean_pgn_for_lichess(game.accept(exp))
                 h    = dict(game.headers)
                 name = h.get('White', h.get('Event', 'Puzzle'))[:70]
-                _lichess_request(
+                r_ch = _lichess_request(
                     'POST', f'https://lichess.org/api/study/{study_id}/import-pgn',
                     data={'pgn': pgn, 'name': name, 'mode': 'gamebook'},
                     headers=auth_headers, timeout=15,
-                ).raise_for_status()
-                log.info('Gamebook-Kapitel importiert: %s', name)
+                )
+                r_ch.raise_for_status()
+                chs = r_ch.json().get('chapters', [])
+                ch_id = chs[-1].get('id', '') if chs else ''
+                log.info('Gamebook-Kapitel importiert: %s (chapter_id=%s)', name, ch_id)
+
+                # Studie voll → Rest in neue Studie
+                if not ch_id and reuse_study_id:
+                    remaining = puzzles[puzzles.index((game, context)):]
+                    log.info('Studie %s voll – lege neue an fuer %d verbleibende Kapitel.',
+                             reuse_study_id, len(remaining))
+                    return upload_many_to_lichess(remaining, reuse_study_id=None)
                 if context is not None:
                     ctx_exp = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
                     ctx_pgn = _clean_pgn_for_lichess(context.accept(ctx_exp))
