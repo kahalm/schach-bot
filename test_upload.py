@@ -137,9 +137,19 @@ def run_test(label: str, game, original_game, trimmed: bool) -> bool:
         all_ok &= check('FEN stimmt ueberein', fen_main == fen_ch,
                         f'\n       erwartet : {fen_main}\n       kapitel  : {fen_ch}')
     else:
-        has_fen = ch1.get('SetUp', '') == '1'
-        all_ok &= check('Keine FEN (Startstellung)', not has_fen,
-                        'SetUp=1 gesetzt obwohl nicht getrimmt')
+        # Nicht getrimmt: FEN kann trotzdem gesetzt sein wenn das Buch-PGN
+        # bereits von einer Custom-Stellung startet.
+        fen_hdr = ch1.get('FEN', '')
+        if fen_hdr:
+            fen_main = ' '.join(expected_fen.split()[:4])
+            fen_ch   = ' '.join(fen_hdr.split()[:4])
+            all_ok &= check('FEN stimmt ueberein (Custom-Start)', fen_main == fen_ch,
+                            f'\n       erwartet : {fen_main}\n       kapitel  : {fen_ch}')
+        else:
+            # Echte Startstellung – kein FEN-Header erwartet
+            setup = ch1.get('SetUp', '')
+            all_ok &= check('Keine FEN (Startstellung)', setup != '1',
+                            f'SetUp={setup!r}')
 
     # Prüfung 4: Kapitel 2 ist Normal-Modus (wenn vorhanden)
     if trimmed and len(chapters) >= 2:
