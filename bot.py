@@ -801,7 +801,8 @@ def build_puzzle_embed(game: chess.pgn.Game, url: str | None,
                        turn: chess.Color | None = None,
                        puzzle_num: int = 0,
                        puzzle_total: int = 0,
-                       difficulty: str = '') -> discord.Embed:
+                       difficulty: str = '',
+                       rating: int = 0) -> discord.Embed:
     h = dict(game.headers)
     line_name  = h.get('White', h.get('Event', 'Linie'))
     event_name = h.get('Event', '')
@@ -820,7 +821,9 @@ def build_puzzle_embed(game: chess.pgn.Game, url: str | None,
         embed.add_field(name='📖 Kapitel', value=f'||{book_info}||', inline=False)
 
     if difficulty:
-        embed.add_field(name='📊 Schwierigkeit', value=difficulty, inline=True)
+        stars = '★' * rating + '☆' * (10 - rating) if rating else ''
+        diff_text = f'{difficulty}  {stars}' if stars else difficulty
+        embed.add_field(name='📊 Schwierigkeit', value=diff_text, inline=True)
 
     # Bild wird extern via set_image gesetzt
 
@@ -876,14 +879,16 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         game    = _trim_to_training_position(original_game)
         context = original_game if game is not original_game else None
         fname   = line_id.split(':')[0]
-        diff    = books_config.get(fname, {}).get('difficulty', '')
-        puzzles.append((game, context, diff))
+        book_meta = books_config.get(fname, {})
+        diff      = book_meta.get('difficulty', '')
+        rating    = book_meta.get('rating', 0)
+        puzzles.append((game, context, diff, rating))
 
     reuse_study_id = _get_user_study_id(user_id) if user_id else None
     base_count, base_total = _get_user_puzzle_count(user_id) if user_id else (0, 0)
 
     # Upload in Thread damit der Event Loop nicht blockiert
-    upload_pairs = [(g, c) for g, c, _ in puzzles]
+    upload_pairs = [(g, c) for g, c, _, _ in puzzles]
     loop = asyncio.get_running_loop()
     if len(upload_pairs) == 1:
         url = await loop.run_in_executor(
@@ -924,7 +929,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         )
 
     # Alle Puzzles als einzelne Bilder posten
-    for i, (game, _, diff) in enumerate(puzzles):
+    for i, (game, _, diff, rating) in enumerate(puzzles):
         puzzle_num   = (base_count + i + 1) if user_id else 0
         puzzle_total = (base_total + i + 1) if user_id else 0
         try:
@@ -936,7 +941,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
             turn = None
             img  = None
 
-        embed = build_puzzle_embed(game, url, turn=turn, puzzle_num=puzzle_num, puzzle_total=puzzle_total, difficulty=diff)
+        embed = build_puzzle_embed(game, url, turn=turn, puzzle_num=puzzle_num, puzzle_total=puzzle_total, difficulty=diff, rating=rating)
         if img:
             file = discord.File(img, filename='board.png')
             embed.set_image(url='attachment://board.png')
