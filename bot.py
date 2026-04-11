@@ -990,6 +990,7 @@ async def cmd_reset(interaction: discord.Interaction):
     buch='Buchnummer aus /books (Standard: alle Bücher)',
 )
 async def cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: int = 0):
+    log.info('/puzzle von %s: anzahl=%d buch=%d', interaction.user, anzahl, buch)
     await interaction.response.defer(ephemeral=True)
     try:
         dm = await interaction.user.create_dm()
