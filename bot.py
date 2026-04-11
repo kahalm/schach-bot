@@ -335,30 +335,29 @@ def _save_user_studies(data: dict):
         json.dump(data, f, indent=2)
 
 def _get_user_study_id(user_id: int) -> str | None:
-    key   = f'{user_id}:{_date.today().isoformat()}'
-    entry = _load_user_studies().get(key)
+    entry = _load_user_studies().get(str(user_id))
     if isinstance(entry, dict):
         val = entry.get('id')
     else:
-        val = entry  # Altformat: nur Study-ID als String
-    log.info('Tages-Studie laden: user=%s key=%s → %s', user_id, key, val or 'neu')
+        val = None
+    log.info('User-Studie laden: user=%s → %s', user_id, val or 'neu')
     return val
 
 def _get_user_puzzle_count(user_id: int) -> int:
-    key   = f'{user_id}:{_date.today().isoformat()}'
-    entry = _load_user_studies().get(key)
-    if isinstance(entry, dict):
+    entry = _load_user_studies().get(str(user_id))
+    if isinstance(entry, dict) and entry.get('today') == _date.today().isoformat():
         return entry.get('count', 0)
-    return 0
+    return 0  # neuer Tag → Zähler zurück auf 0
 
 def _set_user_study_id(user_id: int, study_id: str, count: int):
-    today = _date.today().isoformat()
-    key   = f'{user_id}:{today}'
-    data  = {k: v for k, v in _load_user_studies().items()
-             if k.endswith(today)}   # alte Tage aufräumen
-    data[key] = {'id': study_id, 'count': count}
+    data = _load_user_studies()
+    data[str(user_id)] = {
+        'id':    study_id,
+        'today': _date.today().isoformat(),
+        'count': count,
+    }
     _save_user_studies(data)
-    log.info('Tages-Studie gespeichert: key=%s study_id=%s count=%d', key, study_id, count)
+    log.info('User-Studie gespeichert: user=%s study_id=%s count=%d', user_id, study_id, count)
 
 def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
     """Alle Linien aus .pgn-Dateien in BOOKS_DIR laden."""
