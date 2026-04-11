@@ -85,6 +85,7 @@ PUZZLE_STUDY_ID   = os.getenv('PUZZLE_STUDY_ID', '')
 PUZZLE_HOUR       = int(os.getenv('PUZZLE_HOUR', '9'))
 PUZZLE_MINUTE     = int(os.getenv('PUZZLE_MINUTE', '0'))
 PUZZLE_STATE_FILE = 'puzzle_state.json'
+USER_STUDIES_FILE = 'user_studies.json'
 DM_STATE_FILE            = 'dm_state.json'
 LICHESS_COOLDOWN_FILE    = 'lichess_cooldown.json'
 
@@ -322,6 +323,32 @@ def save_puzzle_state(state: dict):
     with open(PUZZLE_STATE_FILE, 'w') as f:
         json.dump(state, f, indent=2)
 
+def _load_user_studies() -> dict:
+    try:
+        with open(USER_STUDIES_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def _save_user_studies(data: dict):
+    with open(USER_STUDIES_FILE, 'w') as f:
+        json.dump(data, f, indent=2)
+
+def _get_user_study_id(user_id: int) -> str | None:
+    key = f'{user_id}:{_date.today().isoformat()}'
+    val = _load_user_studies().get(key)
+    log.info('Tages-Studie laden: user=%s key=%s → %s', user_id, key, val or 'neu')
+    return val
+
+def _set_user_study_id(user_id: int, study_id: str):
+    today = _date.today().isoformat()
+    key   = f'{user_id}:{today}'
+    data  = {k: v for k, v in _load_user_studies().items()
+             if k.endswith(today)}   # alte Tage aufräumen
+    data[key] = study_id
+    _save_user_studies(data)
+    log.info('Tages-Studie gespeichert: key=%s study_id=%s', key, study_id)
+
 def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
     """Alle Linien aus .pgn-Dateien in BOOKS_DIR laden."""
     lines = []
@@ -463,26 +490,35 @@ def _lichess_rate_limited() -> bool:
     return _time_mod.time() < _lichess_cooldown_until()
 
 
-def _lichess_set_cooldown():
-    """Setzt den Cooldown-Zeitstempel auf jetzt + 1h und schreibt ihn auf Disk."""
-    until = _time_mod.time() + _LICHESS_COOLDOWN_SECS
+def _lichess_set_cooldown(retry_after: int | None = None):
+    """Setzt den Cooldown-Zeitstempel und schreibt ihn auf Disk.
+
+    retry_after – Sekunden aus dem Retry-After-Header (None = 1h Fallback).
+    """
+    secs  = retry_after if retry_after and retry_after > 0 else _LICHESS_COOLDOWN_SECS
+    until = _time_mod.time() + secs
     with open(LICHESS_COOLDOWN_FILE, 'w') as f:
         json.dump({'until': until}, f)
-    log.warning('Lichess 429 – Cooldown bis %s gesetzt.',
-                _datetime.fromtimestamp(until).strftime('%H:%M'))
+    log.warning('Lichess 429 – Cooldown bis %s gesetzt (%ds).',
+                _datetime.fromtimestamp(until).strftime('%H:%M'), secs)
 
 
 def _lichess_request(method: str, url: str, **kwargs):
-    """Lichess-API-Request. Bei 429 wird ein persistenter 1h-Cooldown gesetzt."""
+    """Lichess-API-Request. Bei 429 wird ein persistenter Cooldown gesetzt."""
     resp = requests.request(method, url, **kwargs)
     if resp.status_code == 429:
-        _lichess_set_cooldown()
+        try:
+            retry_after = int(resp.headers.get('Retry-After', 0))
+        except (ValueError, TypeError):
+            retry_after = 0
+        _lichess_set_cooldown(retry_after or None)
         raise LichessRateLimitError()
     return resp
 
 
 def upload_to_lichess(game: chess.pgn.Game,
-                      context_game: chess.pgn.Game | None = None) -> str | None:
+                      context_game: chess.pgn.Game | None = None,
+                      reuse_study_id: str | None = None) -> str | None:
     """Neue Lichess-Studie anlegen, PGN importieren und Kapitel-URL zurückgeben.
 
     game         – gekürztes Spiel ab Trainingsposition (Gamebook-Kapitel 1)
@@ -535,8 +571,8 @@ def upload_to_lichess(game: chess.pgn.Game,
     if LICHESS_TOKEN:
         try:
             # Bestehende Studie nutzen oder neue anlegen
-            if PUZZLE_STUDY_ID:
-                study_id = PUZZLE_STUDY_ID
+            if reuse_study_id or PUZZLE_STUDY_ID:
+                study_id = reuse_study_id or PUZZLE_STUDY_ID
                 default_chapter_id = ''
             else:
                 r = _lichess_request(
@@ -631,6 +667,7 @@ def upload_to_lichess(game: chess.pgn.Game,
 
 def upload_many_to_lichess(
     puzzles: list[tuple[chess.pgn.Game, chess.pgn.Game | None]],
+    reuse_study_id: str | None = None,
 ) -> str | None:
     """Mehrere Puzzles als Gamebook-Kapitel in eine gemeinsame Lichess-Studie laden."""
     if _lichess_rate_limited():
@@ -640,37 +677,41 @@ def upload_many_to_lichess(
     if not puzzles:
         return None
     if len(puzzles) == 1:
-        return upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1])
+        return upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1], reuse_study_id=reuse_study_id)
     if not LICHESS_TOKEN:
-        return upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1])
+        return upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1], reuse_study_id=reuse_study_id)
 
     auth_headers = {'Authorization': f'Bearer {LICHESS_TOKEN}'}
-    today      = _date.today().strftime('%d.%m.%Y')
-    study_name = f'Puzzles – {today}'
 
     try:
-        r = _lichess_request(
-            'POST', 'https://lichess.org/api/study',
-            data={'name': study_name, 'visibility': 'unlisted', 'computer': 'everyone',
-                  'explorer': 'everyone', 'cloneable': 'everyone',
-                  'shareable': 'everyone', 'chat': 'everyone'},
-            headers=auth_headers, timeout=15,
-        )
-        r.raise_for_status()
-        study_id = r.json().get('id', '')
-        if not study_id:
-            return None
+        if reuse_study_id:
+            study_id = reuse_study_id
+            default_chapter_id = ''
+        else:
+            today      = _date.today().strftime('%d.%m.%Y')
+            study_name = f'Puzzles – {today}'
+            r = _lichess_request(
+                'POST', 'https://lichess.org/api/study',
+                data={'name': study_name, 'visibility': 'unlisted', 'computer': 'everyone',
+                      'explorer': 'everyone', 'cloneable': 'everyone',
+                      'shareable': 'everyone', 'chat': 'everyone'},
+                headers=auth_headers, timeout=15,
+            )
+            r.raise_for_status()
+            study_id = r.json().get('id', '')
+            if not study_id:
+                return None
 
-        # Leeres Auto-Kapitel merken
-        pgn_resp = _lichess_request(
-            'GET', f'https://lichess.org/api/study/{study_id}.pgn',
-            headers=auth_headers, timeout=10,
-        )
-        default_chapter_id = ''
-        if pgn_resp.status_code == 200:
-            dg = chess.pgn.read_game(io.StringIO(pgn_resp.text))
-            if dg:
-                default_chapter_id = dg.headers.get('ChapterURL', '').rstrip('/').split('/')[-1]
+            # Leeres Auto-Kapitel merken
+            pgn_resp = _lichess_request(
+                'GET', f'https://lichess.org/api/study/{study_id}.pgn',
+                headers=auth_headers, timeout=10,
+            )
+            default_chapter_id = ''
+            if pgn_resp.status_code == 200:
+                dg = chess.pgn.read_game(io.StringIO(pgn_resp.text))
+                if dg:
+                    default_chapter_id = dg.headers.get('ChapterURL', '').rstrip('/').split('/')[-1]
 
         # Kapitel importieren
         for game, context in puzzles:
@@ -749,11 +790,12 @@ def build_puzzle_embed(game: chess.pgn.Game, url: str | None, turn: chess.Color 
     embed.set_footer(text='🧩 Tägliches Puzzle')
     return embed
 
-async def post_puzzle(channel, count: int = 1, book_idx: int = 0):
+async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int | None = None):
     """Puzzles auswählen, auf Lichess hochladen und posten.
 
     count    – Anzahl Puzzles (1–20).
     book_idx – 1-basierte Buchnummer aus /books (0 = alle Bücher).
+    user_id  – Discord-User-ID; wenn gesetzt, wird die Tages-Studie wiederverwendet.
     """
     count = max(1, min(count, 20))
 
@@ -782,16 +824,28 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0):
         context = original_game if game is not original_game else None
         puzzles.append((game, context))
 
+    reuse_study_id = _get_user_study_id(user_id) if user_id else None
+
     # Upload in Thread damit der Event Loop nicht blockiert
     loop = asyncio.get_running_loop()
     if len(puzzles) == 1:
         url = await loop.run_in_executor(
-            None, lambda: upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1])
+            None, lambda: upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1],
+                                            reuse_study_id=reuse_study_id)
         )
     else:
         url = await loop.run_in_executor(
-            None, lambda: upload_many_to_lichess(puzzles)
+            None, lambda: upload_many_to_lichess(puzzles, reuse_study_id=reuse_study_id)
         )
+
+    # Studie-ID für diesen User+Tag speichern
+    if url and user_id:
+        parts = url.rstrip('/').split('/')
+        if 'study' in parts:
+            sidx = parts.index('study')
+            sid  = parts[sidx + 1] if sidx + 1 < len(parts) else ''
+            if sid:
+                _set_user_study_id(user_id, sid)
 
     # Thread-Name vom ersten Puzzle
     h = dict(puzzles[0][0].headers)
@@ -938,7 +992,7 @@ async def cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: in
     await interaction.response.defer(ephemeral=True)
     try:
         dm = await interaction.user.create_dm()
-        await post_puzzle(dm, count=anzahl, book_idx=buch)
+        await post_puzzle(dm, count=anzahl, book_idx=buch, user_id=interaction.user.id)
         await interaction.followup.send(f'✅ {anzahl} Puzzle(s) wurde(n) dir per DM gesendet.', ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
