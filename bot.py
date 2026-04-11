@@ -364,6 +364,15 @@ def _set_user_study_id(user_id: int, study_id: str, count: int, total: int):
     _save_user_studies(data)
     log.info('User-Studie gespeichert: user=%s study_id=%s count=%d total=%d', user_id, study_id, count, total)
 
+def _load_books_config() -> dict:
+    """Lädt books.json mit Metadaten (z.B. difficulty) pro PGN-Datei."""
+    p = os.path.join(BOOKS_DIR, 'books.json')
+    try:
+        with open(p, encoding='utf-8') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
 def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
     """Alle Linien aus .pgn-Dateien in BOOKS_DIR laden."""
     lines = []
@@ -791,7 +800,8 @@ def upload_many_to_lichess(
 def build_puzzle_embed(game: chess.pgn.Game, url: str | None,
                        turn: chess.Color | None = None,
                        puzzle_num: int = 0,
-                       puzzle_total: int = 0) -> discord.Embed:
+                       puzzle_total: int = 0,
+                       difficulty: str = '') -> discord.Embed:
     h = dict(game.headers)
     line_name  = h.get('White', h.get('Event', 'Linie'))
     event_name = h.get('Event', '')
@@ -808,6 +818,9 @@ def build_puzzle_embed(game: chess.pgn.Game, url: str | None,
     book_info = black_name or event_name
     if book_info:
         embed.add_field(name='📖 Kapitel', value=f'||{book_info}||', inline=False)
+
+    if difficulty:
+        embed.add_field(name='📊 Schwierigkeit', value=difficulty, inline=True)
 
     # Bild wird extern via set_image gesetzt
 
@@ -855,26 +868,31 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         await channel.send('⚠️ Keine Puzzle-Linien gefunden. Bitte .pgn-Dateien in den `books/`-Ordner legen.')
         return
 
+    books_config = _load_books_config()
+
     # Trimmen
-    puzzles: list[tuple[chess.pgn.Game, chess.pgn.Game | None]] = []
-    for _, original_game in results:
+    puzzles: list[tuple[chess.pgn.Game, chess.pgn.Game | None, str]] = []
+    for line_id, original_game in results:
         game    = _trim_to_training_position(original_game)
         context = original_game if game is not original_game else None
-        puzzles.append((game, context))
+        fname   = line_id.split(':')[0]
+        diff    = books_config.get(fname, {}).get('difficulty', '')
+        puzzles.append((game, context, diff))
 
     reuse_study_id = _get_user_study_id(user_id) if user_id else None
     base_count, base_total = _get_user_puzzle_count(user_id) if user_id else (0, 0)
 
     # Upload in Thread damit der Event Loop nicht blockiert
+    upload_pairs = [(g, c) for g, c, _ in puzzles]
     loop = asyncio.get_running_loop()
-    if len(puzzles) == 1:
+    if len(upload_pairs) == 1:
         url = await loop.run_in_executor(
-            None, lambda: upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1],
+            None, lambda: upload_to_lichess(upload_pairs[0][0], context_game=upload_pairs[0][1],
                                             reuse_study_id=reuse_study_id)
         )
     else:
         url = await loop.run_in_executor(
-            None, lambda: upload_many_to_lichess(puzzles, reuse_study_id=reuse_study_id)
+            None, lambda: upload_many_to_lichess(upload_pairs, reuse_study_id=reuse_study_id)
         )
 
     # Studie-ID für diesen User+Tag speichern
@@ -906,7 +924,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         )
 
     # Alle Puzzles als einzelne Bilder posten
-    for i, (game, _) in enumerate(puzzles):
+    for i, (game, _, diff) in enumerate(puzzles):
         puzzle_num   = (base_count + i + 1) if user_id else 0
         puzzle_total = (base_total + i + 1) if user_id else 0
         try:
@@ -918,7 +936,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
             turn = None
             img  = None
 
-        embed = build_puzzle_embed(game, url, turn=turn, puzzle_num=puzzle_num, puzzle_total=puzzle_total)
+        embed = build_puzzle_embed(game, url, turn=turn, puzzle_num=puzzle_num, puzzle_total=puzzle_total, difficulty=diff)
         if img:
             file = discord.File(img, filename='board.png')
             embed.set_image(url='attachment://board.png')
