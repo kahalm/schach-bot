@@ -21,3 +21,6 @@ books/*.pgi
 
 # Test artifacts
 test_*.png
+
+# Generator scripts
+gen_*.py
