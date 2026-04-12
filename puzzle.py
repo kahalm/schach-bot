@@ -859,9 +859,11 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         if img:
             file = discord.File(img, filename='board.png')
             embed.set_image(url='attachment://board.png')
-            await target.send(file=file, embed=embed)
+            msg = await target.send(file=file, embed=embed)
         else:
-            await target.send(embed=embed)
+            msg = await target.send(embed=embed)
+        for emoji in ('✅', '❌', '👍', '👎'):
+            await msg.add_reaction(emoji)
 
         # PGN-Lösung als Spoiler posten
         exporter = chess.pgn.StringExporter(
@@ -1130,9 +1132,11 @@ def setup(bot: discord.ext.commands.Bot):
             if img:
                 file = discord.File(img, filename='board.png')
                 embed.set_image(url='attachment://board.png')
-                await dm.send(file=file, embed=embed)
+                msg = await dm.send(file=file, embed=embed)
             else:
-                await dm.send(embed=embed)
+                msg = await dm.send(embed=embed)
+            for emoji in ('✅', '❌', '👍', '👎'):
+                await msg.add_reaction(emoji)
 
             # PGN-Lösung als Spoiler
             exporter = chess.pgn.StringExporter(
