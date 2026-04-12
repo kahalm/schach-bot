@@ -434,16 +434,17 @@ def _sftpgo_rel_path(local_path: str) -> str | None:
 
 
 def _sftpgo_message(entry: dict, path: str, fmt: str) -> str:
-    """Baut die ephemere Antwort-Nachricht mit Web-Client-Link, Pfad und Passwort."""
-    # Web-Client-URL: zeigt SFTPGo-eigenes Passwortformular statt Browser-Basic-Auth-Dialog
-    browse_url = f'{_SFTPGO_BASE_URL}/web/client/shares/{_SFTPGO_SHARE_ID}/browse'
+    """Baut die ephemere Antwort-Nachricht mit Web-Client-Link und Passwort."""
+    from urllib.parse import quote
     rel        = _sftpgo_rel_path(path) or os.path.basename(path)
+    encoded    = quote('/' + rel)
+    browse_url = (f'{_SFTPGO_BASE_URL}/web/client/pubshares/'
+                  f'{_SFTPGO_SHARE_ID}/browse?path={encoded}')
     size       = os.path.getsize(path)
     mb         = size / (1024 * 1024)
     return (
         f'📥 **{entry["title"]}** `[{fmt.upper()} · {mb:.1f} MB]`\n\n'
-        f'🔗 {browse_url}\n'
-        f'📂 `{rel}`\n\n'
+        f'🔗 {browse_url}\n\n'
         f'🔑 Passwort: `{_SFTPGO_SHARE_PASSWORD}`'
     )
 
