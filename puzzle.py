@@ -326,6 +326,25 @@ def pick_random_line() -> tuple[str, chess.pgn.Game] | None:
     result = pick_random_lines(1)
     return result[0] if result else None
 
+def _prelude_pgn(context: chess.pgn.Game, puzzle: chess.pgn.Game) -> str:
+    """Züge aus context VOR der Puzzle-Startstellung exportieren (ohne Lösung)."""
+    target_fen = puzzle.board().fen()
+    # Mainline bis zur Puzzle-Position abschneiden
+    prelude = chess.pgn.Game()
+    prelude.headers.clear()
+    node_src = context
+    node_dst = prelude
+    while node_src.variations:
+        child = node_src.variations[0]
+        board_after = child.board()
+        if board_after.fen() == target_fen:
+            break
+        node_dst = node_dst.add_variation(child.move)
+        node_src = child
+    exporter = chess.pgn.StringExporter(
+        headers=False, variations=False, comments=False)
+    return prelude.accept(exporter).strip()
+
 def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
     """Spiel auf erste [%tqu]-Stellung kürzen.
     Ohne [%tqu]-Annotation → Original unverändert zurückgeben."""
@@ -834,9 +853,9 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         if pgn_moves:
             await target.send(f'Lösung: ||`{pgn_moves}`||')
         if context:
-            full_pgn = context.accept(exporter).strip()
-            if full_pgn and full_pgn != pgn_moves:
-                await target.send(f'Ganze Partie: ||`{full_pgn}`||')
+            prelude = _prelude_pgn(context, game)
+            if prelude:
+                await target.send(f'Ganze Partie: ||`{prelude}`||')
         if url:
             await target.send(f'[Klickbares Rätsel]({url})')
 
@@ -1102,9 +1121,9 @@ def setup(bot: discord.ext.commands.Bot):
             if pgn_moves:
                 await dm.send(f'Lösung: ||`{pgn_moves}`||')
             if context:
-                full_pgn = context.accept(exporter).strip()
-                if full_pgn and full_pgn != pgn_moves:
-                    await dm.send(f'Ganze Partie: ||`{full_pgn}`||')
+                prelude = _prelude_pgn(context, game)
+                if prelude:
+                    await dm.send(f'Ganze Partie: ||`{prelude}`||')
             if url:
                 await dm.send(f'[Klickbares Rätsel]({url})')
 
