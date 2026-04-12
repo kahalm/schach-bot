@@ -886,7 +886,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
     """Puzzles auswählen, auf Lichess hochladen und posten.
 
     count    – Anzahl Puzzles (1–20).
-    book_idx – 1-basierte Buchnummer aus /books (0 = alle Bücher).
+    book_idx – 1-basierte Buchnummer aus /kurs (0 = alle Bücher).
     user_id  – Discord-User-ID; wenn gesetzt, wird die Tages-Studie wiederverwendet.
     """
     count = max(1, min(count, 20))
@@ -900,7 +900,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
                 book_filename = books[book_idx - 1]
             else:
                 await channel.send(
-                    f'⚠️ Buch {book_idx} nicht gefunden. `/books` zeigt die verfügbaren Bücher.'
+                    f'⚠️ Buch {book_idx} nicht gefunden. `/kurs` zeigt die verfügbaren Bücher.'
                 )
                 return
 
@@ -1089,7 +1089,7 @@ async def cmd_reset(interaction: discord.Interaction):
 @tree.command(name='puzzle', description='Puzzle(s) aus den Büchern posten')
 @discord.app_commands.describe(
     anzahl='Anzahl Puzzles (1–20, Standard: 1)',
-    buch='Buchnummer aus /books (Standard: alle Bücher)',
+    buch='Buchnummer aus /kurs (Standard: alle Bücher)',
 )
 async def cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: int = 0):
     log.info('/puzzle von %s: anzahl=%d buch=%d', interaction.user, anzahl, buch)
@@ -1102,7 +1102,7 @@ async def cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: in
         await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
 
 
-@tree.command(name='books', description='Alle verfügbaren Puzzle-Bücher anzeigen')
+@tree.command(name='kurs', description='Alle verfügbaren Puzzle-Bücher anzeigen')
 async def cmd_buecher(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     try:
@@ -1148,7 +1148,7 @@ async def cmd_buecher(interaction: discord.Interaction):
 
 @tree.command(name='train', description='Buch für sequentielles Training auswählen')
 @discord.app_commands.describe(
-    buch='Buchnummer aus /books (0 = Training beenden)',
+    buch='Buchnummer aus /kurs (0 = Training beenden)',
 )
 async def cmd_train(interaction: discord.Interaction, buch: int):
     await interaction.response.defer(ephemeral=True)
@@ -1166,7 +1166,7 @@ async def cmd_train(interaction: discord.Interaction, buch: int):
     books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
     if buch < 1 or buch > len(books):
         await interaction.followup.send(
-            f'⚠️ Buch {buch} nicht gefunden. `/books` zeigt die Liste.', ephemeral=True)
+            f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die Liste.', ephemeral=True)
         return
 
     book_filename = books[buch - 1]
@@ -1325,17 +1325,17 @@ async def cmd_help(interaction: discord.Interaction):
         name='/puzzle [anzahl] [buch]',
         value='Zufälliges Puzzle per DM senden.\n'
               '`anzahl` — 1–20 Puzzles in einer Studie (Standard: 1)\n'
-              '`buch` — Nur aus diesem Buch (Nummer aus `/books`, Standard: alle)',
+              '`buch` — Nur aus diesem Buch (Nummer aus `/kurs`, Standard: alle)',
         inline=False,
     )
     embed.add_field(
-        name='/books',
+        name='/kurs',
         value='Alle verfügbaren Puzzle-Bücher mit Fortschritt anzeigen.',
         inline=False,
     )
     embed.add_field(
         name='/train <buch>',
-        value='Buch für sequentielles Training wählen (Nummer aus `/books`).\n'
+        value='Buch für sequentielles Training wählen (Nummer aus `/kurs`).\n'
               '`/train 0` beendet das Training.',
         inline=False,
     )
