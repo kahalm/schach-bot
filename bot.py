@@ -77,6 +77,7 @@ WELCOME_MESSAGE = (
     '📖 `/bibliothek` — Schachbuch-Bibliothek durchsuchen & downloaden\n'
     '🔗 `/resourcen` — Online-Lernressourcen anzeigen oder hinzufügen\n'
     '▶️ `/youtube` — YouTube-Kanäle/Videos anzeigen oder hinzufügen\n'
+    '⏰ `/reminder` — Wiederkehrende Puzzle-DMs einstellen\n'
     '📊 `/stats` — Deine Statistiken\n\n'
     'Mit `/help` siehst du alle Befehle im Detail.'
 )
@@ -94,11 +95,13 @@ tree = bot.tree
 # Module laden
 import puzzle
 import library
+import reminder
 import resourcen
 import youtube
 
 puzzle.setup(bot)
 library.setup(bot)
+reminder.setup(bot)
 resourcen.setup(bot)
 youtube.setup(bot)
 
@@ -257,6 +260,14 @@ async def cmd_help(interaction: discord.Interaction):
         name='/endless [buch]',
         value='Endlos-Puzzle-Modus: nach jeder ✅/❌ kommt sofort das nächste Puzzle per DM.\n'
               'Nochmal `/endless` zum Stoppen.',
+        inline=False,
+    )
+    embed.add_field(
+        name='/reminder [hours] [puzzle_count] [buch]',
+        value='Wiederkehrende Puzzle-DMs einstellen.\n'
+              '`/reminder hours:4 puzzle_count:3` — Alle 4h 3 Puzzles per DM\n'
+              '`/reminder hours:0` — Reminder stoppen\n'
+              '`/reminder` — Aktuellen Status anzeigen',
         inline=False,
     )
     embed.add_field(

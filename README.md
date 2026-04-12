@@ -29,6 +29,7 @@ A Discord bot with two daily chess features:
 | `/train [buch]` | Select a book for sequential training (`/train 0` to stop) |
 | `/next [anzahl]` | Send next line(s) from the training book via DM |
 | `/endless [buch]` | Toggle endless puzzle mode — after each ✅/❌ the next puzzle is sent automatically |
+| `/reminder [hours] [puzzle_count] [buch]` | Set up recurring puzzle DMs at a custom interval (1–168h). `hours:0` to stop |
 | `/bibliothek <suche>` | Search the chess book library (title, author, tags) |
 | `/autor <autor>` | Show all books by an author |
 | `/tag <tag>` | Filter books by tag (e.g. Taktik, Endspiel) |
@@ -222,6 +223,7 @@ This picks a random line, uploads it to Lichess, and prints the study URL and a 
 ```
 schach-bot/
 ├── bot.py              # All bot logic
+├── reminder.py         # /reminder command (recurring puzzle DMs)
 ├── resourcen.py        # /resourcen command (online learning resources)
 ├── youtube.py          # /youtube command (YouTube channels/videos)
 ├── test_puzzle.py      # Standalone puzzle upload test
