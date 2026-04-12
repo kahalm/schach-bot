@@ -723,22 +723,24 @@ def build_puzzle_embed(game: chess.pgn.Game,
     event_name = h.get('Event', '')
     black_name = h.get('Black', '')
 
-    if len(line_name) > 80:
-        line_name = line_name[:77] + '...'
+    # Kursname als Titel
+    course = event_name or 'Puzzle'
+    if len(course) > 80:
+        course = course[:77] + '...'
 
     embed = discord.Embed(
-        title=f'🧩 {line_name}',
+        title=f'🧩 {course}',
         color=0x7fa650,
     )
 
-    book_info = black_name or event_name
-    if book_info:
-        embed.add_field(name='📖 Kapitel', value=f'||{book_info}||', inline=False)
+    if black_name:
+        embed.add_field(name='📖 Kapitel', value=f'||{black_name}||', inline=False)
+
+    if line_name and line_name != event_name:
+        embed.add_field(name='📝 Linie', value=f'||{line_name}||', inline=False)
 
     if difficulty:
-        stars = '★' * rating + '☆' * (10 - rating) if rating else ''
-        diff_text = f'{difficulty}  {stars}' if stars else difficulty
-        embed.add_field(name='📊 Schwierigkeit', value=diff_text, inline=True)
+        embed.add_field(name='📊 Schwierigkeit', value=difficulty, inline=True)
 
     # Bild wird extern via set_image gesetzt
 
