@@ -135,9 +135,9 @@ async def cmd_help(interaction: discord.Interaction):
         inline=False,
     )
     embed.add_field(
-        name='/train <buch>',
+        name='/train [buch]',
         value='Buch für sequentielles Training wählen (Nummer aus `/kurs`).\n'
-              '`/train 0` beendet das Training.',
+              '`/train` zeigt den aktuellen Status · `/train 0` beendet das Training.',
         inline=False,
     )
     embed.add_field(

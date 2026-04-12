@@ -904,11 +904,41 @@ def setup(bot: discord.ext.commands.Bot):
 
     @tree.command(name='train', description='Buch für sequentielles Training auswählen')
     @discord.app_commands.describe(
-        buch='Buchnummer aus /kurs (0 = Training beenden)',
+        buch='Buchnummer aus /kurs (0 = Training beenden, leer = Status anzeigen)',
     )
-    async def cmd_train(interaction: discord.Interaction, buch: int):
+    async def cmd_train(interaction: discord.Interaction, buch: int = None):
         await interaction.response.defer(ephemeral=True)
         user_id = interaction.user.id
+
+        if buch is None:
+            # Status anzeigen
+            training = _get_user_training(user_id)
+            if not training:
+                await interaction.followup.send(
+                    '📭 Kein Training aktiv. Wähle ein Buch mit `/train <nummer>` '
+                    '(Nummern aus `/kurs`).', ephemeral=True)
+                return
+            book_filename = training['book']
+            pos = training['position']
+            all_lines = load_all_lines()
+            total = sum(1 for lid, _ in all_lines if lid.startswith(book_filename + ':'))
+            name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+            books_config = _load_books_config()
+            meta = books_config.get(book_filename, {})
+            diff = meta.get('difficulty', '')
+            rat = meta.get('rating', 0)
+            stars = ('★' * rat + '☆' * (10 - rat)) if rat else ''
+            pct = f' ({pos * 100 // total}%)' if total else ''
+
+            embed = discord.Embed(title=f'📖 Training: {name}', color=0x7fa650)
+            embed.add_field(name='Fortschritt', value=f'{pos}/{total} Linien{pct}', inline=True)
+            if diff:
+                embed.add_field(name='Schwierigkeit',
+                                value=f'{diff}  {stars}' if stars else diff, inline=True)
+            embed.add_field(name='Nächster Schritt',
+                            value='`/next` `/next 5` `/next 10`', inline=False)
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
 
         if buch == 0:
             _clear_user_training(user_id)
