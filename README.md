@@ -24,8 +24,17 @@ A Discord bot with two daily chess features:
 |---------|-------------|
 | `/partie` | Post the next chapter from the Lichess study immediately |
 | `/studie` | Show study info: total chapters and which comes next |
-| `/puzzle` | Post a random puzzle immediately |
-| `/books` | Show all puzzle books with posted/total counts |
+| `/puzzle [anzahl] [buch]` | Post random puzzle(s) via DM (1–20, optional book filter) |
+| `/kurs` | Show all puzzle books with progress |
+| `/train [buch]` | Select a book for sequential training (`/train 0` to stop) |
+| `/next [anzahl]` | Send next line(s) from the training book via DM |
+| `/endless [buch]` | Toggle endless puzzle mode — after each ✅/❌ the next puzzle is sent automatically |
+| `/bibliothek <suche>` | Search the chess book library (title, author, tags) |
+| `/autor <autor>` | Show all books by an author |
+| `/tag <tag>` | Filter books by tag (e.g. Taktik, Endspiel) |
+| `/stats` | Show usage statistics for all users |
+| `/help` | Show all available commands |
+| `/reindex` | Rebuild library catalog (admins only) |
 | `/reset` | Reset the chapter counter to 1 (admins only) |
 
 ## Requirements
