@@ -199,6 +199,20 @@ def _save_library(catalog: list[dict]):
 
 _FILE_PRIO = {'pdf': 0, 'epub': 1, 'djvu': 2, 'pgn': 3}
 
+
+def _load_sidecar(remote_path: str) -> dict | None:
+    """Prüft ob neben der Datei ein gleichnamiges .json liegt und liest es."""
+    local = _local_path(remote_path)
+    json_path = os.path.splitext(local)[0] + '.json'
+    if not os.path.isfile(json_path):
+        return None
+    try:
+        with open(json_path, encoding='utf-8') as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def build_library_catalog() -> tuple[int, int, int, int]:
     """index.txt mit library.json abgleichen: neue ergänzen, fehlende entfernen.
     Returns (dateien, bücher_gesamt, neu, entfernt)."""
@@ -238,19 +252,47 @@ def build_library_catalog() -> tuple[int, int, int, int]:
             continue  # existiert bereits → nicht anfassen
         best = entries[0]
         author, title, year, ext, path, stem = best
-        years = [e[2] for e in entries if e[2]]
-        chosen_year = max(set(years), key=years.count) if years else None
-        auto_tags = _auto_tag(stem, author, ext)
-        old_catalog.append({
-            'id':          entry_id,
-            'title':       stem if stem else title,
-            'author':      author,
-            'year':        chosen_year,
-            'tags':        auto_tags,
-            'manual_tags': [],
-            'file_type':   ext,
-            'files':       [e[4] for e in entries],
-        })
+
+        # Sidecar-JSON prüfen (beim besten File der Gruppe)
+        sidecar = _load_sidecar(path)
+
+        if sidecar:
+            sc_author = ', '.join(sidecar['author']) if isinstance(sidecar.get('author'), list) else sidecar.get('author', author)
+            sc_title  = sidecar.get('title', stem or title)
+            sc_year   = sidecar.get('year')
+            sc_tags   = sidecar.get('tags', [])
+            sc_format = sidecar.get('format', ext)
+            sc_elo    = sidecar.get('targetMinElo')
+            sc_fav    = sidecar.get('favorite', [])
+            sc_size   = sidecar.get('size')
+            auto_tags = sorted(set(sc_tags + _auto_tag(sc_title, sc_author, ext)))
+            old_catalog.append({
+                'id':           entry_id,
+                'title':        sc_title,
+                'author':       sc_author,
+                'year':         sc_year,
+                'tags':         auto_tags,
+                'manual_tags':  sc_tags,
+                'file_type':    sc_format,
+                'targetMinElo': sc_elo,
+                'favorite':     sc_fav,
+                'size':         sc_size,
+                'files':        [e[4] for e in entries],
+            })
+        else:
+            years = [e[2] for e in entries if e[2]]
+            chosen_year = max(set(years), key=years.count) if years else None
+            auto_tags = _auto_tag(stem, author, ext)
+            old_catalog.append({
+                'id':          entry_id,
+                'title':       stem if stem else title,
+                'author':      author,
+                'year':        chosen_year,
+                'tags':        auto_tags,
+                'manual_tags': [],
+                'file_type':   ext,
+                'files':       [e[4] for e in entries],
+            })
         new_count += 1
 
     # Fehlende entfernen (nicht mehr in index.txt)
