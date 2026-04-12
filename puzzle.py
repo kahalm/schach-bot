@@ -328,16 +328,17 @@ def pick_random_line() -> tuple[str, chess.pgn.Game] | None:
 
 def _prelude_pgn(context: chess.pgn.Game, puzzle: chess.pgn.Game) -> str:
     """Züge aus context VOR der Puzzle-Startstellung exportieren (ohne Lösung)."""
-    target_fen = puzzle.board().fen()
-    # Mainline bis zur Puzzle-Position abschneiden
+    # Nur Brettposition vergleichen (ohne Halbzug-/Zugzähler)
+    target_board = puzzle.board().board_fen() + (' w ' if puzzle.board().turn == chess.WHITE else ' b ')
     prelude = chess.pgn.Game()
     prelude.headers.clear()
     node_src = context
     node_dst = prelude
     while node_src.variations:
         child = node_src.variations[0]
-        board_after = child.board()
-        if board_after.fen() == target_fen:
+        cb = child.board()
+        child_key = cb.board_fen() + (' w ' if cb.turn == chess.WHITE else ' b ')
+        if child_key == target_board:
             break
         node_dst = node_dst.add_variation(child.move)
         node_src = child
@@ -831,7 +832,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         puzzle_total = (base_total + i + 1) if user_id else 0
         try:
             board = game.board()
-            turn  = board.turn
+            turn  = not board.turn  # Lichess spielt den 1. Zug als Setup
             img   = _render_board(board)
         except Exception as e:
             log.warning('Board-Render fehlgeschlagen: %s', e)
@@ -1094,7 +1095,7 @@ def setup(bot: discord.ext.commands.Bot):
             puzzle_total = base_total + i + 1
             try:
                 board = game.board()
-                turn = board.turn
+                turn = not board.turn  # Lichess spielt den 1. Zug als Setup
                 img = _render_board(board)
             except Exception:
                 turn, img = None, None
