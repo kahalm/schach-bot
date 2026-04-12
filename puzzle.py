@@ -433,8 +433,8 @@ def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
             # Überspringen wenn FEN-Header vorhanden aber leer
             if 'FEN' in game.headers and not game.headers['FEN'].strip():
                 continue
-            # Überspringen wenn keine Züge vorhanden (z.B. Einleitungskapitel)
-            if not game.variations:
+            # Überspringen wenn keine echten Züge vorhanden (z.B. Einleitungskapitel)
+            if not game.variations or game.variations[0].move == chess.Move.null():
                 continue
             round_header = game.headers.get('Round', '')
             line_id = f"{filename}:{round_header}"
