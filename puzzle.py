@@ -833,6 +833,13 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         else:
             await target.send(embed=embed)
 
+        # PGN-Lösung als Spoiler posten
+        exporter = chess.pgn.StringExporter(
+            headers=False, variations=True, comments=False)
+        pgn_moves = game.accept(exporter).strip()
+        if pgn_moves:
+            await target.send(f'||`{pgn_moves}`||')
+
 
 # ---------------------------------------------------------------------------
 # Slash-Commands registrieren
