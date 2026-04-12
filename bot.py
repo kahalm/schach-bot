@@ -114,6 +114,7 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     if not puzzle.is_puzzle_message(payload.message_id):
         return
     if emoji == '🚮':
+        stats.inc(payload.user_id, 'reaction_🚮')
         line_id = puzzle.get_puzzle_line_id(payload.message_id)
         if line_id:
             puzzle.ignore_puzzle(line_id)
@@ -151,6 +152,7 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
     if not puzzle.is_puzzle_message(payload.message_id):
         return
     if emoji == '🚮':
+        stats.inc(payload.user_id, 'reaction_🚮', -1)
         line_id = puzzle.get_puzzle_line_id(payload.message_id)
         if line_id:
             puzzle.unignore_puzzle(line_id)
@@ -293,6 +295,7 @@ async def cmd_stats(interaction: discord.Interaction):
         failed = data.get('reaction_❌', 0)
         liked = data.get('reaction_👍', 0)
         disliked = data.get('reaction_👎', 0)
+        trashed = data.get('reaction_🚮', 0)
         try:
             user = await bot.fetch_user(int(uid))
             name = user.display_name
@@ -303,6 +306,8 @@ async def cmd_stats(interaction: discord.Interaction):
             line += f' · ✅ {solved} · ❌ {failed}'
         if liked or disliked:
             line += f' · 👍 {liked} · 👎 {disliked}'
+        if trashed:
+            line += f' · 🚮 {trashed}'
         lines.append(line)
 
     embed.description = '\n'.join(lines)
