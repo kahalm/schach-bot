@@ -119,19 +119,22 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
     if payload.user_id == bot.user.id:
         return
     emoji = str(payload.emoji)
-    if emoji != '🚮':
+    if emoji not in puzzle._PUZZLE_REACTIONS:
         return
     if not puzzle.is_puzzle_message(payload.message_id):
         return
-    line_id = puzzle.get_puzzle_line_id(payload.message_id)
-    if line_id:
-        puzzle.unignore_puzzle(line_id)
-        try:
-            user = await bot.fetch_user(payload.user_id)
-            dm = await user.create_dm()
-            await dm.send(f'♻️ Puzzle wieder aktiviert:\n`{line_id}`')
-        except Exception as e:
-            log.warning('Unignore-DM fehlgeschlagen: %s', e)
+    if emoji == '🚮':
+        line_id = puzzle.get_puzzle_line_id(payload.message_id)
+        if line_id:
+            puzzle.unignore_puzzle(line_id)
+            try:
+                user = await bot.fetch_user(payload.user_id)
+                dm = await user.create_dm()
+                await dm.send(f'♻️ Puzzle wieder aktiviert:\n`{line_id}`')
+            except Exception as e:
+                log.warning('Unignore-DM fehlgeschlagen: %s', e)
+    else:
+        stats.inc(payload.user_id, f'reaction_{emoji}', -1)
 
 
 @bot.event
