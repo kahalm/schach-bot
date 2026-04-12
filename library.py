@@ -19,6 +19,11 @@ LIBRARY_FILE  = (os.path.join(os.path.dirname(LIBRARY_INDEX), 'library.json')
 # Lokaler Basis-Pfad (Verzeichnis der index.txt) für Pfad-Übersetzung
 _LOCAL_BASE   = os.path.dirname(LIBRARY_INDEX) if LIBRARY_INDEX else ''
 
+# SFTPGo-Config für Dateien über dem Discord-Upload-Limit
+_SFTPGO_BASE_URL       = os.getenv('SFTPGO_BASE_URL', '').rstrip('/')
+_SFTPGO_SHARE_ID       = os.getenv('SFTPGO_SHARE_ID', '')
+_SFTPGO_SHARE_PASSWORD = os.getenv('SFTPGO_SHARE_PASSWORD', '')
+
 _REMOTE_PREFIX_RE = re.compile(r'.*/schach/')
 
 def _local_path(remote: str) -> str:
@@ -413,14 +418,46 @@ def _collect_formats(entry: dict) -> dict[str, str]:
     return found
 
 
+def _sftpgo_url(local_path: str) -> str | None:
+    """Gibt die SFTPGo-Download-URL für eine lokale Datei zurück, oder None wenn nicht konfiguriert."""
+    if not (_SFTPGO_BASE_URL and _SFTPGO_SHARE_ID and _LOCAL_BASE):
+        return None
+    from urllib.parse import quote
+    norm = local_path.replace('\\', '/')
+    base = _LOCAL_BASE.replace('\\', '/')
+    if not norm.startswith(base):
+        return None
+    rel = norm[len(base):]
+    if not rel.startswith('/'):
+        rel = '/' + rel
+    return f'{_SFTPGO_BASE_URL}/api/v2/shares/{_SFTPGO_SHARE_ID}/files?path={quote(rel, safe="/")}'
+
+
+def _sftpgo_message(entry: dict, path: str, fmt: str) -> str:
+    """Baut die ephemere Antwort-Nachricht mit Download-Link und Passwort."""
+    url  = _sftpgo_url(path)
+    size = os.path.getsize(path)
+    mb   = size / (1024 * 1024)
+    return (
+        f'📥 **{entry["title"]}** `[{fmt.upper()} · {mb:.1f} MB]`\n\n'
+        f'🔗 {url}\n\n'
+        f'🔑 Passwort: `{_SFTPGO_SHARE_PASSWORD}`'
+    )
+
+
 async def _send_book(interaction: discord.Interaction,
                      entry: dict, path: str, fmt: str) -> None:
-    """Schickt eine Buchdatei per DM. Setzt voraus dass interaction bereits deferred ist."""
+    """Schickt eine Buchdatei per DM (oder SFTPGo-Link wenn zu groß).
+    Setzt voraus dass interaction bereits deferred ist (ephemeral)."""
     size = os.path.getsize(path)
     if size > _MAX_UPLOAD:
-        mb = size / (1024 * 1024)
-        await interaction.followup.send(
-            f'⚠️ Datei zu groß ({mb:.1f} MB, Discord-Limit 8 MB).', ephemeral=True)
+        if _sftpgo_url(path):
+            await interaction.followup.send(
+                _sftpgo_message(entry, path, fmt), ephemeral=True)
+        else:
+            mb = size / (1024 * 1024)
+            await interaction.followup.send(
+                f'⚠️ Datei zu groß ({mb:.1f} MB, Discord-Limit 8 MB).', ephemeral=True)
         return
     dm = await interaction.user.create_dm()
     await dm.send(
@@ -437,24 +474,40 @@ class _FormatView(discord.ui.View):
         super().__init__(timeout=60)
         self.entry = entry
         for fmt, path in formats.items():
-            size = os.path.getsize(path)
-            mb = size / (1024 * 1024)
-            too_big = size > _MAX_UPLOAD
+            size  = os.path.getsize(path)
+            mb    = size / (1024 * 1024)
+            big   = size > _MAX_UPLOAD
+            link  = big and bool(_sftpgo_url(path))
             label = f'{_FORMAT_LABEL.get(fmt, fmt.upper())}  {mb:.1f} MB'
+            if link:
+                style = discord.ButtonStyle.success   # grün  → SFTPGo-Link
+                label = f'{label}  🔗'
+            elif big:
+                style = discord.ButtonStyle.secondary  # grau   → kein Fallback
+                label = f'{label}  ⚠️'
+            else:
+                style = discord.ButtonStyle.primary    # blau   → DM-Download
             btn = discord.ui.Button(
-                label=label if not too_big else f'{label}  ⚠️ zu groß',
-                emoji=_FORMAT_EMOJI.get(fmt, '📄'),
-                style=discord.ButtonStyle.secondary if too_big
-                      else discord.ButtonStyle.primary,
-                custom_id=f'fmt_{fmt}',
-            )
-            btn.callback = self._make_callback(fmt, path)
+                label=label, emoji=_FORMAT_EMOJI.get(fmt, '📄'),
+                style=style, custom_id=f'fmt_{fmt}')
+            btn.callback = self._make_callback(fmt, path, big, link)
             self.add_item(btn)
 
-    def _make_callback(self, fmt: str, path: str):
+    def _make_callback(self, fmt: str, path: str, big: bool, link: bool):
         async def _cb(interaction: discord.Interaction):
-            await interaction.response.defer(ephemeral=True)
-            await _send_book(interaction, self.entry, path, fmt)
+            if big and link:
+                # Direkt antworten (kein defer nötig)
+                await interaction.response.send_message(
+                    _sftpgo_message(self.entry, path, fmt), ephemeral=True)
+            elif big:
+                size = os.path.getsize(path)
+                mb = size / (1024 * 1024)
+                await interaction.response.send_message(
+                    f'⚠️ Datei zu groß ({mb:.1f} MB, Discord-Limit 8 MB).',
+                    ephemeral=True)
+            else:
+                await interaction.response.defer(ephemeral=True)
+                await _send_book(interaction, self.entry, path, fmt)
         return _cb
 
 
