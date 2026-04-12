@@ -14,7 +14,17 @@ log = logging.getLogger('schach-bot')
 # --- Config (aus Umgebung) ---
 
 LIBRARY_INDEX = os.getenv('LIBRARY_INDEX', '')
-LIBRARY_FILE  = 'library.json'
+LIBRARY_FILE  = (os.path.join(os.path.dirname(LIBRARY_INDEX), 'library.json')
+                 if LIBRARY_INDEX else 'library.json')
+# Lokaler Basis-Pfad (Verzeichnis der index.txt) für Pfad-Übersetzung
+_LOCAL_BASE   = os.path.dirname(LIBRARY_INDEX) if LIBRARY_INDEX else ''
+
+_REMOTE_PREFIX_RE = re.compile(r'.*/schach/')
+
+def _local_path(remote: str) -> str:
+    """Übersetzt einen remote-Pfad aus index.txt in den lokalen Syncthing-Pfad."""
+    suffix = _REMOTE_PREFIX_RE.sub('', remote)
+    return os.path.join(_LOCAL_BASE, suffix) if _LOCAL_BASE else remote
 
 # ---------------------------------------------------------------------------
 # Tag-Wörterbücher
@@ -190,7 +200,8 @@ def _save_library(catalog: list[dict]):
 _FILE_PRIO = {'pdf': 0, 'epub': 1, 'djvu': 2, 'pgn': 3}
 
 def build_library_catalog() -> tuple[int, int, int, int]:
-    """index.txt → library.json. Returns (dateien, bücher, neu, aktualisiert)."""
+    """index.txt mit library.json abgleichen: neue ergänzen, fehlende entfernen.
+    Returns (dateien, bücher_gesamt, neu, entfernt)."""
     if not LIBRARY_INDEX or not os.path.exists(LIBRARY_INDEX):
         return (0, 0, 0, 0)
 
@@ -200,6 +211,7 @@ def build_library_catalog() -> tuple[int, int, int, int]:
     with open(LIBRARY_INDEX, encoding='utf-8', errors='replace') as f:
         raw_lines = [l.strip() for l in f if l.strip()]
 
+    # index.txt parsen und gruppieren
     groups: dict[str, list[tuple]] = defaultdict(list)
     for raw in raw_lines:
         parsed = _parse_index_entry(raw)
@@ -210,46 +222,45 @@ def build_library_catalog() -> tuple[int, int, int, int]:
         key = _normalize_for_dedup(author) + '::' + _normalize_for_dedup(stem)
         groups[key].append((author, title, year, ext, path, stem))
 
-    new_catalog: list[dict] = []
-    new_count = 0
-    updated_count = 0
-
+    # IDs aus index.txt ermitteln
+    index_ids: dict[str, tuple] = {}
     for key, entries in groups.items():
         entries.sort(key=lambda e: _FILE_PRIO.get(e[3], 99))
         best = entries[0]
         author, title, year, ext, path, stem = best
+        entry_id = _normalize_for_dedup(author) + '--' + _normalize_for_dedup(stem)
+        index_ids[entry_id] = (key, entries)
 
+    # Neue Einträge ergänzen
+    new_count = 0
+    for entry_id, (key, entries) in index_ids.items():
+        if entry_id in old_by_id:
+            continue  # existiert bereits → nicht anfassen
+        best = entries[0]
+        author, title, year, ext, path, stem = best
         years = [e[2] for e in entries if e[2]]
         chosen_year = max(set(years), key=years.count) if years else None
-
-        entry_id = _normalize_for_dedup(author) + '--' + _normalize_for_dedup(stem)
         auto_tags = _auto_tag(stem, author, ext)
-
-        old_entry = old_by_id.get(entry_id)
-        manual_tags = old_entry.get('manual_tags', []) if old_entry else []
-        all_tags = sorted(set(auto_tags + manual_tags))
-
-        entry = {
+        old_catalog.append({
             'id':          entry_id,
             'title':       stem if stem else title,
             'author':      author,
             'year':        chosen_year,
-            'tags':        all_tags,
-            'manual_tags': manual_tags,
+            'tags':        auto_tags,
+            'manual_tags': [],
             'file_type':   ext,
             'files':       [e[4] for e in entries],
-        }
+        })
+        new_count += 1
 
-        if old_entry is None:
-            new_count += 1
-        else:
-            updated_count += 1
+    # Fehlende entfernen (nicht mehr in index.txt)
+    before_remove = len(old_catalog)
+    old_catalog = [e for e in old_catalog if e['id'] in index_ids]
+    removed_count = before_remove - len(old_catalog)
 
-        new_catalog.append(entry)
-
-    new_catalog.sort(key=lambda e: (e['author'], e['title']))
-    _save_library(new_catalog)
-    return (len(raw_lines), len(new_catalog), new_count, updated_count)
+    old_catalog.sort(key=lambda e: (e['author'], e['title']))
+    _save_library(old_catalog)
+    return (len(raw_lines), len(old_catalog), new_count, removed_count)
 
 
 # ---------------------------------------------------------------------------
@@ -326,17 +337,85 @@ def _build_library_embed(entries: list[dict], page: int, total_pages: int,
         embed.set_footer(text=f'Seite {page}/{total_pages}')
     return embed
 
+_MAX_UPLOAD = 8 * 1024 * 1024  # Discord-Limit 8 MB (ohne Nitro)
+
+class _BookSelect(discord.ui.Select):
+    """Dropdown zum Auswählen eines Buchs zum Download."""
+
+    def __init__(self, entries: list[dict]):
+        options = []
+        for i, e in enumerate(entries):
+            emoji = _TYPE_EMOJI.get(e.get('file_type', ''), '📄')
+            label = f'{e["title"]}'[:100]
+            desc = f'{e["author"]}'[:100]
+            options.append(discord.SelectOption(
+                label=label, description=desc, emoji=emoji, value=str(i)))
+        super().__init__(placeholder='📥 Buch auswählen …', options=options)
+        self.entries = entries
+
+    async def callback(self, interaction: discord.Interaction):
+        idx = int(self.values[0])
+        entry = self.entries[idx]
+        files = entry.get('files', [])
+        if not files:
+            await interaction.response.send_message(
+                '⚠️ Keine Datei hinterlegt.', ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        # Beste Datei finden (erste die existiert)
+        local = None
+        for f in files:
+            candidate = _local_path(f)
+            if os.path.isfile(candidate):
+                local = candidate
+                break
+
+        if not local:
+            await interaction.followup.send(
+                '⚠️ Datei nicht lokal gefunden (Sync noch nicht fertig?).',
+                ephemeral=True)
+            return
+
+        size = os.path.getsize(local)
+        if size > _MAX_UPLOAD:
+            mb = size / (1024 * 1024)
+            await interaction.followup.send(
+                f'⚠️ Datei zu groß ({mb:.1f} MB, Discord-Limit 8 MB).',
+                ephemeral=True)
+            return
+
+        dm = await interaction.user.create_dm()
+        fname = os.path.basename(local)
+        await dm.send(
+            content=f'📖 **{entry["title"]}** — {entry["author"]}',
+            file=discord.File(local, filename=fname))
+        await interaction.followup.send(
+            f'✅ **{entry["title"]}** per DM gesendet.', ephemeral=True)
+
+
 class LibraryPaginationView(discord.ui.View):
     def __init__(self, pages: list[list[dict]], query: str):
         super().__init__(timeout=120)
         self.pages = pages
         self.query = query
         self.current = 0
+        self._update_select()
+
+    def _update_select(self):
+        # Altes Select entfernen falls vorhanden
+        for child in self.children:
+            if isinstance(child, _BookSelect):
+                self.remove_item(child)
+                break
+        self.add_item(_BookSelect(self.pages[self.current]))
 
     @discord.ui.button(label='◀ Zurück', style=discord.ButtonStyle.secondary)
     async def prev_button(self, interaction: discord.Interaction,
                            button: discord.ui.Button):
         self.current = max(0, self.current - 1)
+        self._update_select()
         embed = _build_library_embed(
             self.pages[self.current], page=self.current + 1,
             total_pages=len(self.pages), query=self.query)
@@ -346,6 +425,7 @@ class LibraryPaginationView(discord.ui.View):
     async def next_button(self, interaction: discord.Interaction,
                            button: discord.ui.Button):
         self.current = min(len(self.pages) - 1, self.current + 1)
+        self._update_select()
         embed = _build_library_embed(
             self.pages[self.current], page=self.current + 1,
             total_pages=len(self.pages), query=self.query)
@@ -371,11 +451,8 @@ def setup(bot: discord.ext.commands.Bot):
             return
         pages = [results[i:i + 10] for i in range(0, len(results), 10)]
         embed = _build_library_embed(pages[0], page=1, total_pages=len(pages), query=suche)
-        if len(pages) > 1:
-            view = LibraryPaginationView(pages, query=suche)
-            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
-        else:
-            await interaction.followup.send(embed=embed, ephemeral=True)
+        view = LibraryPaginationView(pages, query=suche)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
     @cmd_bibliothek.autocomplete('suche')
     async def bibliothek_autocomplete(
@@ -407,11 +484,8 @@ def setup(bot: discord.ext.commands.Bot):
         pages = [results[i:i + 10] for i in range(0, len(results), 10)]
         embed = _build_library_embed(pages[0], page=1, total_pages=len(pages),
                                       query=f'Tag: {tag}')
-        if len(pages) > 1:
-            view = LibraryPaginationView(pages, query=f'Tag: {tag}')
-            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
-        else:
-            await interaction.followup.send(embed=embed, ephemeral=True)
+        view = LibraryPaginationView(pages, query=f'Tag: {tag}')
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
     @cmd_tag.autocomplete('tag')
     async def tag_autocomplete(
@@ -437,7 +511,7 @@ def setup(bot: discord.ext.commands.Bot):
         stats = await loop.run_in_executor(None, build_library_catalog)
         _reload_library()
         await interaction.followup.send(
-            f'✅ Katalog aktualisiert:\n'
+            f'✅ Katalog abgeglichen:\n'
             f'Dateien: **{stats[0]}** · Bücher: **{stats[1]}** · '
-            f'Neu: **{stats[2]}** · Aktualisiert: **{stats[3]}**',
+            f'Neu: **{stats[2]}** · Entfernt: **{stats[3]}**',
             ephemeral=True)
