@@ -418,29 +418,32 @@ def _collect_formats(entry: dict) -> dict[str, str]:
     return found
 
 
-def _sftpgo_url(local_path: str) -> str | None:
-    """Gibt die SFTPGo-Download-URL für eine lokale Datei zurück, oder None wenn nicht konfiguriert."""
-    if not (_SFTPGO_BASE_URL and _SFTPGO_SHARE_ID and _LOCAL_BASE):
+def _sftpgo_configured() -> bool:
+    return bool(_SFTPGO_BASE_URL and _SFTPGO_SHARE_ID)
+
+
+def _sftpgo_rel_path(local_path: str) -> str | None:
+    """Gibt den relativen Pfad der Datei innerhalb der Library zurück."""
+    if not _LOCAL_BASE:
         return None
-    from urllib.parse import quote
     norm = local_path.replace('\\', '/')
     base = _LOCAL_BASE.replace('\\', '/')
     if not norm.startswith(base):
         return None
-    rel = norm[len(base):]
-    if not rel.startswith('/'):
-        rel = '/' + rel
-    return f'{_SFTPGO_BASE_URL}/api/v2/shares/{_SFTPGO_SHARE_ID}/files?path={quote(rel, safe="/")}'
+    return norm[len(base):].lstrip('/')
 
 
 def _sftpgo_message(entry: dict, path: str, fmt: str) -> str:
-    """Baut die ephemere Antwort-Nachricht mit Download-Link und Passwort."""
-    url  = _sftpgo_url(path)
-    size = os.path.getsize(path)
-    mb   = size / (1024 * 1024)
+    """Baut die ephemere Antwort-Nachricht mit Web-Client-Link, Pfad und Passwort."""
+    # Web-Client-URL: zeigt SFTPGo-eigenes Passwortformular statt Browser-Basic-Auth-Dialog
+    browse_url = f'{_SFTPGO_BASE_URL}/web/client/shares/{_SFTPGO_SHARE_ID}/browse'
+    rel        = _sftpgo_rel_path(path) or os.path.basename(path)
+    size       = os.path.getsize(path)
+    mb         = size / (1024 * 1024)
     return (
         f'📥 **{entry["title"]}** `[{fmt.upper()} · {mb:.1f} MB]`\n\n'
-        f'🔗 {url}\n\n'
+        f'🔗 {browse_url}\n'
+        f'📂 `{rel}`\n\n'
         f'🔑 Passwort: `{_SFTPGO_SHARE_PASSWORD}`'
     )
 
@@ -451,7 +454,7 @@ async def _send_book(interaction: discord.Interaction,
     Setzt voraus dass interaction bereits deferred ist (ephemeral)."""
     size = os.path.getsize(path)
     if size > _MAX_UPLOAD:
-        if _sftpgo_url(path):
+        if _sftpgo_configured():
             await interaction.followup.send(
                 _sftpgo_message(entry, path, fmt), ephemeral=True)
         else:
@@ -477,7 +480,7 @@ class _FormatView(discord.ui.View):
             size  = os.path.getsize(path)
             mb    = size / (1024 * 1024)
             big   = size > _MAX_UPLOAD
-            link  = big and bool(_sftpgo_url(path))
+            link  = big and bool(_sftpgo_configured())
             label = f'{_FORMAT_LABEL.get(fmt, fmt.upper())}  {mb:.1f} MB'
             if link:
                 style = discord.ButtonStyle.success   # grün  → SFTPGo-Link
