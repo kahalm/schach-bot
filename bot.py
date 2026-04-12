@@ -73,6 +73,7 @@ DM_STATE_FILE   = 'dm_state.json'
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 tree = bot.tree
 
@@ -175,6 +176,30 @@ async def on_message(message: discord.Message):
         )
 
     await bot.process_commands(message)
+
+
+@bot.event
+async def on_member_join(member: discord.Member):
+    if member.bot:
+        return
+    try:
+        dm = await member.create_dm()
+        await dm.send(
+            'Hallo! Ich bin der Schach-Bot eurer Servergruppe. ♟️\n\n'
+            '**Was ich kann:**\n'
+            '🧩 `/puzzle` — Zufällige Taktikrätsel per DM\n'
+            '♾️ `/endless` — Endlos-Modus: nach jeder Antwort kommt das nächste Puzzle\n'
+            '📖 `/train` + `/next` — Buch sequentiell durcharbeiten\n'
+            '📚 `/kurs` — Alle Puzzle-Bücher mit Fortschritt\n'
+            '📖 `/bibliothek` — Schachbuch-Bibliothek durchsuchen & downloaden\n'
+            '📊 `/stats` — Deine Statistiken\n\n'
+            'Mit `/help` siehst du alle Befehle im Detail.'
+        )
+    except discord.Forbidden:
+        log.warning('Kann DM an %s nicht senden (DMs deaktiviert).', member)
+    except Exception as e:
+        log.warning('Willkommens-DM fehlgeschlagen für %s: %s', member, e)
+
 
 # --- Slash-Commands ---
 
