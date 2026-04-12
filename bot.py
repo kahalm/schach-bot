@@ -246,16 +246,6 @@ async def cmd_help(interaction: discord.Interaction):
         inline=False,
     )
     embed.add_field(
-        name='/announce <user>',
-        value='Begrüßungsnachricht an einen User senden (nur Admins).',
-        inline=False,
-    )
-    embed.add_field(
-        name='/reindex',
-        value='Bibliotheks-Katalog neu aufbauen (nur Admins).',
-        inline=False,
-    )
-    embed.add_field(
         name='/endless [buch]',
         value='Endlos-Puzzle-Modus: nach jeder ✅/❌ kommt sofort das nächste Puzzle per DM.\n'
               'Nochmal `/endless` zum Stoppen.',
