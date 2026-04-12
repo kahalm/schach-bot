@@ -67,6 +67,18 @@ PUZZLE_HOUR     = int(os.getenv('PUZZLE_HOUR', '9'))
 PUZZLE_MINUTE   = int(os.getenv('PUZZLE_MINUTE', '0'))
 DM_STATE_FILE   = 'dm_state.json'
 
+WELCOME_MESSAGE = (
+    'Hallo! Ich bin der Schach-Bot eurer Servergruppe. ♟️\n\n'
+    '**Was ich kann:**\n'
+    '🧩 `/puzzle` — Zufällige Taktikrätsel per DM\n'
+    '♾️ `/endless` — Endlos-Modus: nach jeder Antwort kommt das nächste Puzzle\n'
+    '📖 `/train` + `/next` — Buch sequentiell durcharbeiten\n'
+    '📚 `/kurs` — Alle Puzzle-Bücher mit Fortschritt\n'
+    '📖 `/bibliothek` — Schachbuch-Bibliothek durchsuchen & downloaden\n'
+    '📊 `/stats` — Deine Statistiken\n\n'
+    'Mit `/help` siehst du alle Befehle im Detail.'
+)
+
 # ---------------------------------------------------------------------------
 # Bot
 # ---------------------------------------------------------------------------
@@ -171,17 +183,7 @@ async def on_message(message: discord.Message):
         greeted.append(user_id)
         with open(DM_STATE_FILE, 'w') as f:
             json.dump({'greeted': greeted}, f)
-        await message.channel.send(
-            'Hallo! Ich bin der Schach-Bot eurer Servergruppe. ♟️\n\n'
-            '**Was ich kann:**\n'
-            '🧩 `/puzzle` — Zufällige Taktikrätsel per DM\n'
-            '♾️ `/endless` — Endlos-Modus: nach jeder Antwort kommt das nächste Puzzle\n'
-            '📖 `/train` + `/next` — Buch sequentiell durcharbeiten\n'
-            '📚 `/kurs` — Alle Puzzle-Bücher mit Fortschritt\n'
-            '📖 `/bibliothek` — Schachbuch-Bibliothek durchsuchen & downloaden\n'
-            '📊 `/stats` — Deine Statistiken\n\n'
-            'Mit `/help` siehst du alle Befehle im Detail.'
-        )
+        await message.channel.send(WELCOME_MESSAGE)
 
     await bot.process_commands(message)
 
@@ -192,17 +194,7 @@ async def on_member_join(member: discord.Member):
         return
     try:
         dm = await member.create_dm()
-        await dm.send(
-            'Hallo! Ich bin der Schach-Bot eurer Servergruppe. ♟️\n\n'
-            '**Was ich kann:**\n'
-            '🧩 `/puzzle` — Zufällige Taktikrätsel per DM\n'
-            '♾️ `/endless` — Endlos-Modus: nach jeder Antwort kommt das nächste Puzzle\n'
-            '📖 `/train` + `/next` — Buch sequentiell durcharbeiten\n'
-            '📚 `/kurs` — Alle Puzzle-Bücher mit Fortschritt\n'
-            '📖 `/bibliothek` — Schachbuch-Bibliothek durchsuchen & downloaden\n'
-            '📊 `/stats` — Deine Statistiken\n\n'
-            'Mit `/help` siehst du alle Befehle im Detail.'
-        )
+        await dm.send(WELCOME_MESSAGE)
     except discord.Forbidden:
         log.warning('Kann DM an %s nicht senden (DMs deaktiviert).', member)
     except Exception as e:
@@ -254,6 +246,11 @@ async def cmd_help(interaction: discord.Interaction):
         inline=False,
     )
     embed.add_field(
+        name='/announce <user>',
+        value='Begrüßungsnachricht an einen User senden (nur Admins).',
+        inline=False,
+    )
+    embed.add_field(
         name='/reindex',
         value='Bibliotheks-Katalog neu aufbauen (nur Admins).',
         inline=False,
@@ -270,6 +267,24 @@ async def cmd_help(interaction: discord.Interaction):
         inline=False,
     )
     await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@tree.command(name='announce', description='Begrüßungsnachricht an einen User senden (Admin)')
+@discord.app_commands.describe(user='Der User, der die Nachricht erhalten soll')
+@discord.app_commands.default_permissions(administrator=True)
+async def cmd_announce(interaction: discord.Interaction, user: discord.User):
+    try:
+        dm = await user.create_dm()
+        await dm.send(WELCOME_MESSAGE)
+        await interaction.response.send_message(
+            f'✅ Begrüßungsnachricht an **{user.display_name}** gesendet.',
+            ephemeral=True)
+    except discord.Forbidden:
+        await interaction.response.send_message(
+            f'❌ Kann keine DM an **{user.display_name}** senden (DMs deaktiviert).',
+            ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f'❌ Fehler: {e}', ephemeral=True)
 
 
 @tree.command(name='stats', description='Nutzungsstatistiken aller User anzeigen')
