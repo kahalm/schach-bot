@@ -601,18 +601,21 @@ def upload_to_lichess(game: chess.pgn.Game,
 def upload_many_to_lichess(
     puzzles: list[tuple[chess.pgn.Game, chess.pgn.Game | None]],
     reuse_study_id: str | None = None,
-) -> str | None:
-    """Mehrere Puzzles als Gamebook-Kapitel in eine gemeinsame Lichess-Studie laden."""
+) -> list[str]:
+    """Mehrere Puzzles als Gamebook-Kapitel in eine gemeinsame Lichess-Studie laden.
+    Gibt eine Liste von Kapitel-URLs zurück (eine pro Puzzle)."""
     if _lichess_rate_limited():
         remaining = int(_lichess_cooldown_until() - _time_mod.time())
         log.info('Lichess-Multi-Upload übersprungen (Cooldown noch %ds).', remaining)
-        return None
+        return []
     if not puzzles:
-        return None
+        return []
     if len(puzzles) == 1:
-        return upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1], reuse_study_id=reuse_study_id)
+        u = upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1], reuse_study_id=reuse_study_id)
+        return [u] if u else []
     if not LICHESS_TOKEN:
-        return upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1], reuse_study_id=reuse_study_id)
+        u = upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1], reuse_study_id=reuse_study_id)
+        return [u] if u else []
 
     auth_headers = {'Authorization': f'Bearer {LICHESS_TOKEN}'}
 
@@ -647,6 +650,7 @@ def upload_many_to_lichess(
                     default_chapter_id = dg.headers.get('ChapterURL', '').rstrip('/').split('/')[-1]
 
         # Kapitel importieren
+        chapter_urls: list[str] = []
         for game, context in puzzles:
             try:
                 exp  = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
@@ -668,7 +672,13 @@ def upload_many_to_lichess(
                     remaining = puzzles[puzzles.index((game, context)):]
                     log.info('Studie %s voll – lege neue an fuer %d verbleibende Kapitel.',
                              reuse_study_id, len(remaining))
-                    return upload_many_to_lichess(remaining, reuse_study_id=None)
+                    return chapter_urls + upload_many_to_lichess(remaining, reuse_study_id=None)
+
+                if ch_id:
+                    chapter_urls.append(f'https://lichess.org/study/{study_id}/{ch_id}')
+                else:
+                    chapter_urls.append(f'https://lichess.org/study/{study_id}')
+
                 if context is not None:
                     ctx_exp = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
                     ctx_pgn = _clean_pgn_for_lichess(context.accept(ctx_exp))
@@ -684,6 +694,7 @@ def upload_many_to_lichess(
                 raise  # nach oben weitergeben → Studie wird nicht halb gefüllt
             except Exception as e:
                 log.warning('Kapitel-Import übersprungen: %s', e)
+                chapter_urls.append('')  # Platzhalter damit Index stimmt
             _time_mod.sleep(1)  # kurze Pause zwischen Kapiteln gegen Rate Limit
 
         # Auto-Kapitel löschen
@@ -693,15 +704,15 @@ def upload_many_to_lichess(
                 headers=auth_headers, timeout=10,
             )
 
-        return f'https://lichess.org/study/{study_id}'
+        return chapter_urls
     except LichessRateLimitError:
-        return None  # Cooldown bereits geloggt
+        return []  # Cooldown bereits geloggt
     except Exception as e:
         log.error('Multi-Upload fehlgeschlagen: %s', e)
-        return None
+        return []
 
 
-def build_puzzle_embed(game: chess.pgn.Game, url: str | None,
+def build_puzzle_embed(game: chess.pgn.Game,
                        turn: chess.Color | None = None,
                        puzzle_num: int = 0,
                        puzzle_total: int = 0,
@@ -789,18 +800,20 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
     upload_pairs = [(g, c) for g, c, _, _ in puzzles]
     loop = asyncio.get_running_loop()
     if len(upload_pairs) == 1:
-        url = await loop.run_in_executor(
+        u = await loop.run_in_executor(
             None, lambda: upload_to_lichess(upload_pairs[0][0], context_game=upload_pairs[0][1],
                                             reuse_study_id=reuse_study_id)
         )
+        urls = [u] if u else []
     else:
-        url = await loop.run_in_executor(
+        urls = await loop.run_in_executor(
             None, lambda: upload_many_to_lichess(upload_pairs, reuse_study_id=reuse_study_id)
         )
 
     # Studie-ID für diesen User+Tag speichern
-    if url and user_id:
-        parts = url.rstrip('/').split('/')
+    first_url = urls[0] if urls else None
+    if first_url and user_id:
+        parts = first_url.rstrip('/').split('/')
         if 'study' in parts:
             sidx = parts.index('study')
             sid  = parts[sidx + 1] if sidx + 1 < len(parts) else ''
@@ -828,6 +841,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
 
     # Alle Puzzles als einzelne Bilder posten
     for i, (game, context, diff, rating) in enumerate(puzzles):
+        puzzle_url = urls[i] if i < len(urls) else None
         puzzle_num   = (base_count + i + 1) if user_id else 0
         puzzle_total = (base_total + i + 1) if user_id else 0
         try:
@@ -839,7 +853,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
             turn = None
             img  = None
 
-        embed = build_puzzle_embed(game, url, turn=turn, puzzle_num=puzzle_num, puzzle_total=puzzle_total, difficulty=diff, rating=rating)
+        embed = build_puzzle_embed(game, turn=turn, puzzle_num=puzzle_num, puzzle_total=puzzle_total, difficulty=diff, rating=rating)
         if img:
             file = discord.File(img, filename='board.png')
             embed.set_image(url='attachment://board.png')
@@ -857,8 +871,8 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
             prelude = _prelude_pgn(context, game)
             if prelude:
                 await target.send(f'Ganze Partie: ||`{prelude}`||')
-        if url:
-            await target.send(f'[Klickbares Rätsel]({url})')
+        if puzzle_url:
+            await target.send(f'[Klickbares Rätsel]({puzzle_url})')
 
 
 # ---------------------------------------------------------------------------
@@ -1064,18 +1078,20 @@ def setup(bot: discord.ext.commands.Bot):
         upload_pairs = [(g, c) for g, c, _, _ in puzzles]
         loop = asyncio.get_running_loop()
         if len(upload_pairs) == 1:
-            url = await loop.run_in_executor(
+            u = await loop.run_in_executor(
                 None, lambda: upload_to_lichess(
                     upload_pairs[0][0], context_game=upload_pairs[0][1],
                     reuse_study_id=reuse_study_id))
+            urls = [u] if u else []
         else:
-            url = await loop.run_in_executor(
+            urls = await loop.run_in_executor(
                 None, lambda: upload_many_to_lichess(
                     upload_pairs, reuse_study_id=reuse_study_id))
 
         # Studie-ID + Zähler speichern
-        if url:
-            parts = url.rstrip('/').split('/')
+        first_url = urls[0] if urls else None
+        if first_url:
+            parts = first_url.rstrip('/').split('/')
             if 'study' in parts:
                 sidx = parts.index('study')
                 sid = parts[sidx + 1] if sidx + 1 < len(parts) else ''
@@ -1091,6 +1107,7 @@ def setup(bot: discord.ext.commands.Bot):
                             if lid.startswith(book_filename + ':'))
 
         for i, (game, context, d, r) in enumerate(puzzles):
+            puzzle_url = urls[i] if i < len(urls) else None
             puzzle_num = base_count + i + 1
             puzzle_total = base_total + i + 1
             try:
@@ -1100,7 +1117,7 @@ def setup(bot: discord.ext.commands.Bot):
             except Exception:
                 turn, img = None, None
 
-            embed = build_puzzle_embed(game, url, turn=turn,
+            embed = build_puzzle_embed(game, turn=turn,
                                        puzzle_num=puzzle_num,
                                        puzzle_total=puzzle_total,
                                        difficulty=d, rating=r)
@@ -1125,8 +1142,8 @@ def setup(bot: discord.ext.commands.Bot):
                 prelude = _prelude_pgn(context, game)
                 if prelude:
                     await dm.send(f'Ganze Partie: ||`{prelude}`||')
-            if url:
-                await dm.send(f'[Klickbares Rätsel]({url})')
+            if puzzle_url:
+                await dm.send(f'[Klickbares Rätsel]({puzzle_url})')
 
         name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
         await interaction.followup.send(
