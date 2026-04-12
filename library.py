@@ -293,9 +293,6 @@ def build_library_catalog() -> tuple[int, int, int, int, int]:
         # Sidecar-JSON prüfen (beim besten File der Gruppe)
         sidecar = _load_sidecar(path)
 
-        # manual_tags aus altem Eintrag übernehmen
-        prev_manual = old_entry.get('manual_tags', []) if old_entry else []
-
         if sidecar:
             sc_author = ', '.join(sidecar['author']) if isinstance(sidecar.get('author'), list) else sidecar.get('author', author)
             sc_title  = sidecar.get('title', stem or title)
@@ -305,15 +302,14 @@ def build_library_catalog() -> tuple[int, int, int, int, int]:
             sc_elo    = sidecar.get('targetMinElo')
             sc_fav    = sidecar.get('favorite', [])
             sc_size   = sidecar.get('size')
-            merged_manual = sorted(set(prev_manual + sc_tags))
-            auto_tags = sorted(set(merged_manual + _auto_tag(sc_title, sc_author, ext)))
+            auto_tags = sorted(set(sc_tags + _auto_tag(sc_title, sc_author, ext)))
             new_entry = {
                 'id':           entry_id,
                 'title':        sc_title,
                 'author':       sc_author,
                 'year':         sc_year,
                 'tags':         auto_tags,
-                'manual_tags':  merged_manual,
+                'manual_tags':  sc_tags,
                 'file_type':    sc_format,
                 'targetMinElo': sc_elo,
                 'favorite':     sc_fav,
@@ -323,14 +319,14 @@ def build_library_catalog() -> tuple[int, int, int, int, int]:
         else:
             years = [e[2] for e in entries if e[2]]
             chosen_year = max(set(years), key=years.count) if years else None
-            auto_tags = sorted(set(prev_manual + _auto_tag(stem, author, ext)))
+            auto_tags = _auto_tag(stem, author, ext)
             new_entry = {
                 'id':          entry_id,
                 'title':       stem if stem else title,
                 'author':      author,
                 'year':        chosen_year,
                 'tags':        auto_tags,
-                'manual_tags': prev_manual,
+                'manual_tags': [],
                 'file_type':   ext,
                 'files':       [e[4] for e in entries],
             }
