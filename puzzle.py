@@ -719,12 +719,6 @@ def build_puzzle_embed(game: chess.pgn.Game, url: str | None,
         stats = f'Heute: **{puzzle_num}** · Gesamt: **{puzzle_total}**'
         embed.add_field(name='\u200b', value=stats, inline=False)
 
-    if url:
-        embed.add_field(name='🔗 Lichess', value=f'[Lösung]({url})', inline=False)
-    elif _lichess_rate_limited():
-        minutes = max(1, int((_lichess_cooldown_until() - _time_mod.time()) / 60) + 1)
-        embed.add_field(name='⏳ Lichess', value=f'Nächster Link in ca. {minutes} Minuten', inline=False)
-
     embed.set_footer(text='🧩 Tägliches Puzzle')
     return embed
 
@@ -813,7 +807,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         )
 
     # Alle Puzzles als einzelne Bilder posten
-    for i, (game, _, diff, rating) in enumerate(puzzles):
+    for i, (game, context, diff, rating) in enumerate(puzzles):
         puzzle_num   = (base_count + i + 1) if user_id else 0
         puzzle_total = (base_total + i + 1) if user_id else 0
         try:
@@ -838,7 +832,13 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
             headers=False, variations=True, comments=False)
         pgn_moves = game.accept(exporter).strip()
         if pgn_moves:
-            await target.send(f'||`{pgn_moves}`||')
+            await target.send(f'Lösung: ||`{pgn_moves}`||')
+        if context:
+            full_pgn = context.accept(exporter).strip()
+            if full_pgn and full_pgn != pgn_moves:
+                await target.send(f'Ganze Partie: ||`{full_pgn}`||')
+        if url:
+            await target.send(f'[Klickbares Rätsel]({url})')
 
 
 # ---------------------------------------------------------------------------
@@ -1070,7 +1070,7 @@ def setup(bot: discord.ext.commands.Bot):
         total_in_book = sum(1 for lid, _ in all_book_lines
                             if lid.startswith(book_filename + ':'))
 
-        for i, (game, _, d, r) in enumerate(puzzles):
+        for i, (game, context, d, r) in enumerate(puzzles):
             puzzle_num = base_count + i + 1
             puzzle_total = base_total + i + 1
             try:
@@ -1100,7 +1100,13 @@ def setup(bot: discord.ext.commands.Bot):
                 headers=False, variations=True, comments=False)
             pgn_moves = game.accept(exporter).strip()
             if pgn_moves:
-                await dm.send(f'||`{pgn_moves}`||')
+                await dm.send(f'Lösung: ||`{pgn_moves}`||')
+            if context:
+                full_pgn = context.accept(exporter).strip()
+                if full_pgn and full_pgn != pgn_moves:
+                    await dm.send(f'Ganze Partie: ||`{full_pgn}`||')
+            if url:
+                await dm.send(f'[Klickbares Rätsel]({url})')
 
         name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
         await interaction.followup.send(
