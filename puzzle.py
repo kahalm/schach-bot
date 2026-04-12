@@ -140,8 +140,8 @@ async def post_next_endless(bot, user_id: int):
     except Exception:
         turn, img = None, None
 
-    embed = build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating)
-    embed.set_footer(text=f'♾️ Endless-Modus · Puzzle #{session["count"]}')
+    embed = build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating, line_id=line_id)
+    embed.set_footer(text=f'♾️ Endless-Modus · Puzzle #{session["count"]} · ID: {line_id}')
 
     if img:
         file = discord.File(img, filename='board.png')
@@ -478,6 +478,21 @@ def pick_random_line() -> tuple[str, chess.pgn.Game] | None:
     """Kompatibilitäts-Wrapper – wählt genau eine Linie."""
     result = pick_random_lines(1)
     return result[0] if result else None
+
+def find_line_by_id(line_id: str) -> tuple[str, chess.pgn.Game] | None:
+    """Sucht eine Linie anhand ihrer line_id (exakt oder Suffix-Match)."""
+    all_lines = load_all_lines()
+    # Exakter Treffer
+    for lid, game in all_lines:
+        if lid == line_id:
+            return (lid, game)
+    # Suffix-Match (z.B. "Know_firstkey.pgn:003.007" matcht
+    # "100 Tactical Patterns You Must Know_firstkey.pgn:003.007")
+    for lid, game in all_lines:
+        if lid.endswith(line_id):
+            return (lid, game)
+    return None
+
 
 def _prelude_pgn(context: chess.pgn.Game, puzzle: chess.pgn.Game) -> str:
     """Züge aus context VOR der Puzzle-Startstellung exportieren (ohne Lösung)."""
@@ -870,7 +885,8 @@ def build_puzzle_embed(game: chess.pgn.Game,
                        puzzle_num: int = 0,
                        puzzle_total: int = 0,
                        difficulty: str = '',
-                       rating: int = 0) -> discord.Embed:
+                       rating: int = 0,
+                       line_id: str = '') -> discord.Embed:
     h = dict(game.headers)
     line_name  = h.get('White', h.get('Event', 'Linie'))
     event_name = h.get('Event', '')
@@ -905,7 +921,8 @@ def build_puzzle_embed(game: chess.pgn.Game,
         stats = f'Heute: **{puzzle_num}** · Gesamt: **{puzzle_total}**'
         embed.add_field(name='\u200b', value=stats, inline=False)
 
-    embed.set_footer(text='🧩 Tägliches Puzzle')
+    footer = f'ID: {line_id}' if line_id else '🧩 Tägliches Puzzle'
+    embed.set_footer(text=footer)
     return embed
 
 async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int | None = None):
@@ -1008,7 +1025,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
             turn = None
             img  = None
 
-        embed = build_puzzle_embed(game, turn=turn, puzzle_num=puzzle_num, puzzle_total=puzzle_total, difficulty=diff, rating=rating)
+        embed = build_puzzle_embed(game, turn=turn, puzzle_num=puzzle_num, puzzle_total=puzzle_total, difficulty=diff, rating=rating, line_id=lid)
         if img:
             file = discord.File(img, filename='board.png')
             embed.set_image(url='attachment://board.png')
@@ -1048,12 +1065,68 @@ def setup(bot: discord.ext.commands.Bot):
     @discord.app_commands.describe(
         anzahl='Anzahl Puzzles (1–20, Standard: 1)',
         buch='Buchnummer aus /kurs (Standard: alle Bücher)',
+        id='Puzzle-ID (z.B. datei.pgn:123) – zeigt genau dieses Puzzle',
     )
-    async def cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: int = 0):
-        log.info('/puzzle von %s: anzahl=%d buch=%d', interaction.user, anzahl, buch)
+    async def cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: int = 0, id: str = ''):
+        log.info('/puzzle von %s: anzahl=%d buch=%d id=%s', interaction.user, anzahl, buch, id)
         await interaction.response.defer(ephemeral=True)
         try:
             dm = await interaction.user.create_dm()
+
+            if id:
+                result = find_line_by_id(id)
+                if not result:
+                    await interaction.followup.send(f'⚠️ Puzzle `{id}` nicht gefunden.', ephemeral=True)
+                    return
+                line_id, original_game = result
+                game = _trim_to_training_position(original_game)
+                context = original_game if game is not original_game else None
+
+                books_config = _load_books_config()
+                fname = line_id.split(':')[0]
+                book_meta = books_config.get(fname, {})
+                diff = book_meta.get('difficulty', '')
+                rating = book_meta.get('rating', 0)
+
+                # Upload
+                reuse_study_id = _get_user_study_id(interaction.user.id)
+                loop = asyncio.get_running_loop()
+                puzzle_url = await loop.run_in_executor(
+                    None, lambda: upload_to_lichess(game, context_game=context,
+                                                     reuse_study_id=reuse_study_id))
+
+                try:
+                    board = game.board()
+                    turn = board.turn
+                    img = _render_board(board)
+                except Exception:
+                    turn, img = None, None
+
+                embed = build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating, line_id=line_id)
+                if img:
+                    file = discord.File(img, filename='board.png')
+                    embed.set_image(url='attachment://board.png')
+                    msg = await dm.send(file=file, embed=embed)
+                else:
+                    msg = await dm.send(embed=embed)
+                _register_puzzle_msg(msg.id, line_id)
+                for emoji in ('✅', '❌', '👍', '👎'):
+                    await msg.add_reaction(emoji)
+
+                exporter = chess.pgn.StringExporter(headers=False, variations=True, comments=False)
+                pgn_moves = game.accept(exporter).strip()
+                if pgn_moves:
+                    await dm.send(f'Lösung: ||`{pgn_moves}`||')
+                if context:
+                    prelude = _prelude_pgn(context, game)
+                    if prelude:
+                        await dm.send(f'Ganze Partie: ||`{prelude}`||')
+                if puzzle_url:
+                    await dm.send(f'[Klickbares Rätsel]({puzzle_url})')
+
+                await interaction.followup.send(f'✅ Puzzle `{line_id}` per DM gesendet.', ephemeral=True)
+                return
+
             await post_puzzle(dm, count=anzahl, book_idx=buch, user_id=interaction.user.id)
             await interaction.followup.send(f'✅ {anzahl} Puzzle(s) wurde(n) dir per DM gesendet.', ephemeral=True)
         except Exception as e:
@@ -1281,10 +1354,11 @@ def setup(bot: discord.ext.commands.Bot):
             embed = build_puzzle_embed(game, turn=turn,
                                        puzzle_num=puzzle_num,
                                        puzzle_total=puzzle_total,
-                                       difficulty=d, rating=r)
-            # Fortschrittsanzeige im Footer
+                                       difficulty=d, rating=r,
+                                       line_id=lid)
+            # Fortschrittsanzeige im Footer (überschreibt line_id-Footer)
             embed.set_footer(
-                text=f'📖 Training: {position + i + 1}/{total_in_book}')
+                text=f'📖 Training: {position + i + 1}/{total_in_book} · ID: {lid}')
 
             if img:
                 file = discord.File(img, filename='board.png')
