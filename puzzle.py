@@ -135,7 +135,7 @@ async def post_next_endless(bot, user_id: int):
 
     try:
         board = game.board()
-        turn = not board.turn
+        turn = board.turn
         img = _render_board(board)
     except Exception:
         turn, img = None, None
@@ -998,7 +998,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         puzzle_total = (base_total + i + 1) if user_id else 0
         try:
             board = game.board()
-            turn  = not board.turn  # Lichess spielt den 1. Zug als Setup
+            turn  = board.turn
             img   = _render_board(board)
         except Exception as e:
             log.warning('Board-Render fehlgeschlagen: %s', e)
@@ -1270,7 +1270,7 @@ def setup(bot: discord.ext.commands.Bot):
             puzzle_total = base_total + i + 1
             try:
                 board = game.board()
-                turn = not board.turn  # Lichess spielt den 1. Zug als Setup
+                turn = board.turn  # Lichess spielt den 1. Zug als Setup
                 img = _render_board(board)
             except Exception:
                 turn, img = None, None
