@@ -379,7 +379,7 @@ def _author_str(author) -> str:
 
 def _search_library(query: str, limit: int = 25) -> list[dict]:
     catalog = _ensure_library()
-    words = query.lower().split()
+    words = re.sub(r'[^\w\s]', '', query.lower()).split()
     if not words:
         return []
     scored: list[tuple[int, dict]] = []
