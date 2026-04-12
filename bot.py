@@ -355,12 +355,17 @@ def _get_user_puzzle_count(user_id: int) -> tuple[int, int]:
 
 def _set_user_study_id(user_id: int, study_id: str, count: int, total: int):
     data = _load_user_studies()
-    data[str(user_id)] = {
+    key = str(user_id)
+    prev = data.get(key) if isinstance(data.get(key), dict) else {}
+    data[key] = {
         'id':    study_id,
         'today': _date.today().isoformat(),
         'count': count,
         'total': total,
     }
+    # Training-State beibehalten
+    if 'training' in prev:
+        data[key]['training'] = prev['training']
     _save_user_studies(data)
     log.info('User-Studie gespeichert: user=%s study_id=%s count=%d total=%d', user_id, study_id, count, total)
 
@@ -372,6 +377,39 @@ def _load_books_config() -> dict:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
+
+def _get_user_training(user_id: int) -> dict | None:
+    """Gibt {'book': ..., 'position': ...} oder None zurück."""
+    entry = _load_user_studies().get(str(user_id))
+    if isinstance(entry, dict):
+        return entry.get('training')
+    return None
+
+def _set_user_training(user_id: int, book: str, position: int):
+    """Setzt das Trainingsbuch und die Position für den User."""
+    data = _load_user_studies()
+    key = str(user_id)
+    if key not in data or not isinstance(data[key], dict):
+        data[key] = {}
+    data[key]['training'] = {'book': book, 'position': position}
+    _save_user_studies(data)
+
+def _clear_user_training(user_id: int):
+    """Entfernt die Trainingsbuch-Zuordnung."""
+    data = _load_user_studies()
+    key = str(user_id)
+    if key in data and isinstance(data[key], dict):
+        data[key].pop('training', None)
+        _save_user_studies(data)
+
+def pick_sequential_lines(book_filename: str, start: int, count: int
+                          ) -> list[tuple[str, chess.pgn.Game]]:
+    """Gibt bis zu `count` Linien ab Position `start` zurück (sequentiell)."""
+    all_lines = load_all_lines()
+    book_lines = [(lid, g) for lid, g in all_lines
+                  if lid.startswith(book_filename + ':')]
+    end = min(start + count, len(book_lines))
+    return book_lines[start:end]
 
 def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
     """Alle Linien aus .pgn-Dateien in BOOKS_DIR laden."""
@@ -1108,6 +1146,168 @@ async def cmd_buecher(interaction: discord.Interaction):
     except Exception as e:
         await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
 
+@tree.command(name='train', description='Buch für sequentielles Training auswählen')
+@discord.app_commands.describe(
+    buch='Buchnummer aus /books (0 = Training beenden)',
+)
+async def cmd_train(interaction: discord.Interaction, buch: int):
+    await interaction.response.defer(ephemeral=True)
+    user_id = interaction.user.id
+
+    if buch == 0:
+        _clear_user_training(user_id)
+        await interaction.followup.send('🔓 Training beendet.', ephemeral=True)
+        return
+
+    # Buch validieren
+    if not os.path.isdir(BOOKS_DIR):
+        await interaction.followup.send('⚠️ Kein books-Ordner.', ephemeral=True)
+        return
+    books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
+    if buch < 1 or buch > len(books):
+        await interaction.followup.send(
+            f'⚠️ Buch {buch} nicht gefunden. `/books` zeigt die Liste.', ephemeral=True)
+        return
+
+    book_filename = books[buch - 1]
+    # Aktuelle Position beibehalten falls selbes Buch
+    training = _get_user_training(user_id)
+    if training and training.get('book') == book_filename:
+        pos = training['position']
+    else:
+        pos = 0
+
+    _set_user_training(user_id, book_filename, pos)
+
+    # Info anzeigen
+    all_lines = load_all_lines()
+    total = sum(1 for lid, _ in all_lines if lid.startswith(book_filename + ':'))
+    name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+    books_config = _load_books_config()
+    meta = books_config.get(book_filename, {})
+    diff = meta.get('difficulty', '')
+    rat = meta.get('rating', 0)
+    stars = ('★' * rat + '☆' * (10 - rat)) if rat else ''
+
+    embed = discord.Embed(title=f'📖 Training: {name}', color=0x7fa650)
+    embed.add_field(name='Fortschritt', value=f'{pos}/{total} Linien', inline=True)
+    if diff:
+        embed.add_field(name='Schwierigkeit',
+                        value=f'{diff}  {stars}' if stars else diff, inline=True)
+    embed.add_field(name='Nächster Schritt',
+                    value='`/next` `/next 5` `/next 10`', inline=False)
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+@tree.command(name='next', description='Nächste Linie(n) aus dem Trainingsbuch')
+@discord.app_commands.describe(
+    anzahl='Anzahl Linien (Standard: 1, max 20)',
+)
+async def cmd_next(interaction: discord.Interaction, anzahl: int = 1):
+    await interaction.response.defer(ephemeral=True)
+    user_id = interaction.user.id
+    anzahl = max(1, min(anzahl, 20))
+
+    training = _get_user_training(user_id)
+    if not training:
+        await interaction.followup.send(
+            '⚠️ Kein Trainingsbuch gewählt. Nutze `/train <buch>` zuerst.',
+            ephemeral=True)
+        return
+
+    book_filename = training['book']
+    position = training.get('position', 0)
+
+    results = pick_sequential_lines(book_filename, position, anzahl)
+    if not results:
+        name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+        # Position auf 0 zurücksetzen
+        _set_user_training(user_id, book_filename, 0)
+        await interaction.followup.send(
+            f'✅ Alle Linien in **{name}** durchgearbeitet! '
+            f'Nutze `/train` erneut zum Zurücksetzen oder wähle ein neues Buch.',
+            ephemeral=True)
+        return
+
+    # Position updaten
+    new_position = position + len(results)
+    _set_user_training(user_id, book_filename, new_position)
+
+    # Puzzles aufbereiten (wie in post_puzzle)
+    books_config = _load_books_config()
+    meta = books_config.get(book_filename, {})
+    diff = meta.get('difficulty', '')
+    rating = meta.get('rating', 0)
+
+    puzzles = []
+    for line_id, original_game in results:
+        game = _trim_to_training_position(original_game)
+        context = original_game if game is not original_game else None
+        puzzles.append((game, context, diff, rating))
+
+    # Upload (Studien-Reuse wie bei /puzzle)
+    reuse_study_id = _get_user_study_id(user_id)
+    base_count, base_total = _get_user_puzzle_count(user_id)
+
+    upload_pairs = [(g, c) for g, c, _, _ in puzzles]
+    loop = asyncio.get_running_loop()
+    if len(upload_pairs) == 1:
+        url = await loop.run_in_executor(
+            None, lambda: upload_to_lichess(
+                upload_pairs[0][0], context_game=upload_pairs[0][1],
+                reuse_study_id=reuse_study_id))
+    else:
+        url = await loop.run_in_executor(
+            None, lambda: upload_many_to_lichess(
+                upload_pairs, reuse_study_id=reuse_study_id))
+
+    # Studie-ID + Zähler speichern
+    if url:
+        parts = url.rstrip('/').split('/')
+        if 'study' in parts:
+            sidx = parts.index('study')
+            sid = parts[sidx + 1] if sidx + 1 < len(parts) else ''
+            if sid:
+                _set_user_study_id(user_id, sid,
+                                   base_count + len(puzzles),
+                                   base_total + len(puzzles))
+
+    # DM senden
+    dm = await interaction.user.create_dm()
+    all_book_lines = load_all_lines()
+    total_in_book = sum(1 for lid, _ in all_book_lines
+                        if lid.startswith(book_filename + ':'))
+
+    for i, (game, _, d, r) in enumerate(puzzles):
+        puzzle_num = base_count + i + 1
+        puzzle_total = base_total + i + 1
+        try:
+            board = game.board()
+            turn = board.turn
+            img = _render_board(board)
+        except Exception:
+            turn, img = None, None
+
+        embed = build_puzzle_embed(game, url, turn=turn,
+                                   puzzle_num=puzzle_num,
+                                   puzzle_total=puzzle_total,
+                                   difficulty=d, rating=r)
+        # Fortschrittsanzeige im Footer
+        embed.set_footer(
+            text=f'📖 Training: {position + i + 1}/{total_in_book}')
+
+        if img:
+            file = discord.File(img, filename='board.png')
+            embed.set_image(url='attachment://board.png')
+            await dm.send(file=file, embed=embed)
+        else:
+            await dm.send(embed=embed)
+
+    name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+    await interaction.followup.send(
+        f'✅ {len(results)} Linie(n) aus **{name}** per DM gesendet '
+        f'({new_position}/{total_in_book}).',
+        ephemeral=True)
+
 @tree.command(name='help', description='Alle verfügbaren Befehle anzeigen')
 async def cmd_help(interaction: discord.Interaction):
     embed = discord.Embed(title='♟️ Bot-Befehle', color=0x4e9e4e)
@@ -1131,6 +1331,18 @@ async def cmd_help(interaction: discord.Interaction):
     embed.add_field(
         name='/books',
         value='Alle verfügbaren Puzzle-Bücher mit Fortschritt anzeigen.',
+        inline=False,
+    )
+    embed.add_field(
+        name='/train <buch>',
+        value='Buch für sequentielles Training wählen (Nummer aus `/books`).\n'
+              '`/train 0` beendet das Training.',
+        inline=False,
+    )
+    embed.add_field(
+        name='/next [anzahl]',
+        value='Nächste Linie(n) aus dem Trainingsbuch per DM senden.\n'
+              '`/next` — 1 Linie · `/next 5` — 5 Linien · `/next 10` — 10 Linien',
         inline=False,
     )
     embed.add_field(
