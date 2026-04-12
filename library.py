@@ -255,7 +255,8 @@ def build_library_catalog() -> tuple[int, int, int, int, int]:
         # Alle in die erste Gruppe zusammenlegen
         target = keys[0]
         for other in keys[1:]:
-            groups[target].extend(groups.pop(other))
+            if other in groups:
+                groups[target].extend(groups.pop(other))
 
     # IDs aus index.txt ermitteln — Eintrag mit Sidecar als "best" bevorzugen
     index_ids: dict[str, tuple] = {}
