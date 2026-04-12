@@ -29,6 +29,9 @@ _puzzle_msg_ids: dict[int, str] = {}   # msg_id → line_id
 _PUZZLE_REACTIONS = {'✅', '❌', '👍', '👎', '🚮'}
 IGNORE_FILE = 'puzzle_ignore.json'
 
+# Endless-Modus: aktive Sessions (in-memory)
+_endless_sessions: dict[int, dict] = {}   # user_id → {'book': str|None, 'count': int}
+
 def _register_puzzle_msg(msg_id: int, line_id: str):
     _puzzle_msg_ids[msg_id] = line_id
 
@@ -58,6 +61,113 @@ def unignore_puzzle(line_id: str):
     ignored = _load_ignore_list()
     ignored.discard(line_id)
     _save_ignore_list(ignored)
+
+
+# --- Endless-Modus ---
+
+def start_endless(user_id: int, book_filename: str | None = None):
+    _endless_sessions[user_id] = {'book': book_filename, 'count': 0}
+
+def stop_endless(user_id: int) -> int:
+    """Session beenden, gibt Anzahl gelöster Puzzles zurück."""
+    session = _endless_sessions.pop(user_id, None)
+    return session['count'] if session else 0
+
+def is_endless(user_id: int) -> bool:
+    return user_id in _endless_sessions
+
+
+async def post_next_endless(bot, user_id: int):
+    """Nächstes Puzzle im Endless-Modus per DM senden."""
+    session = _endless_sessions.get(user_id)
+    if not session:
+        return
+
+    book_filename = session['book']
+    results = pick_random_lines(1, book_filename)
+    if not results:
+        # Keine Puzzles mehr → Session beenden
+        try:
+            user = await bot.fetch_user(user_id)
+            dm = await user.create_dm()
+            await dm.send('⚠️ Keine weiteren Puzzles verfügbar. Endless-Modus beendet.')
+        except Exception as e:
+            log.warning('Endless-Ende-DM fehlgeschlagen: %s', e)
+        _endless_sessions.pop(user_id, None)
+        return
+
+    line_id, original_game = results[0]
+    game = _trim_to_training_position(original_game)
+    context = original_game if game is not original_game else None
+
+    books_config = _load_books_config()
+    fname = line_id.split(':')[0]
+    book_meta = books_config.get(fname, {})
+    diff = book_meta.get('difficulty', '')
+    rating = book_meta.get('rating', 0)
+
+    # Upload
+    reuse_study_id = _get_user_study_id(user_id)
+    loop = asyncio.get_running_loop()
+    puzzle_url = await loop.run_in_executor(
+        None, lambda: upload_to_lichess(game, context_game=context,
+                                         reuse_study_id=reuse_study_id))
+
+    # Studie-ID speichern
+    if puzzle_url:
+        parts = puzzle_url.rstrip('/').split('/')
+        if 'study' in parts:
+            sidx = parts.index('study')
+            sid = parts[sidx + 1] if sidx + 1 < len(parts) else ''
+            if sid:
+                base_count, base_total = _get_user_puzzle_count(user_id)
+                _set_user_study_id(user_id, sid, base_count + 1, base_total + 1)
+
+    session['count'] += 1
+
+    # DM senden
+    try:
+        user = await bot.fetch_user(user_id)
+        dm = await user.create_dm()
+    except Exception as e:
+        log.warning('Endless-DM fehlgeschlagen: %s', e)
+        return
+
+    try:
+        board = game.board()
+        turn = not board.turn
+        img = _render_board(board)
+    except Exception:
+        turn, img = None, None
+
+    embed = build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating)
+    embed.set_footer(text=f'♾️ Endless-Modus · Puzzle #{session["count"]}')
+
+    if img:
+        file = discord.File(img, filename='board.png')
+        embed.set_image(url='attachment://board.png')
+        msg = await dm.send(file=file, embed=embed)
+    else:
+        msg = await dm.send(embed=embed)
+
+    _register_puzzle_msg(msg.id, line_id)
+    for emoji in ('✅', '❌', '👍', '👎'):
+        await msg.add_reaction(emoji)
+
+    # Lösung als Spoiler
+    exporter = chess.pgn.StringExporter(headers=False, variations=True, comments=False)
+    pgn_moves = game.accept(exporter).strip()
+    if pgn_moves:
+        await dm.send(f'Lösung: ||`{pgn_moves}`||')
+    if context:
+        prelude = _prelude_pgn(context, game)
+        if prelude:
+            await dm.send(f'Ganze Partie: ||`{prelude}`||')
+    if puzzle_url:
+        await dm.send(f'[Klickbares Rätsel]({puzzle_url})')
+
+    stats.inc(user_id, 'puzzles', 1)
+
 
 # --- Config (aus Umgebung) ---
 
@@ -1202,3 +1312,51 @@ def setup(bot: discord.ext.commands.Bot):
             f'✅ {len(results)} Linie(n) aus **{name}** per DM gesendet '
             f'({new_position}/{total_in_book}).',
             ephemeral=True)
+
+    @tree.command(name='endless', description='Endlos-Puzzle-Modus starten/stoppen')
+    @discord.app_commands.describe(
+        buch='Buchnummer aus /kurs (Standard: alle Bücher)',
+    )
+    async def cmd_endless(interaction: discord.Interaction, buch: int = 0):
+        user_id = interaction.user.id
+        log.info('/endless von %s: buch=%d', interaction.user, buch)
+
+        # Toggle: wenn bereits aktiv → stoppen
+        if is_endless(user_id):
+            count = stop_endless(user_id)
+            await interaction.response.send_message(
+                f'⏹️ Endless-Modus beendet! **{count}** Puzzle(s) gelöst.',
+                ephemeral=True)
+            return
+
+        # Buch validieren
+        book_filename = None
+        if buch > 0:
+            if os.path.isdir(BOOKS_DIR):
+                books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
+                if 1 <= buch <= len(books):
+                    book_filename = books[buch - 1]
+                else:
+                    await interaction.response.send_message(
+                        f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die verfügbaren Bücher.',
+                        ephemeral=True)
+                    return
+
+        start_endless(user_id, book_filename)
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            await post_next_endless(bot, user_id)
+            book_info = ''
+            if book_filename:
+                name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+                book_info = f' (Buch: **{name}**)'
+            await interaction.followup.send(
+                f'♾️ Endless-Modus gestartet{book_info}! '
+                f'Erstes Puzzle per DM gesendet.\n'
+                f'Nach jeder ✅/❌ kommt sofort das nächste. '
+                f'Nochmal `/endless` zum Stoppen.',
+                ephemeral=True)
+        except Exception as e:
+            stop_endless(user_id)
+            await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)

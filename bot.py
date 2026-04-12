@@ -110,8 +110,14 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
                 await dm.send(f'🚮 Puzzle ignoriert und wird nicht mehr erscheinen:\n`{line_id}`')
             except Exception as e:
                 log.warning('Ignore-DM fehlgeschlagen: %s', e)
+        # Endless: nach 🚮 auch nächstes Puzzle senden
+        if puzzle.is_endless(payload.user_id):
+            await puzzle.post_next_endless(bot, payload.user_id)
     else:
         stats.inc(payload.user_id, f'reaction_{emoji}')
+        # Endless: nach ✅/❌ nächstes Puzzle senden
+        if emoji in ('✅', '❌') and puzzle.is_endless(payload.user_id):
+            await puzzle.post_next_endless(bot, payload.user_id)
 
 
 @bot.event
@@ -211,6 +217,12 @@ async def cmd_help(interaction: discord.Interaction):
     embed.add_field(
         name='/reindex',
         value='Bibliotheks-Katalog neu aufbauen (nur Admins).',
+        inline=False,
+    )
+    embed.add_field(
+        name='/endless [buch]',
+        value='Endlos-Puzzle-Modus: nach jeder ✅/❌ kommt sofort das nächste Puzzle per DM.\n'
+              'Nochmal `/endless` zum Stoppen.',
         inline=False,
     )
     embed.add_field(
