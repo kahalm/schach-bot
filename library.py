@@ -228,7 +228,7 @@ def build_library_catalog() -> tuple[int, int, int, int, int]:
     old_by_id = {e['id']: e for e in old_catalog}
 
     with open(LIBRARY_INDEX, encoding='utf-8', errors='replace') as f:
-        raw_lines = [l.strip() for l in f if l.strip()]
+        raw_lines = list(dict.fromkeys(l.strip() for l in f if l.strip()))
 
     # index.txt parsen und gruppieren (Autor + Titel-Stem)
     groups: dict[str, list[tuple]] = defaultdict(list)
@@ -257,13 +257,20 @@ def build_library_catalog() -> tuple[int, int, int, int, int]:
         for other in keys[1:]:
             groups[target].extend(groups.pop(other))
 
-    # IDs aus index.txt ermitteln
+    # IDs aus index.txt ermitteln — Eintrag mit Sidecar als "best" bevorzugen
     index_ids: dict[str, tuple] = {}
     for key, entries in groups.items():
         entries.sort(key=lambda e: _FILE_PRIO.get(e[3], 99))
+        # Eintrag mit Sidecar nach vorne
+        best_idx = 0
+        for i, e in enumerate(entries):
+            if _load_sidecar(e[4]):
+                best_idx = i
+                break
+        if best_idx:
+            entries.insert(0, entries.pop(best_idx))
         best = entries[0]
         author, title, year, ext, path, stem = best
-        # Sidecar-Autor bevorzugen falls vorhanden
         sidecar = _load_sidecar(path)
         if sidecar:
             sc_author = sidecar.get('author', author)
