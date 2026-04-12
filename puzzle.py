@@ -1095,6 +1095,13 @@ def setup(bot: discord.ext.commands.Bot):
             else:
                 await dm.send(embed=embed)
 
+            # PGN-Lösung als Spoiler
+            exporter = chess.pgn.StringExporter(
+                headers=False, variations=True, comments=False)
+            pgn_moves = game.accept(exporter).strip()
+            if pgn_moves:
+                await dm.send(f'||`{pgn_moves}`||')
+
         name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
         await interaction.followup.send(
             f'✅ {len(results)} Linie(n) aus **{name}** per DM gesendet '
