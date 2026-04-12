@@ -163,9 +163,15 @@ async def on_message(message: discord.Message):
         with open(DM_STATE_FILE, 'w') as f:
             json.dump({'greeted': greeted}, f)
         await message.channel.send(
-            'Hallo! Ich bin der Schach-Bot eurer Servergruppe. ♟️\n'
-            'Ich poste täglich eine Partie und ein Taktikrätsel.\n\n'
-            'Mit `/help` siehst du alle verfügbaren Befehle.'
+            'Hallo! Ich bin der Schach-Bot eurer Servergruppe. ♟️\n\n'
+            '**Was ich kann:**\n'
+            '🧩 `/puzzle` — Zufällige Taktikrätsel per DM\n'
+            '♾️ `/endless` — Endlos-Modus: nach jeder Antwort kommt das nächste Puzzle\n'
+            '📖 `/train` + `/next` — Buch sequentiell durcharbeiten\n'
+            '📚 `/kurs` — Alle Puzzle-Bücher mit Fortschritt\n'
+            '📖 `/bibliothek` — Schachbuch-Bibliothek durchsuchen & downloaden\n'
+            '📊 `/stats` — Deine Statistiken\n\n'
+            'Mit `/help` siehst du alle Befehle im Detail.'
         )
 
     await bot.process_commands(message)
