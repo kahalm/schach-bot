@@ -111,6 +111,14 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
                 await dm.send(f'🚮 Puzzle ignoriert und wird nicht mehr erscheinen:\n`{line_id}`')
             except Exception as e:
                 log.warning('Ignore-DM fehlgeschlagen: %s', e)
+        # Thread (daily): Entschuldigung + Ersatz-Puzzle posten
+        channel = bot.get_channel(payload.channel_id)
+        if channel and isinstance(channel, discord.Thread):
+            await channel.send('🚮 Sorry für das schlechte Puzzle! Hier kommt ein neues:')
+            try:
+                await puzzle.post_puzzle(channel)
+            except Exception as e:
+                log.warning('Ersatz-Puzzle im Thread fehlgeschlagen: %s', e)
         # Endless: nach 🚮 auch nächstes Puzzle senden
         if puzzle.is_endless(payload.user_id):
             await puzzle.post_next_endless(bot, payload.user_id)
