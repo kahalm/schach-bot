@@ -381,6 +381,83 @@ def _build_library_embed(entries: list[dict], page: int, total_pages: int,
 
 _MAX_UPLOAD = 8 * 1024 * 1024  # Discord-Limit 8 MB (ohne Nitro)
 
+_FORMAT_EMOJI = {'pdf': '📕', 'djvu': '📘', 'epub': '📗'}
+_FORMAT_LABEL = {'pdf': 'PDF', 'djvu': 'DJVU', 'epub': 'EPUB'}
+
+
+def _collect_formats(entry: dict) -> dict[str, str]:
+    """Gibt {ext: lokaler_pfad} für alle auf der Disk vorhandenen Formatvarianten zurück.
+
+    Prüft entry['files'] sowie Geschwisterdateien mit gleichem Stem
+    (die von convert_formats.sh erzeugt wurden).
+    """
+    found: dict[str, str] = {}
+    stems: set[str] = set()
+
+    for f in entry.get('files', []):
+        local = _local_path(f)
+        if not os.path.isfile(local):
+            continue
+        raw = os.path.splitext(local)[1].lower().lstrip('.')
+        canon = 'djvu' if raw == 'djv' else raw
+        if canon in ('pdf', 'djvu', 'epub') and canon not in found:
+            found[canon] = local
+        stems.add(os.path.splitext(local)[0])
+
+    # Geschwisterdateien prüfen (z. B. durch Konvertierung erzeugt)
+    for stem in stems:
+        for ext in ('pdf', 'djvu', 'epub'):
+            if ext not in found and os.path.isfile(f'{stem}.{ext}'):
+                found[ext] = f'{stem}.{ext}'
+
+    return found
+
+
+async def _send_book(interaction: discord.Interaction,
+                     entry: dict, path: str, fmt: str) -> None:
+    """Schickt eine Buchdatei per DM. Setzt voraus dass interaction bereits deferred ist."""
+    size = os.path.getsize(path)
+    if size > _MAX_UPLOAD:
+        mb = size / (1024 * 1024)
+        await interaction.followup.send(
+            f'⚠️ Datei zu groß ({mb:.1f} MB, Discord-Limit 8 MB).', ephemeral=True)
+        return
+    dm = await interaction.user.create_dm()
+    await dm.send(
+        content=f'📖 **{entry["title"]}** — {entry["author"]} `[{fmt.upper()}]`',
+        file=discord.File(path, filename=os.path.basename(path)))
+    await interaction.followup.send(
+        f'✅ **{entry["title"]}** `[{fmt.upper()}]` per DM gesendet.', ephemeral=True)
+
+
+class _FormatView(discord.ui.View):
+    """Ein Button pro verfügbarem Format; User wählt welches er herunterladen will."""
+
+    def __init__(self, entry: dict, formats: dict[str, str]):
+        super().__init__(timeout=60)
+        self.entry = entry
+        for fmt, path in formats.items():
+            size = os.path.getsize(path)
+            mb = size / (1024 * 1024)
+            too_big = size > _MAX_UPLOAD
+            label = f'{_FORMAT_LABEL.get(fmt, fmt.upper())}  {mb:.1f} MB'
+            btn = discord.ui.Button(
+                label=label if not too_big else f'{label}  ⚠️ zu groß',
+                emoji=_FORMAT_EMOJI.get(fmt, '📄'),
+                style=discord.ButtonStyle.secondary if too_big
+                      else discord.ButtonStyle.primary,
+                custom_id=f'fmt_{fmt}',
+            )
+            btn.callback = self._make_callback(fmt, path)
+            self.add_item(btn)
+
+    def _make_callback(self, fmt: str, path: str):
+        async def _cb(interaction: discord.Interaction):
+            await interaction.response.defer(ephemeral=True)
+            await _send_book(interaction, self.entry, path, fmt)
+        return _cb
+
+
 class _BookSelect(discord.ui.Select):
     """Dropdown zum Auswählen eines Buchs zum Download."""
 
@@ -398,43 +475,34 @@ class _BookSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         idx = int(self.values[0])
         entry = self.entries[idx]
-        files = entry.get('files', [])
-        if not files:
+
+        if not entry.get('files'):
             await interaction.response.send_message(
                 '⚠️ Keine Datei hinterlegt.', ephemeral=True)
             return
 
-        await interaction.response.defer(ephemeral=True)
+        formats = _collect_formats(entry)
 
-        # Beste Datei finden (erste die existiert)
-        local = None
-        for f in files:
-            candidate = _local_path(f)
-            if os.path.isfile(candidate):
-                local = candidate
-                break
-
-        if not local:
-            await interaction.followup.send(
+        if not formats:
+            await interaction.response.send_message(
                 '⚠️ Datei nicht lokal gefunden (Sync noch nicht fertig?).',
                 ephemeral=True)
             return
 
-        size = os.path.getsize(local)
-        if size > _MAX_UPLOAD:
-            mb = size / (1024 * 1024)
-            await interaction.followup.send(
-                f'⚠️ Datei zu groß ({mb:.1f} MB, Discord-Limit 8 MB).',
+        if len(formats) == 1:
+            # Nur ein Format vorhanden → direkt herunterladen
+            fmt, path = next(iter(formats.items()))
+            await interaction.response.defer(ephemeral=True)
+            await _send_book(interaction, entry, path, fmt)
+        else:
+            # Mehrere Formate → User wählen lassen
+            fmts = '  '.join(
+                f'{_FORMAT_EMOJI.get(f, "📄")} **{_FORMAT_LABEL.get(f, f.upper())}**'
+                for f in formats)
+            await interaction.response.send_message(
+                f'**{entry["title"]}**\nVerfügbare Formate: {fmts}',
+                view=_FormatView(entry, formats),
                 ephemeral=True)
-            return
-
-        dm = await interaction.user.create_dm()
-        fname = os.path.basename(local)
-        await dm.send(
-            content=f'📖 **{entry["title"]}** — {entry["author"]}',
-            file=discord.File(local, filename=fname))
-        await interaction.followup.send(
-            f'✅ **{entry["title"]}** per DM gesendet.', ephemeral=True)
 
 
 class LibraryPaginationView(discord.ui.View):
