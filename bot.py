@@ -88,6 +88,18 @@ library.setup(bot)
 async def on_ready():
     await tree.sync()
     log.info('Bot online als %s', bot.user)
+
+
+@bot.event
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    if payload.user_id == bot.user.id:
+        return
+    emoji = str(payload.emoji)
+    if emoji not in puzzle._PUZZLE_REACTIONS:
+        return
+    if not puzzle.is_puzzle_message(payload.message_id):
+        return
+    stats.inc(payload.user_id, f'reaction_{emoji}')
     puzzle_task.start()
 
 
@@ -187,12 +199,21 @@ async def cmd_stats(interaction: discord.Interaction):
     for uid, data in all_stats.items():
         puzzles = data.get('puzzles', 0)
         downloads = data.get('downloads', 0)
+        solved = data.get('reaction_✅', 0)
+        failed = data.get('reaction_❌', 0)
+        liked = data.get('reaction_👍', 0)
+        disliked = data.get('reaction_👎', 0)
         try:
             user = await bot.fetch_user(int(uid))
             name = user.display_name
         except Exception:
             name = f'User {uid}'
-        lines.append(f'**{name}** — 🧩 {puzzles} Rätsel · 📥 {downloads} Downloads')
+        line = f'**{name}** — 🧩 {puzzles} · 📥 {downloads}'
+        if solved or failed:
+            line += f' · ✅ {solved} · ❌ {failed}'
+        if liked or disliked:
+            line += f' · 👍 {liked} · 👎 {disliked}'
+        lines.append(line)
 
     embed.description = '\n'.join(lines)
     await interaction.response.send_message(embed=embed, ephemeral=True)

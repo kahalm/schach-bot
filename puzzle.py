@@ -23,6 +23,14 @@ from reportlab.graphics import renderPM
 
 log = logging.getLogger('schach-bot')
 
+# Puzzle-Nachrichten-IDs für Reaction-Tracking (in-memory, reicht da Reactions
+# typischerweise kurz nach dem Posten kommen)
+_puzzle_msg_ids: set[int] = set()
+_PUZZLE_REACTIONS = {'✅', '❌', '👍', '👎'}
+
+def is_puzzle_message(msg_id: int) -> bool:
+    return msg_id in _puzzle_msg_ids
+
 # --- Config (aus Umgebung) ---
 
 LICHESS_TOKEN     = os.getenv('LICHESS_TOKEN', '')
@@ -863,6 +871,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
             msg = await target.send(file=file, embed=embed)
         else:
             msg = await target.send(embed=embed)
+        _puzzle_msg_ids.add(msg.id)
         for emoji in ('✅', '❌', '👍', '👎'):
             await msg.add_reaction(emoji)
 
@@ -1139,6 +1148,7 @@ def setup(bot: discord.ext.commands.Bot):
                 msg = await dm.send(file=file, embed=embed)
             else:
                 msg = await dm.send(embed=embed)
+            _puzzle_msg_ids.add(msg.id)
             for emoji in ('✅', '❌', '👍', '👎'):
                 await msg.add_reaction(emoji)
 
