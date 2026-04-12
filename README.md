@@ -32,6 +32,8 @@ A Discord bot with two daily chess features:
 | `/bibliothek <suche>` | Search the chess book library (title, author, tags) |
 | `/autor <autor>` | Show all books by an author |
 | `/tag <tag>` | Filter books by tag (e.g. Taktik, Endspiel) |
+| `/resourcen [url] [beschreibung]` | Show or add online learning resources |
+| `/youtube [url] [beschreibung]` | Show or add YouTube channels/videos |
 | `/stats` | Show usage statistics for all users |
 | `/help` | Show all available commands |
 | `/reindex` | Rebuild library catalog (admins only) |
@@ -220,6 +222,8 @@ This picks a random line, uploads it to Lichess, and prints the study URL and a 
 ```
 schach-bot/
 ├── bot.py              # All bot logic
+├── resourcen.py        # /resourcen command (online learning resources)
+├── youtube.py          # /youtube command (YouTube channels/videos)
 ├── test_puzzle.py      # Standalone puzzle upload test
 ├── requirements.txt    # Python dependencies
 ├── .env.example        # Configuration template

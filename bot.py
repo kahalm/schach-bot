@@ -75,6 +75,8 @@ WELCOME_MESSAGE = (
     '📖 `/train` + `/next` — Buch sequentiell durcharbeiten\n'
     '📚 `/kurs` — Alle Puzzle-Bücher mit Fortschritt\n'
     '📖 `/bibliothek` — Schachbuch-Bibliothek durchsuchen & downloaden\n'
+    '🔗 `/resourcen` — Online-Lernressourcen anzeigen oder hinzufügen\n'
+    '▶️ `/youtube` — YouTube-Kanäle/Videos anzeigen oder hinzufügen\n'
     '📊 `/stats` — Deine Statistiken\n\n'
     'Mit `/help` siehst du alle Befehle im Detail.'
 )
@@ -92,9 +94,13 @@ tree = bot.tree
 # Module laden
 import puzzle
 import library
+import resourcen
+import youtube
 
 puzzle.setup(bot)
 library.setup(bot)
+resourcen.setup(bot)
+youtube.setup(bot)
 
 
 @bot.event
@@ -251,6 +257,20 @@ async def cmd_help(interaction: discord.Interaction):
         name='/endless [buch]',
         value='Endlos-Puzzle-Modus: nach jeder ✅/❌ kommt sofort das nächste Puzzle per DM.\n'
               'Nochmal `/endless` zum Stoppen.',
+        inline=False,
+    )
+    embed.add_field(
+        name='/resourcen [url] [beschreibung]',
+        value='Online-Lernressourcen anzeigen oder hinzufügen.\n'
+              '`/resourcen` — Alle Ressourcen auflisten\n'
+              '`/resourcen url:… beschreibung:…` — Neue Ressource hinzufügen',
+        inline=False,
+    )
+    embed.add_field(
+        name='/youtube [url] [beschreibung]',
+        value='YouTube-Kanäle/Videos anzeigen oder hinzufügen.\n'
+              '`/youtube` — Alle Links auflisten\n'
+              '`/youtube url:… beschreibung:…` — Neuen Link hinzufügen',
         inline=False,
     )
     embed.add_field(
