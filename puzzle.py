@@ -25,11 +25,39 @@ log = logging.getLogger('schach-bot')
 
 # Puzzle-Nachrichten-IDs für Reaction-Tracking (in-memory, reicht da Reactions
 # typischerweise kurz nach dem Posten kommen)
-_puzzle_msg_ids: set[int] = set()
-_PUZZLE_REACTIONS = {'✅', '❌', '👍', '👎'}
+_puzzle_msg_ids: dict[int, str] = {}   # msg_id → line_id
+_PUZZLE_REACTIONS = {'✅', '❌', '👍', '👎', '🚮'}
+IGNORE_FILE = 'puzzle_ignore.json'
+
+def _register_puzzle_msg(msg_id: int, line_id: str):
+    _puzzle_msg_ids[msg_id] = line_id
 
 def is_puzzle_message(msg_id: int) -> bool:
     return msg_id in _puzzle_msg_ids
+
+def get_puzzle_line_id(msg_id: int) -> str | None:
+    return _puzzle_msg_ids.get(msg_id)
+
+def _load_ignore_list() -> set[str]:
+    try:
+        with open(IGNORE_FILE) as f:
+            return set(json.load(f))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return set()
+
+def _save_ignore_list(ignored: set[str]):
+    with open(IGNORE_FILE, 'w') as f:
+        json.dump(sorted(ignored), f, indent=2)
+
+def ignore_puzzle(line_id: str):
+    ignored = _load_ignore_list()
+    ignored.add(line_id)
+    _save_ignore_list(ignored)
+
+def unignore_puzzle(line_id: str):
+    ignored = _load_ignore_list()
+    ignored.discard(line_id)
+    _save_ignore_list(ignored)
 
 # --- Config (aus Umgebung) ---
 
@@ -261,8 +289,9 @@ def pick_sequential_lines(book_filename: str, start: int, count: int
                           ) -> list[tuple[str, chess.pgn.Game]]:
     """Gibt bis zu `count` Linien ab Position `start` zurück (sequentiell)."""
     all_lines = load_all_lines()
+    ignored = _load_ignore_list()
     book_lines = [(lid, g) for lid, g in all_lines
-                  if lid.startswith(book_filename + ':')]
+                  if lid.startswith(book_filename + ':') and lid not in ignored]
     end = min(start + count, len(book_lines))
     return book_lines[start:end]
 
@@ -307,9 +336,11 @@ def pick_random_lines(count: int = 1,
     book_filename – nur Linien aus dieser Datei (None = alle Bücher).
     """
     all_lines = load_all_lines()
+    ignored = _load_ignore_list()
     if book_filename:
         all_lines = [(lid, g) for lid, g in all_lines
                      if lid.startswith(book_filename + ':')]
+    all_lines = [(lid, g) for lid, g in all_lines if lid not in ignored]
     if not all_lines:
         return []
 
@@ -794,7 +825,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
     books_config = _load_books_config()
 
     # Trimmen
-    puzzles: list[tuple[chess.pgn.Game, chess.pgn.Game | None, str]] = []
+    puzzles: list[tuple[chess.pgn.Game, chess.pgn.Game | None, str, int, str]] = []
     for line_id, original_game in results:
         game    = _trim_to_training_position(original_game)
         context = original_game if game is not original_game else None
@@ -802,13 +833,13 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         book_meta = books_config.get(fname, {})
         diff      = book_meta.get('difficulty', '')
         rating    = book_meta.get('rating', 0)
-        puzzles.append((game, context, diff, rating))
+        puzzles.append((game, context, diff, rating, line_id))
 
     reuse_study_id = _get_user_study_id(user_id) if user_id else None
     base_count, base_total = _get_user_puzzle_count(user_id) if user_id else (0, 0)
 
     # Upload in Thread damit der Event Loop nicht blockiert
-    upload_pairs = [(g, c) for g, c, _, _ in puzzles]
+    upload_pairs = [(g, c) for g, c, _, _, _ in puzzles]
     loop = asyncio.get_running_loop()
     if len(upload_pairs) == 1:
         u = await loop.run_in_executor(
@@ -851,7 +882,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         )
 
     # Alle Puzzles als einzelne Bilder posten
-    for i, (game, context, diff, rating) in enumerate(puzzles):
+    for i, (game, context, diff, rating, lid) in enumerate(puzzles):
         puzzle_url = urls[i] if i < len(urls) else None
         puzzle_num   = (base_count + i + 1) if user_id else 0
         puzzle_total = (base_total + i + 1) if user_id else 0
@@ -871,7 +902,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
             msg = await target.send(file=file, embed=embed)
         else:
             msg = await target.send(embed=embed)
-        _puzzle_msg_ids.add(msg.id)
+        _register_puzzle_msg(msg.id, lid)
         for emoji in ('✅', '❌', '👍', '👎'):
             await msg.add_reaction(emoji)
 
@@ -1086,13 +1117,13 @@ def setup(bot: discord.ext.commands.Bot):
         for line_id, original_game in results:
             game = _trim_to_training_position(original_game)
             context = original_game if game is not original_game else None
-            puzzles.append((game, context, diff, rating))
+            puzzles.append((game, context, diff, rating, line_id))
 
         # Upload (Studien-Reuse wie bei /puzzle)
         reuse_study_id = _get_user_study_id(user_id)
         base_count, base_total = _get_user_puzzle_count(user_id)
 
-        upload_pairs = [(g, c) for g, c, _, _ in puzzles]
+        upload_pairs = [(g, c) for g, c, _, _, _ in puzzles]
         loop = asyncio.get_running_loop()
         if len(upload_pairs) == 1:
             u = await loop.run_in_executor(
@@ -1123,7 +1154,7 @@ def setup(bot: discord.ext.commands.Bot):
         total_in_book = sum(1 for lid, _ in all_book_lines
                             if lid.startswith(book_filename + ':'))
 
-        for i, (game, context, d, r) in enumerate(puzzles):
+        for i, (game, context, d, r, lid) in enumerate(puzzles):
             puzzle_url = urls[i] if i < len(urls) else None
             puzzle_num = base_count + i + 1
             puzzle_total = base_total + i + 1
@@ -1148,7 +1179,7 @@ def setup(bot: discord.ext.commands.Bot):
                 msg = await dm.send(file=file, embed=embed)
             else:
                 msg = await dm.send(embed=embed)
-            _puzzle_msg_ids.add(msg.id)
+            _register_puzzle_msg(msg.id, lid)
             for emoji in ('✅', '❌', '👍', '👎'):
                 await msg.add_reaction(emoji)
 

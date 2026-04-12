@@ -88,6 +88,7 @@ library.setup(bot)
 async def on_ready():
     await tree.sync()
     log.info('Bot online als %s', bot.user)
+    puzzle_task.start()
 
 
 @bot.event
@@ -99,8 +100,38 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
         return
     if not puzzle.is_puzzle_message(payload.message_id):
         return
-    stats.inc(payload.user_id, f'reaction_{emoji}')
-    puzzle_task.start()
+    if emoji == '🚮':
+        line_id = puzzle.get_puzzle_line_id(payload.message_id)
+        if line_id:
+            puzzle.ignore_puzzle(line_id)
+            try:
+                user = await bot.fetch_user(payload.user_id)
+                dm = await user.create_dm()
+                await dm.send(f'🚮 Puzzle ignoriert und wird nicht mehr erscheinen:\n`{line_id}`')
+            except Exception as e:
+                log.warning('Ignore-DM fehlgeschlagen: %s', e)
+    else:
+        stats.inc(payload.user_id, f'reaction_{emoji}')
+
+
+@bot.event
+async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
+    if payload.user_id == bot.user.id:
+        return
+    emoji = str(payload.emoji)
+    if emoji != '🚮':
+        return
+    if not puzzle.is_puzzle_message(payload.message_id):
+        return
+    line_id = puzzle.get_puzzle_line_id(payload.message_id)
+    if line_id:
+        puzzle.unignore_puzzle(line_id)
+        try:
+            user = await bot.fetch_user(payload.user_id)
+            dm = await user.create_dm()
+            await dm.send(f'♻️ Puzzle wieder aktiviert:\n`{line_id}`')
+        except Exception as e:
+            log.warning('Unignore-DM fehlgeschlagen: %s', e)
 
 
 @bot.event
