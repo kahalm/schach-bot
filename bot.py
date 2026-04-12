@@ -148,12 +148,17 @@ async def cmd_help(interaction: discord.Interaction):
     )
     embed.add_field(
         name='/bibliothek <suche>',
-        value='Schachbuch-Bibliothek durchsuchen (Titel, Autor, Tags).',
+        value='Schachbuch-Bibliothek durchsuchen (Titel, Autor, Tags, Dateinamen).\nDownload mit Formatauswahl (PDF/DJVU/EPUB).',
+        inline=False,
+    )
+    embed.add_field(
+        name='/autor <autor>',
+        value='Alle Bücher eines Autors anzeigen.',
         inline=False,
     )
     embed.add_field(
         name='/tag <tag>',
-        value='Bücher nach Tag filtern (z.B. Tactics, French, Endgame).',
+        value='Bücher nach Tag filtern (z.B. Taktik, Französisch, Endspiel).',
         inline=False,
     )
     embed.add_field(

@@ -36,39 +36,39 @@ def _local_path(remote: str) -> str:
 # ---------------------------------------------------------------------------
 
 _OPENING_TAGS: dict[str, list[str]] = {
-    'Sicilian':       [r'\bsicilian\b', r'\bsizilian\b'],
-    'French':         [r'\bfrench\b', r'\bfranz[oö]sisch\b'],
-    "King's Indian":  [r"\bking'?s?\s+indian\b", r'\bk[oö]nigsindisch\b'],
+    'Sizilianisch':   [r'\bsicilian\b', r'\bsizilian\b'],
+    'Französisch':    [r'\bfrench\b', r'\bfranz[oö]sisch\b'],
+    'Königsindisch':  [r"\bking'?s?\s+indian\b", r'\bk[oö]nigsindisch\b'],
     'Caro-Kann':      [r'\bcaro[\s-]?kann\b'],
-    'Ruy Lopez':      [r'\bruy\s+lopez\b', r'\bspanish\b', r'\bspanisch\b'],
-    "Queen's Gambit": [r"\bqueen'?s?\s+gambit\b", r'\bdamengambit\b'],
-    'Nimzo-Indian':   [r'\bnimzo[\s-]?indian\b'],
-    'Dutch':          [r'\bdutch\b', r'\bholl[aä]ndisch\b'],
+    'Spanisch':       [r'\bruy\s+lopez\b', r'\bspanish\b', r'\bspanisch\b'],
+    'Damengambit':    [r"\bqueen'?s?\s+gambit\b", r'\bdamengambit\b'],
+    'Nimzoindisch':   [r'\bnimzo[\s-]?indian\b'],
+    'Holländisch':    [r'\bdutch\b', r'\bholl[aä]ndisch\b'],
     'Pirc':           [r'\bpirc\b'],
-    'Scandinavian':   [r'\bscandinavian\b', r'\bskandinavisch\b'],
-    'Slav':           [r'\bslav\b', r'\bslaw\b'],
+    'Skandinavisch':  [r'\bscandinavian\b', r'\bskandinavisch\b'],
+    'Slawisch':       [r'\bslav\b', r'\bslaw\b'],
     'Grünfeld':       [r'\bgr[uü]nfeld\b'],
     'Benoni':         [r'\bbenoni\b'],
-    'English':        [r'\benglish\s+opening\b', r'\benglisch\b'],
-    'Italian':        [r'\bitalian\b', r'\bitalienisch\b'],
-    'Catalan':        [r'\bcatalan\b', r'\bkatalanisch\b'],
+    'Englisch':       [r'\benglish\s+opening\b', r'\benglisch\b'],
+    'Italienisch':    [r'\bitalian\b', r'\bitalienisch\b'],
+    'Katalanisch':    [r'\bcatalan\b', r'\bkatalanisch\b'],
     'Philidor':       [r'\bphilidor\b'],
-    'Alekhine':       [r"\balekhine'?s?\s+defen[cs]e\b", r'\balechin\b'],
+    'Aljechin':       [r"\balekhine'?s?\s+defen[cs]e\b", r'\balechin\b'],
     'Petrov':         [r'\bpetrov\b', r'\bpetroff\b', r'\brussian\s+game\b'],
     'Grob':           [r'\bgrob\b'],
-    'Kings Gambit':   [r"\bking'?s?\s+gambit\b", r'\bk[oö]nigsgambit\b'],
+    'Königsgambit':   [r"\bking'?s?\s+gambit\b", r'\bk[oö]nigsgambit\b'],
 }
 
 _TOPIC_TAGS: dict[str, list[str]] = {
-    'Tactics':    [r'\btactic', r'\btaktik', r'\bcombination'],
-    'Endgame':    [r'\bendgame\b', r'\bendspiel\b', r'\bending\b'],
-    'Strategy':   [r'\bstrateg', r'\bpositional\b'],
-    'Middlegame': [r'\bmiddlegame\b', r'\bmittelspiel\b'],
-    'Opening':    [r'\bopening\b', r'\ber[oö]ffnung\b'],
-    'Checkmate':  [r'\bcheckmate\b', r'\bmatt\b', r'\bmate\b'],
-    'Problems':   [r'\bpuzzle\b', r'\bproblem\b', r'\br[aä]tsel\b'],
-    'Attack':     [r'\battack\b', r'\bangriff\b'],
-    'Defense':    [r'\bdefen[cs]e\b', r'\bverteidigung\b', r'\bdefensive\b'],
+    'Taktik':       [r'\btactic', r'\btaktik', r'\bcombination'],
+    'Endspiel':     [r'\bendgame\b', r'\bendspiel\b', r'\bending\b'],
+    'Strategie':    [r'\bstrateg', r'\bpositional\b'],
+    'Mittelspiel':  [r'\bmiddlegame\b', r'\bmittelspiel\b'],
+    'Eröffnung':    [r'\bopening\b', r'\ber[oö]ffnung\b'],
+    'Mattsetzen':   [r'\bcheckmate\b', r'\bmatt\b', r'\bmate\b'],
+    'Aufgaben':     [r'\bpuzzle\b', r'\bproblem\b', r'\br[aä]tsel\b'],
+    'Angriff':      [r'\battack\b', r'\bangriff\b'],
+    'Verteidigung': [r'\bdefen[cs]e\b', r'\bverteidigung\b', r'\bdefensive\b'],
 }
 
 _FORMAT_TAGS: dict[str, list[str]] = {
@@ -79,10 +79,10 @@ _FORMAT_TAGS: dict[str, list[str]] = {
 }
 
 _LANGUAGE_TAGS: dict[str, list[str]] = {
-    'Deutsch':  [r'\(german\)', r'\bdeutsch\b'],
-    'Russian':  [r'\(russian\)', r'\brussisch\b'],
-    'French':   [r'\(french\)', r'\bfrançais\b'],
-    'Spanish':  [r'\(spanish\)', r'\bespañol\b'],
+    'Deutsch':    [r'\(german\)', r'\bdeutsch\b'],
+    'Russisch':   [r'\(russian\)', r'\brussisch\b'],
+    'Französisch (Sprache)': [r'\(french\)', r'\bfrançais\b'],
+    'Spanisch (Sprache)':    [r'\(spanish\)', r'\bespañol\b'],
 }
 
 def _auto_tag(title: str, author: str, file_ext: str) -> list[str]:
@@ -218,9 +218,9 @@ def _load_sidecar(remote_path: str) -> dict | None:
         return None
 
 
-def build_library_catalog() -> tuple[int, int, int, int]:
-    """index.txt mit library.json abgleichen: neue ergänzen, fehlende entfernen.
-    Returns (dateien, bücher_gesamt, neu, entfernt)."""
+def build_library_catalog() -> tuple[int, int, int, int, int]:
+    """index.txt mit library.json abgleichen: alle Einträge neu aufbauen.
+    Returns (dateien, bücher_gesamt, neu, aktualisiert, entfernt)."""
     if not LIBRARY_INDEX or not os.path.exists(LIBRARY_INDEX):
         return (0, 0, 0, 0)
 
@@ -230,7 +230,7 @@ def build_library_catalog() -> tuple[int, int, int, int]:
     with open(LIBRARY_INDEX, encoding='utf-8', errors='replace') as f:
         raw_lines = [l.strip() for l in f if l.strip()]
 
-    # index.txt parsen und gruppieren
+    # index.txt parsen und gruppieren (Autor + Titel-Stem)
     groups: dict[str, list[tuple]] = defaultdict(list)
     for raw in raw_lines:
         parsed = _parse_index_entry(raw)
@@ -241,25 +241,52 @@ def build_library_catalog() -> tuple[int, int, int, int]:
         key = _normalize_for_dedup(author) + '::' + _normalize_for_dedup(stem)
         groups[key].append((author, title, year, ext, path, stem))
 
+    # Zweite Dedup-Runde: Gruppen mit gleichem Dateinamen aber unterschiedlichem
+    # Autor-Verzeichnis zusammenführen (z.B. gleiche Datei in falschem Ordner)
+    by_filename: dict[str, list[str]] = defaultdict(list)
+    for key, entries in groups.items():
+        for _, _, _, _, path, _ in entries:
+            fname = os.path.basename(path).lower()
+            if key not in by_filename[fname]:
+                by_filename[fname].append(key)
+    for fname, keys in by_filename.items():
+        if len(keys) <= 1:
+            continue
+        # Alle in die erste Gruppe zusammenlegen
+        target = keys[0]
+        for other in keys[1:]:
+            groups[target].extend(groups.pop(other))
+
     # IDs aus index.txt ermitteln
     index_ids: dict[str, tuple] = {}
     for key, entries in groups.items():
         entries.sort(key=lambda e: _FILE_PRIO.get(e[3], 99))
         best = entries[0]
         author, title, year, ext, path, stem = best
+        # Sidecar-Autor bevorzugen falls vorhanden
+        sidecar = _load_sidecar(path)
+        if sidecar:
+            sc_author = sidecar.get('author', author)
+            if isinstance(sc_author, list):
+                sc_author = ', '.join(sc_author)
+            author = sc_author
         entry_id = _normalize_for_dedup(author) + '--' + _normalize_for_dedup(stem)
         index_ids[entry_id] = (key, entries)
 
-    # Neue Einträge ergänzen
+    # Einträge ergänzen / aktualisieren
     new_count = 0
+    updated_count = 0
     for entry_id, (key, entries) in index_ids.items():
-        if entry_id in old_by_id:
-            continue  # existiert bereits → nicht anfassen
         best = entries[0]
         author, title, year, ext, path, stem = best
+        is_new = entry_id not in old_by_id
+        old_entry = old_by_id.get(entry_id)
 
         # Sidecar-JSON prüfen (beim besten File der Gruppe)
         sidecar = _load_sidecar(path)
+
+        # manual_tags aus altem Eintrag übernehmen
+        prev_manual = old_entry.get('manual_tags', []) if old_entry else []
 
         if sidecar:
             sc_author = ', '.join(sidecar['author']) if isinstance(sidecar.get('author'), list) else sidecar.get('author', author)
@@ -270,44 +297,52 @@ def build_library_catalog() -> tuple[int, int, int, int]:
             sc_elo    = sidecar.get('targetMinElo')
             sc_fav    = sidecar.get('favorite', [])
             sc_size   = sidecar.get('size')
-            auto_tags = sorted(set(sc_tags + _auto_tag(sc_title, sc_author, ext)))
-            old_catalog.append({
+            merged_manual = sorted(set(prev_manual + sc_tags))
+            auto_tags = sorted(set(merged_manual + _auto_tag(sc_title, sc_author, ext)))
+            new_entry = {
                 'id':           entry_id,
                 'title':        sc_title,
                 'author':       sc_author,
                 'year':         sc_year,
                 'tags':         auto_tags,
-                'manual_tags':  sc_tags,
+                'manual_tags':  merged_manual,
                 'file_type':    sc_format,
                 'targetMinElo': sc_elo,
                 'favorite':     sc_fav,
                 'size':         sc_size,
                 'files':        [e[4] for e in entries],
-            })
+            }
         else:
             years = [e[2] for e in entries if e[2]]
             chosen_year = max(set(years), key=years.count) if years else None
-            auto_tags = _auto_tag(stem, author, ext)
-            old_catalog.append({
+            auto_tags = sorted(set(prev_manual + _auto_tag(stem, author, ext)))
+            new_entry = {
                 'id':          entry_id,
                 'title':       stem if stem else title,
                 'author':      author,
                 'year':        chosen_year,
                 'tags':        auto_tags,
-                'manual_tags': [],
+                'manual_tags': prev_manual,
                 'file_type':   ext,
                 'files':       [e[4] for e in entries],
-            })
-        new_count += 1
+            }
+
+        if is_new:
+            old_catalog.append(new_entry)
+            new_count += 1
+        else:
+            # Bestehenden Eintrag aktualisieren
+            old_by_id[entry_id].update(new_entry)
+            updated_count += 1
 
     # Fehlende entfernen (nicht mehr in index.txt)
     before_remove = len(old_catalog)
     old_catalog = [e for e in old_catalog if e['id'] in index_ids]
     removed_count = before_remove - len(old_catalog)
 
-    old_catalog.sort(key=lambda e: (e['author'], e['title']))
+    old_catalog.sort(key=lambda e: (_author_str(e.get('author', '')), e['title']))
     _save_library(old_catalog)
-    return (len(raw_lines), len(old_catalog), new_count, removed_count)
+    return (len(raw_lines), len(old_catalog), new_count, updated_count, removed_count)
 
 
 # ---------------------------------------------------------------------------
@@ -328,6 +363,13 @@ def _reload_library():
     global _library_loaded
     _library_loaded = False
 
+def _author_str(author) -> str:
+    """Gibt author als String zurück (egal ob str oder list)."""
+    if isinstance(author, list):
+        return ', '.join(author)
+    return author or ''
+
+
 def _search_library(query: str, limit: int = 25) -> list[dict]:
     catalog = _ensure_library()
     words = query.lower().split()
@@ -335,15 +377,19 @@ def _search_library(query: str, limit: int = 25) -> list[dict]:
         return []
     scored: list[tuple[int, dict]] = []
     for entry in catalog:
-        searchable = f"{entry['title']} {entry['author']} {' '.join(entry.get('tags', []))}".lower()
-        score = sum(1 for w in words if w in searchable)
+        author = _author_str(entry.get('author', ''))
+        filenames = ' '.join(os.path.splitext(os.path.basename(f))[0] for f in entry.get('files', []))
+        searchable = f"{entry['title']} {author} {' '.join(entry.get('tags', []))} {filenames}".lower()
+        matched = sum(1 for w in words if w in searchable)
+        if matched < len(words):
+            continue  # ALL Suchbegriffe müssen vorkommen
+        score = matched
         if query.lower() in entry['title'].lower():
             score += 5
-        if query.lower() in entry['author'].lower():
+        if query.lower() in author.lower():
             score += 3
-        if score > 0:
-            scored.append((score, entry))
-    scored.sort(key=lambda x: (-x[0], x[1]['author']))
+        scored.append((score, entry))
+    scored.sort(key=lambda x: (-x[0], _author_str(x[1].get('author', ''))))
     return [e for _, e in scored[:limit]]
 
 def _all_tags() -> list[str]:
@@ -352,6 +398,18 @@ def _all_tags() -> list[str]:
     for entry in catalog:
         tags.update(entry.get('tags', []))
     return sorted(tags)
+
+
+def _all_authors() -> list[str]:
+    catalog = _ensure_library()
+    authors: set[str] = set()
+    for entry in catalog:
+        a = entry.get('author', '')
+        if isinstance(a, list):
+            authors.update(a)
+        elif a:
+            authors.add(a)
+    return sorted(authors)
 
 
 # ---------------------------------------------------------------------------
@@ -374,11 +432,17 @@ def _build_library_embed(entries: list[dict], page: int, total_pages: int,
         name = f'{emoji} {e["title"]}{year_str}'
         if len(name) > 256:
             name = name[:253] + '...'
-        value = f'**{e["author"]}**'
+        value = f'**{_author_str(e.get("author", ""))}**'
+        if e.get('targetMinElo'):
+            value += f'  ·  Elo {e["targetMinElo"]}+'
         if tags_str:
             value += f'\n`{tags_str}`'
-        if len(e.get('files', [])) > 1:
-            value += f'\n_{len(e["files"])} Dateien_'
+        formats = _collect_formats(e)
+        if formats:
+            fmt_str = '  '.join(
+                f'{_FORMAT_EMOJI.get(f, "📄")} {f.upper()}'
+                for f in sorted(formats))
+            value += f'\n{fmt_str}'
         embed.add_field(name=name, value=value, inline=False)
     if total_pages > 1:
         embed.set_footer(text=f'Seite {page}/{total_pages}')
@@ -523,7 +587,19 @@ class _BookSelect(discord.ui.Select):
         for i, e in enumerate(entries):
             emoji = _TYPE_EMOJI.get(e.get('file_type', ''), '📄')
             label = f'{e["title"]}'[:100]
-            desc = f'{e["author"]}'[:100]
+            # Autor · Format · Größe
+            parts = [_author_str(e.get('author', ''))]
+            ft = e.get('file_type', '')
+            if ft:
+                parts.append(ft.upper())
+            # Dateigröße der ersten vorhandenen Datei
+            for f in e.get('files', []):
+                local = _local_path(f)
+                if os.path.isfile(local):
+                    mb = os.path.getsize(local) / (1024 * 1024)
+                    parts.append(f'{mb:.1f} MB')
+                    break
+            desc = ' · '.join(p for p in parts if p)[:100]
             options.append(discord.SelectOption(
                 label=label, description=desc, emoji=emoji, value=str(i)))
         super().__init__(placeholder='📥 Buch auswählen …', options=options)
@@ -630,7 +706,7 @@ def setup(bot: discord.ext.commands.Bot):
         results = _search_library(current, limit=25)
         return [
             discord.app_commands.Choice(
-                name=f'{e["author"]}: {e["title"]}'[:100],
+                name=f'{_author_str(e.get("author", ""))}: {e["title"]}'[:100],
                 value=e['title'][:100],
             )
             for e in results
@@ -647,7 +723,7 @@ def setup(bot: discord.ext.commands.Bot):
             await interaction.followup.send(
                 f'Keine Bücher mit Tag „{tag}".', ephemeral=True)
             return
-        results.sort(key=lambda e: (e['author'], e['title']))
+        results.sort(key=lambda e: (_author_str(e.get('author', '')), e['title']))
         pages = [results[i:i + 10] for i in range(0, len(results), 10)]
         embed = _build_library_embed(pages[0], page=1, total_pages=len(pages),
                                       query=f'Tag: {tag}')
@@ -666,6 +742,36 @@ def setup(bot: discord.ext.commands.Bot):
             for t in tags[:25]
         ]
 
+    @tree.command(name='autor', description='Bücher eines Autors anzeigen')
+    @discord.app_commands.describe(autor='Autorname')
+    async def cmd_autor(interaction: discord.Interaction, autor: str):
+        await interaction.response.defer(ephemeral=True)
+        catalog = _ensure_library()
+        results = [e for e in catalog
+                   if autor.lower() in _author_str(e.get('author', '')).lower()]
+        if not results:
+            await interaction.followup.send(
+                f'Keine Bücher von „{autor}".', ephemeral=True)
+            return
+        results.sort(key=lambda e: e['title'])
+        pages = [results[i:i + 10] for i in range(0, len(results), 10)]
+        embed = _build_library_embed(pages[0], page=1, total_pages=len(pages),
+                                      query=f'Autor: {autor}')
+        view = LibraryPaginationView(pages, query=f'Autor: {autor}')
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
+    @cmd_autor.autocomplete('autor')
+    async def autor_autocomplete(
+        interaction: discord.Interaction, current: str,
+    ) -> list[discord.app_commands.Choice[str]]:
+        authors = _all_authors()
+        if current:
+            authors = [a for a in authors if current.lower() in a.lower()]
+        return [
+            discord.app_commands.Choice(name=a[:100], value=a[:100])
+            for a in authors[:25]
+        ]
+
     @tree.command(name='reindex', description='Bibliotheks-Katalog neu aufbauen (Admin)')
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_reindex(interaction: discord.Interaction):
@@ -680,5 +786,5 @@ def setup(bot: discord.ext.commands.Bot):
         await interaction.followup.send(
             f'✅ Katalog abgeglichen:\n'
             f'Dateien: **{stats[0]}** · Bücher: **{stats[1]}** · '
-            f'Neu: **{stats[2]}** · Entfernt: **{stats[3]}**',
+            f'Neu: **{stats[2]}** · Aktualisiert: **{stats[3]}** · Entfernt: **{stats[4]}**',
             ephemeral=True)
