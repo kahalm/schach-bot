@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import stats
 from collections import defaultdict
 
 import discord
@@ -526,6 +527,7 @@ async def _send_book(interaction: discord.Interaction,
         if _sftpgo_configured():
             await interaction.followup.send(
                 _sftpgo_message(entry, path, fmt), ephemeral=True)
+            stats.inc(interaction.user.id, 'downloads')
         else:
             mb = size / (1024 * 1024)
             await interaction.followup.send(
@@ -535,6 +537,7 @@ async def _send_book(interaction: discord.Interaction,
     await dm.send(
         content=f'📖 **{entry["title"]}** — {entry["author"]} `[{fmt.upper()}]`',
         file=discord.File(path, filename=os.path.basename(path)))
+    stats.inc(interaction.user.id, 'downloads')
     await interaction.followup.send(
         f'✅ **{entry["title"]}** `[{fmt.upper()}]` per DM gesendet.', ephemeral=True)
 
@@ -571,6 +574,7 @@ class _FormatView(discord.ui.View):
                 # Direkt antworten (kein defer nötig)
                 await interaction.response.send_message(
                     _sftpgo_message(self.entry, path, fmt), ephemeral=True)
+                stats.inc(interaction.user.id, 'downloads')
             elif big:
                 size = os.path.getsize(path)
                 mb = size / (1024 * 1024)

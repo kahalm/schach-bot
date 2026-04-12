@@ -3,6 +3,7 @@
 import asyncio
 import io
 import json
+import stats
 import logging
 import os
 import random
@@ -878,6 +879,9 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         if puzzle_url:
             await target.send(f'[Klickbares Rätsel]({puzzle_url})')
 
+    if user_id:
+        stats.inc(user_id, 'puzzles', len(puzzles))
+
 
 # ---------------------------------------------------------------------------
 # Slash-Commands registrieren
@@ -1151,6 +1155,7 @@ def setup(bot: discord.ext.commands.Bot):
             if puzzle_url:
                 await dm.send(f'[Klickbares Rätsel]({puzzle_url})')
 
+        stats.inc(user_id, 'puzzles', len(puzzles))
         name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
         await interaction.followup.send(
             f'✅ {len(results)} Linie(n) aus **{name}** per DM gesendet '

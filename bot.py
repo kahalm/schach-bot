@@ -55,6 +55,7 @@ import discord
 from discord.ext import tasks, commands
 import json
 import os
+import stats
 from datetime import time
 
 from dotenv import load_dotenv
@@ -166,6 +167,34 @@ async def cmd_help(interaction: discord.Interaction):
         value='Bibliotheks-Katalog neu aufbauen (nur Admins).',
         inline=False,
     )
+    embed.add_field(
+        name='/stats',
+        value='Nutzungsstatistiken aller User anzeigen.',
+        inline=False,
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@tree.command(name='stats', description='Nutzungsstatistiken aller User anzeigen')
+async def cmd_stats(interaction: discord.Interaction):
+    all_stats = stats.get_all()
+    if not all_stats:
+        await interaction.response.send_message('Noch keine Statistiken vorhanden.', ephemeral=True)
+        return
+
+    embed = discord.Embed(title='📊 Statistiken', color=0x4e9e4e)
+    lines = []
+    for uid, data in all_stats.items():
+        puzzles = data.get('puzzles', 0)
+        downloads = data.get('downloads', 0)
+        try:
+            user = await bot.fetch_user(int(uid))
+            name = user.display_name
+        except Exception:
+            name = f'User {uid}'
+        lines.append(f'**{name}** — 🧩 {puzzles} Rätsel · 📥 {downloads} Downloads')
+
+    embed.description = '\n'.join(lines)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
