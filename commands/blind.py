@@ -23,12 +23,12 @@ def setup(bot: commands.Bot):
         description='Blind-Puzzle: Stellung X Züge vor der eigentlichen Aufgabe.',
     )
     @discord.app_commands.describe(
-        moves='Anzahl Halbzüge, die du im Kopf spielen musst (1–20)',
+        moves='Anzahl Halbzüge, die du im Kopf spielen musst (1–20, Standard: 4)',
         anzahl='Anzahl Puzzles (1–20, Standard: 1)',
         buch='Buchnummer aus /kurs (Standard: zufälliges Blind-Buch)',
     )
     async def cmd_blind(interaction: discord.Interaction,
-                        moves: int,
+                        moves: int = 4,
                         anzahl: int = 1,
                         buch: int = 0):
         log.info('/blind von %s: moves=%d anzahl=%d buch=%d',

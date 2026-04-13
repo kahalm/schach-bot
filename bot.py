@@ -273,10 +273,10 @@ async def cmd_help(interaction: discord.Interaction):
         inline=False,
     )
     embed.add_field(
-        name='/blind moves [anzahl] [buch]',
+        name='/blind [moves] [anzahl] [buch]',
         value='Blind-Puzzle: Stellung X Halbzüge VOR dem eigentlichen Puzzle.\n'
               'Du musst die X Züge im Kopf spielen, dann das Puzzle lösen.\n'
-              '`/blind moves:3` — 3 Züge im Voraus, zufälliges Blind-Buch\n'
+              '`/blind` — 4 Züge im Voraus, zufälliges Blind-Buch\n'
               '`/blind moves:5 anzahl:2 buch:3` — 2 Puzzles aus Buch 3, je 5 Züge blind\n'
               'Nur Bücher mit `blind: true` in `books/books.json` sind nutzbar (siehe `/kurs`).',
         inline=False,
