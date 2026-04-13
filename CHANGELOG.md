@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.9.8] - 2026-04-13
+### Changed
+- `/kurs buch:N` zeigt im Fortschrittsbalken nicht mehr die globalen
+  „geposteten" Puzzles, sondern die vom aufrufenden User persönlich
+  bewerteten (✅ oder ❌, netto >0 laut `reaction_log.jsonl`). Header
+  geändert zu „N/M von dir bewertet (✅/❌)".
+
 ## [1.9.7] - 2026-04-13
 ### Changed
 - `/blind moves:` hat keine Obergrenze mehr. Hat ein Spiel weniger

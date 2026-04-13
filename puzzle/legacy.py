@@ -1820,7 +1820,20 @@ def setup(bot: discord.ext.commands.Bot):
                 rat   = meta.get('rating', 0)
                 stars = '★' * rat + '☆' * (10 - rat) if rat else ''
 
-                # Kapitel aufbauen: round-Prefix → (name, total, posted)
+                # Persönlich abgehakte Puzzles (✅ oder ❌, netto >0)
+                from core import event_log as _elog
+                uid = interaction.user.id
+                _net: dict[str, int] = {}
+                for entry in _elog.read_all():
+                    if entry.get('user') != uid:
+                        continue
+                    if entry.get('emoji') not in ('✅', '❌'):
+                        continue
+                    lid_e = entry.get('line_id') or ''
+                    _net[lid_e] = _net.get(lid_e, 0) + entry.get('delta', 0)
+                user_done: set[str] = {lid_e for lid_e, n in _net.items() if n > 0}
+
+                # Kapitel aufbauen: round-Prefix → (name, total, done)
                 chapters: dict[str, dict] = {}
                 for lid, game in all_lines:
                     if lid.split(':')[0] != book_fn:
@@ -1833,7 +1846,7 @@ def setup(bot: discord.ext.commands.Bot):
                         chap_name = h.get('Black', '') or h.get('Event', '')
                         chapters[prefix] = {'name': chap_name, 'total': 0, 'posted': 0}
                     chapters[prefix]['total'] += 1
-                    if lid in posted:
+                    if lid in user_done:
                         chapters[prefix]['posted'] += 1
 
                 total_book  = sum(c['total']  for c in chapters.values())
@@ -1843,7 +1856,7 @@ def setup(bot: discord.ext.commands.Bot):
                 if meta.get('random', True):  flags.append('🎲 Im Zufalls-/Daily-Pool')
                 if meta.get('blind'):          flags.append('🙈 Blind-Modus')
 
-                desc_parts = [f'**{posted_book}/{total_book}** Linien gepostet']
+                desc_parts = [f'**{posted_book}/{total_book}** von dir bewertet (✅/❌)']
                 if diff:
                     desc_parts.append(f'{diff}  {stars}' if stars else diff)
                 desc_parts.extend(flags)
