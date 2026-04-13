@@ -56,7 +56,9 @@ from discord.ext import tasks, commands
 import json
 import os
 import stats
-from datetime import time
+from datetime import time, datetime, timezone
+
+START_TIME = datetime.now(timezone.utc)
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -370,10 +372,13 @@ async def cmd_help(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@tree.command(name='version', description='Aktuelle Bot-Version anzeigen')
+@tree.command(name='version', description='Aktuelle Bot-Version und Uptime anzeigen')
 async def cmd_version(interaction: discord.Interaction):
+    ts = int(START_TIME.timestamp())
     await interaction.response.send_message(
-        f'♟️ **Schach-Bot** v{VERSION}', ephemeral=True)
+        f'♟️ **Schach-Bot** v{VERSION}\n'
+        f'🔄 Letzter Restart: <t:{ts}:f> (<t:{ts}:R>)',
+        ephemeral=True)
 
 
 @tree.command(name='announce', description='Begrüßungsnachricht an einen User senden (Admin)')
