@@ -1,10 +1,12 @@
 """
 Standalone-Test: Puzzle-Linie laden, Lichess-Studie anlegen, Ergebnis pruefen.
-Ausfuehren: python test_puzzle.py
+Ausfuehren: python tests/test_puzzle.py
 """
 import sys
 import os
 import requests
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
 load_dotenv(dotenv_path='.env')

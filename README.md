@@ -216,7 +216,7 @@ Planned extensions:
 Without starting the full bot:
 
 ```bash
-python test_puzzle.py
+python tests/test_puzzle.py
 ```
 
 This picks a random line, uploads it to Lichess, and prints the study URL and a validation summary.
@@ -230,7 +230,7 @@ schach-bot/
 ├── elo.py              # /elo command (user-reported chess Elo with history)
 ├── resourcen.py        # /resourcen command (online learning resources)
 ├── youtube.py          # /youtube command (YouTube channels/videos)
-├── test_puzzle.py      # Standalone puzzle upload test
+├── tests/              # Standalone test scripts (test_puzzle, test_upload, test_study_create)
 ├── requirements.txt    # Python dependencies
 ├── .env.example        # Configuration template
 ├── .env                # Your configuration (not committed)

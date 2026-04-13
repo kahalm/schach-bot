@@ -1,6 +1,6 @@
 """
 Legt testweise eine leere Lichess-Studie an und gibt die URL aus.
-Ausfuehren: python test_study_create.py
+Ausfuehren: python tests/test_study_create.py
 """
 import os
 import requests

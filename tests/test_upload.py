@@ -9,12 +9,14 @@ Prueft:
   5. Kapitel 2 (wenn vorhanden) ist im Normal-Modus
   6. URL zeigt direkt auf das Gamebook-Kapitel
 
-Ausfuehren: python test_upload.py
+Ausfuehren: python tests/test_upload.py
 """
 import sys
 import os
 import io
 import requests
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
 load_dotenv(dotenv_path='.env')
