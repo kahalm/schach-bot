@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.9.1] - 2026-04-13
+### Added
+- Wenn `/puzzle user:@Name` verwendet wird, erscheint in der DM des
+  Empfängers vor dem Rätsel: „**<Absender>** schickt dir ein Rätsel 🧩".
+
 ## [1.9.0] - 2026-04-13
 ### Added
 - `/puzzle user:@Name` — Puzzle an einen anderen User schicken. Der

@@ -1662,6 +1662,9 @@ def setup(bot: discord.ext.commands.Bot):
                 except Exception:
                     turn, img = None, None
 
+                if user:
+                    await dm.send(f'**{interaction.user.display_name}** schickt dir ein Rätsel 🧩')
+
                 embed = build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating, line_id=line_id)
                 if img:
                     file = discord.File(img, filename='board.png')
@@ -1688,6 +1691,8 @@ def setup(bot: discord.ext.commands.Bot):
                     f'✅ Puzzle `{line_id}` {dest} per DM gesendet.', ephemeral=True)
                 return
 
+            if user:
+                await dm.send(f'**{interaction.user.display_name}** schickt dir ein Rätsel 🧩')
             sent = await post_puzzle(dm, count=anzahl, book_idx=buch, user_id=target_uid)
             dest = f'an {target_user.mention}' if user else 'dir'
             if sent == anzahl:
