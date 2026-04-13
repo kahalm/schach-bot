@@ -22,5 +22,41 @@
     "rating": 2,
     "blind": false,
     "random": true
+  },
+  "The Chess Coach Companion Intermediate Syllabus_firstkey.pgn": {
+    "difficulty": "Fortgeschritten",
+    "rating": 5,
+    "blind": true,
+    "random": true
+  },
+  "The Fundamentals 3 Chess Evolution_firstkey.pgn": {
+    "difficulty": "Fortgeschritten",
+    "rating": 7,
+    "blind": false,
+    "random": true
+  },
+  "World Champion Calculation Training - Part 1 Steinitz, Lasker, Capablanca, Alekhine_firstkey.pgn": {
+    "difficulty": "Meister",
+    "rating": 6,
+    "blind": false,
+    "random": true
+  },
+  "The Art of Exchanging Pieces_firstkey.pgn": {
+    "difficulty": "Fortgeschritten",
+    "rating": 4,
+    "blind": true,
+    "random": true
+  },
+  "Basic Endgames_firstkey.pgn": {
+    "difficulty": "Anfänger",
+    "rating": 5,
+    "blind": true,
+    "random": true
+  },
+  "The Fundamentals 1 Build Up Your Chess_firstkey.pgn": {
+    "difficulty": "Anfänger",
+    "rating": 7,
+    "blind": true,
+    "random": true
   }
 }

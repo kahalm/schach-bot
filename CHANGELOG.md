@@ -4,6 +4,20 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.7.0] - 2026-04-13
+### Added
+- 6 neue Puzzle-Bücher in `books/`:
+  - **The Chess Coach Companion Intermediate Syllabus** (587 Linien, Fortgeschritten ★★★★★)
+  - **The Fundamentals 3 Chess Evolution** (542, Fortgeschritten ★★★★★★★, Yusupov)
+  - **World Champion Calculation Training – Part 1** (342, Meister ★★★★★★)
+  - **The Art of Exchanging Pieces** (125, Fortgeschritten ★★★★)
+  - **Basic Endgames** (194, Anfänger ★★★★★)
+  - **The Fundamentals 1 Build Up Your Chess** (548, Anfänger ★★★★★★★, Yusupov)
+- Damit Pool insgesamt: **5949 Linien** (vorher 2630).
+- Blind-Modus zusätzlich aktiviert für die Bücher mit ≥5% blind-fähigen
+  Puzzles (Chess Coach Companion, Basic Endgames, Art of Exchanging
+  Pieces, Fundamentals 1).
+
 ## [1.6.0] - 2026-04-13
 ### Added
 - Per-Buch-Flag `random: true|false` in `books/books.json` (analog zu
