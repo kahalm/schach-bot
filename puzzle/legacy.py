@@ -484,12 +484,28 @@ def pick_sequential_lines(book_filename: str, start: int, count: int
     end = min(start + count, len(book_lines))
     return book_lines[start:end]
 
+# Status-Bits, bei denen die Stellung als "echt kaputt" gilt und nicht
+# gepostet werden soll. BAD_CASTLING_RIGHTS, INVALID_EP_SQUARE, TOO_MANY_*
+# werden bewusst durchgelassen – die sind in PGN-Dumps häufig und stören
+# weder Rendering noch Lösungs-Anzeige.
+_FATAL_STATUS = (
+    chess.STATUS_NO_WHITE_KING
+    | chess.STATUS_NO_BLACK_KING
+    | chess.STATUS_TOO_MANY_KINGS
+    | chess.STATUS_PAWNS_ON_BACKRANK
+    | chess.STATUS_OPPOSITE_CHECK
+    | chess.STATUS_EMPTY
+    | chess.STATUS_TOO_MANY_CHECKERS
+)
+
+
 def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
     """Alle Linien aus .pgn-Dateien in BOOKS_DIR laden."""
     lines = []
     if not os.path.isdir(BOOKS_DIR):
         log.error('Books-Verzeichnis nicht gefunden: %s', BOOKS_DIR)
         return lines
+    invalid_count = 0
     for filename in sorted(os.listdir(BOOKS_DIR)):
         if not filename.endswith('.pgn'):
             continue
@@ -515,9 +531,31 @@ def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
             # Überspringen wenn keine echten Züge vorhanden (z.B. Einleitungskapitel)
             if not game.variations or game.variations[0].move == chess.Move.null():
                 continue
+            # Stellung auf grobe Defekte prüfen (fehlende Könige, Bauern auf
+            # Grundreihe, Nicht-am-Zug-Seite im Schach, leeres Brett, mehr als
+            # 2 Schach-Geber). Trifft praktisch nur PGNs mit kaputtem FEN-
+            # Header; Linien aus Standard-Startposition + legalen Zügen sind
+            # per Konstruktion ok. Kosmetische Status-Bits wie
+            # BAD_CASTLING_RIGHTS oder INVALID_EP_SQUARE werden toleriert.
+            try:
+                root_board = game.board()
+            except Exception as e:
+                log.debug('Board-Setup fehlgeschlagen in %s (%s): %s',
+                          filename, game.headers.get('Round', ''), e)
+                invalid_count += 1
+                continue
+            status = root_board.status()
+            if status & _FATAL_STATUS:
+                round_header = game.headers.get('Round', '')
+                log.warning('Illegale Stellung übersprungen in %s:%s – status=%d',
+                            filename, round_header, status)
+                invalid_count += 1
+                continue
             round_header = game.headers.get('Round', '')
             line_id = f"{filename}:{round_header}"
             lines.append((line_id, game))
+    if invalid_count:
+        log.info('%d illegale Stellungen aus dem Pool ausgeschlossen.', invalid_count)
     return lines
 
 def get_random_books() -> list[str]:

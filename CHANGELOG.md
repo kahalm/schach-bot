@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.7.2] - 2026-04-13
+### Fixed
+- `load_all_lines()` filtert Linien mit grob illegaler Startstellung raus
+  (fehlender weißer/schwarzer König, Bauern auf der Grundreihe, Nicht-am-
+  Zug-Seite im Schach, leeres Brett, >2 Schach-Geber). Trifft praktisch
+  nur PGNs mit kaputtem FEN-Header. 81 solcher Linien aus dem aktuellen
+  Pool entfernt (61× weißer König fehlt, 6× schwarzer König fehlt, 14×
+  beide). Kosmetische Defekte wie inkonsistente Rochaderechte oder
+  En-passant-Square bleiben toleriert.
+
 ## [1.7.1] - 2026-04-13
 ### Added
 - Pro-Ordner-Filter via `ignore.json`: ein JSON-Array von fnmatch-Patterns
