@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.8.4] - 2026-04-13
+### Fixed
+- Discord-Bild war bei Puzzles mit `[%tqu]` im Root-Kommentar (z.B.
+  The Chess Coach Companion `021.004`) einen Zug zu früh: das Brett
+  zeigte die Stellung VOR dem Setup-Zug, das Embed sagte „Schwarz am
+  Zug", und der User musste den im PGN markierten Setup-Zug selbst
+  nachvollziehen. `_trim_to_training_position()` interpretiert das
+  Root-`[%tqu]` jetzt analog zum Kindknoten-Fall: erste Variante ist
+  der bekannte Setup-Zug, Trainingsstellung beginnt danach. Damit
+  zeigen Discord-Bild und Lichess-Studie konsistent die Stellung, in
+  der der User wirklich raten muss. Zusammen mit der `[SetUp "1"]`-
+  Korrektur aus 1.8.2 sind beide Seiten jetzt wieder synchron.
+
 ## [1.8.3] - 2026-04-13
 ### Fixed
 - `/puzzle id:` toleriert jetzt ein vorangestelltes `ID:` (Copy-Paste

@@ -752,7 +752,15 @@ def _prelude_pgn(context: chess.pgn.Game, puzzle: chess.pgn.Game) -> str:
 
 def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
     """Spiel auf erste [%tqu]-Stellung kürzen.
-    Ohne [%tqu]-Annotation → Original unverändert zurückgeben."""
+    Ohne [%tqu]-Annotation → Original unverändert zurückgeben.
+
+    `[%tqu]` ist immer der „bekannte" Setup-Zug; die Trainingsstellung
+    liegt nach diesem Zug. Liegt das `[%tqu]` an einem Kindknoten N, ist
+    `node.board()` schon die Stellung *nach* N's Zug — passt also direkt.
+    Liegt es am Root (z.B. The Chess Coach Companion), müssen wir noch
+    eine Variante vorrücken, sonst zeigt Discord die Stellung „einen Zug
+    zu früh" und Lichess hängt einen Zug hinterher.
+    """
     node = game
     while True:
         if '[%tqu' in (node.comment or ''):
@@ -762,7 +770,10 @@ def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
         node = node.variations[0]
 
     if node is game:
-        return game  # [%tqu] schon im Root-Kommentar → keine Kürzung nötig
+        # [%tqu] im Root-Kommentar: erste Variante als Setup-Zug behandeln.
+        if not node.variations:
+            return game
+        node = node.variations[0]
 
     tqu_board = node.board()
     new_game = chess.pgn.Game()
