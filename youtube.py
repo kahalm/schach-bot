@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 from datetime import date
 
 import discord
@@ -9,7 +10,7 @@ from discord.ext import commands
 
 log = logging.getLogger('schach-bot')
 
-YOUTUBE_FILE = 'youtube.json'
+YOUTUBE_FILE = os.path.join('config', 'youtube.json')
 
 
 def _load() -> list[dict]:

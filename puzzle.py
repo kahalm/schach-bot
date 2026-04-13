@@ -27,8 +27,9 @@ log = logging.getLogger('schach-bot')
 # typischerweise kurz nach dem Posten kommen)
 _puzzle_msg_ids: dict[int, str] = {}   # msg_id → line_id
 _PUZZLE_REACTIONS = {'✅', '❌', '👍', '👎', '🚮', '☠️'}
-IGNORE_FILE = 'puzzle_ignore.json'
-CHAPTER_IGNORE_FILE = 'chapter_ignore.json'
+CONFIG_DIR = 'config'
+IGNORE_FILE = os.path.join(CONFIG_DIR, 'puzzle_ignore.json')
+CHAPTER_IGNORE_FILE = os.path.join(CONFIG_DIR, 'chapter_ignore.json')
 
 # Endless-Modus: aktive Sessions (in-memory)
 _endless_sessions: dict[int, dict] = {}   # user_id → {'book': str|None, 'count': int}
@@ -244,9 +245,9 @@ BOOKS_DIR         = os.getenv('BOOKS_DIR', 'books')
 PUZZLE_STUDY_ID   = os.getenv('PUZZLE_STUDY_ID', '')
 PUZZLE_HOUR       = int(os.getenv('PUZZLE_HOUR', '9'))
 PUZZLE_MINUTE     = int(os.getenv('PUZZLE_MINUTE', '0'))
-PUZZLE_STATE_FILE = 'puzzle_state.json'
-USER_STUDIES_FILE = 'user_studies.json'
-LICHESS_COOLDOWN_FILE = 'lichess_cooldown.json'
+PUZZLE_STATE_FILE = os.path.join(CONFIG_DIR, 'puzzle_state.json')
+USER_STUDIES_FILE = os.path.join(CONFIG_DIR, 'user_studies.json')
+LICHESS_COOLDOWN_FILE = os.path.join(CONFIG_DIR, 'lichess_cooldown.json')
 CHANNEL_ID        = int(os.getenv('CHANNEL_ID', '0'))
 
 # ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 
 import discord
@@ -11,7 +12,7 @@ import puzzle
 
 log = logging.getLogger('schach-bot')
 
-REMINDER_FILE = 'reminder.json'
+REMINDER_FILE = os.path.join('config', 'reminder.json')
 
 
 def _load() -> dict:

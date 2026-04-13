@@ -2,13 +2,14 @@
 
 import json
 import logging
+import os
 from datetime import datetime, timezone
 
 import discord
 
 log = logging.getLogger('schach-bot')
 
-ELO_FILE = 'elo.json'
+ELO_FILE = os.path.join('config', 'elo.json')
 
 
 def _load() -> dict:

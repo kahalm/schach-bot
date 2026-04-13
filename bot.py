@@ -65,11 +65,14 @@ load_dotenv()
 
 VERSION         = '1.0.0'
 
+CONFIG_DIR      = 'config'
+os.makedirs(CONFIG_DIR, exist_ok=True)
+
 DISCORD_TOKEN   = os.getenv('DISCORD_TOKEN')
 CHANNEL_ID      = int(os.getenv('CHANNEL_ID', '0'))
 PUZZLE_HOUR     = int(os.getenv('PUZZLE_HOUR', '9'))
 PUZZLE_MINUTE   = int(os.getenv('PUZZLE_MINUTE', '0'))
-DM_STATE_FILE   = 'dm_state.json'
+DM_STATE_FILE   = os.path.join(CONFIG_DIR, 'dm_state.json')
 
 WELCOME_MESSAGE = (
     'Hallo! Ich bin der Schach-Bot eurer Servergruppe. ♟️\n\n'

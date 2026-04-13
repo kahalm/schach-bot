@@ -3,12 +3,8 @@ __pycache__/
 *.pyc
 .claude/
 
-# Runtime state
-state.json
-puzzle_state.json
-dm_state.json
-user_studies.json
-lichess_cooldown.json
+# Runtime state / config
+config/
 
 # Logs
 bot.log

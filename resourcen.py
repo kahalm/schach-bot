@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 from datetime import date
 
 import discord
@@ -9,7 +10,7 @@ from discord.ext import commands
 
 log = logging.getLogger('schach-bot')
 
-RESOURCEN_FILE = 'resourcen.json'
+RESOURCEN_FILE = os.path.join('config', 'resourcen.json')
 
 
 def _load() -> list[dict]:

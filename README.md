@@ -235,7 +235,11 @@ schach-bot/
 ├── .env.example        # Configuration template
 ├── .env                # Your configuration (not committed)
 ├── books/              # PGN files for puzzles (not committed)
-├── state.json          # Daily game progress (auto-created)
-├── puzzle_state.json   # Puzzle progress (auto-created)
+├── config/             # Runtime state & JSON configs (auto-created, gitignored)
+│   ├── puzzle_state.json
+│   ├── user_stats.json
+│   ├── elo.json
+│   ├── reminder.json
+│   └── ...
 └── bot.log             # Rotating log file (auto-created)
 ```
