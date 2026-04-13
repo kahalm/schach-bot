@@ -78,6 +78,7 @@ WELCOME_MESSAGE = (
     '🔗 `/resourcen` — Online-Lernressourcen anzeigen oder hinzufügen\n'
     '▶️ `/youtube` — YouTube-Kanäle/Videos anzeigen oder hinzufügen\n'
     '⏰ `/reminder` — Wiederkehrende Puzzle-DMs einstellen\n'
+    '🏅 `/elo` — Eigene Schach-Elo angeben\n'
     '📊 `/stats` — Deine Statistiken\n\n'
     'Mit `/help` siehst du alle Befehle im Detail.'
 )
@@ -98,12 +99,14 @@ import library
 import reminder
 import resourcen
 import youtube
+import elo
 
 puzzle.setup(bot)
 library.setup(bot)
 reminder.setup(bot)
 resourcen.setup(bot)
 youtube.setup(bot)
+elo.setup(bot)
 
 
 @bot.event
@@ -111,6 +114,15 @@ async def on_ready():
     await tree.sync()
     log.info('Bot online als %s', bot.user)
     puzzle_task.start()
+
+
+def _is_admin(user_id: int) -> bool:
+    """Prüft, ob der User in irgendeinem Guild des Bots Administrator ist."""
+    for guild in bot.guilds:
+        member = guild.get_member(user_id)
+        if member and member.guild_permissions.administrator:
+            return True
+    return False
 
 
 @bot.event
@@ -121,6 +133,29 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     if emoji not in puzzle._PUZZLE_REACTIONS:
         return
     if not puzzle.is_puzzle_message(payload.message_id):
+        return
+    if emoji == '☠️':
+        # Nur Admins dürfen ganze Kapitel ignorieren
+        if not _is_admin(payload.user_id):
+            return
+        stats.inc(payload.user_id, 'reaction_☠️')
+        line_id = puzzle.get_puzzle_line_id(payload.message_id)
+        if not line_id:
+            return
+        chap = puzzle.get_chapter_from_line_id(line_id)
+        if not chap:
+            return
+        book_filename, prefix = chap
+        puzzle.ignore_chapter(book_filename, prefix)
+        try:
+            user = await bot.fetch_user(payload.user_id)
+            dm = await user.create_dm()
+            name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+            await dm.send(
+                f'☠️ Kapitel **{prefix}** in **{name}** ignoriert. '
+                f'Alle Linien dieses Kapitels werden nicht mehr gepostet.')
+        except Exception as e:
+            log.warning('Chapter-Ignore-DM fehlgeschlagen: %s', e)
         return
     if emoji == '🚮':
         stats.inc(payload.user_id, 'reaction_🚮')
@@ -159,6 +194,26 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
     if emoji not in puzzle._PUZZLE_REACTIONS:
         return
     if not puzzle.is_puzzle_message(payload.message_id):
+        return
+    if emoji == '☠️':
+        if not _is_admin(payload.user_id):
+            return
+        stats.inc(payload.user_id, 'reaction_☠️', -1)
+        line_id = puzzle.get_puzzle_line_id(payload.message_id)
+        if not line_id:
+            return
+        chap = puzzle.get_chapter_from_line_id(line_id)
+        if not chap:
+            return
+        book_filename, prefix = chap
+        puzzle.unignore_chapter(book_filename, prefix)
+        try:
+            user = await bot.fetch_user(payload.user_id)
+            dm = await user.create_dm()
+            name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+            await dm.send(f'♻️ Kapitel **{prefix}** in **{name}** wieder aktiviert.')
+        except Exception as e:
+            log.warning('Chapter-Unignore-DM fehlgeschlagen: %s', e)
         return
     if emoji == '🚮':
         stats.inc(payload.user_id, 'reaction_🚮', -1)
@@ -282,6 +337,21 @@ async def cmd_help(interaction: discord.Interaction):
         value='YouTube-Kanäle/Videos anzeigen oder hinzufügen.\n'
               '`/youtube` — Alle Links auflisten\n'
               '`/youtube url:… beschreibung:…` — Neuen Link hinzufügen',
+        inline=False,
+    )
+    embed.add_field(
+        name='/ignore_kapitel [buch] [kapitel] [aktion]',
+        value='**(Admin)** Ein ganzes Kapitel ignorieren.\n'
+              '`/ignore_kapitel buch:2 kapitel:3` — ignoriert Kapitel 3 in Buch 2\n'
+              '`/ignore_kapitel buch:2 kapitel:3 aktion:unignore` — wieder aktivieren\n'
+              '`/ignore_kapitel` — alle ignorierten Kapitel anzeigen',
+        inline=False,
+    )
+    embed.add_field(
+        name='/elo [wert]',
+        value='Eigene Schach-Elo angeben oder anzeigen.\n'
+              '`/elo wert:1500` — Setzt deine aktuelle Elo (mit Zeitstempel)\n'
+              '`/elo` — Zeigt deine aktuelle Elo + Historie',
         inline=False,
     )
     embed.add_field(

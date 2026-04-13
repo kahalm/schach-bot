@@ -26,8 +26,9 @@ log = logging.getLogger('schach-bot')
 # Puzzle-Nachrichten-IDs für Reaction-Tracking (in-memory, reicht da Reactions
 # typischerweise kurz nach dem Posten kommen)
 _puzzle_msg_ids: dict[int, str] = {}   # msg_id → line_id
-_PUZZLE_REACTIONS = {'✅', '❌', '👍', '👎', '🚮'}
+_PUZZLE_REACTIONS = {'✅', '❌', '👍', '👎', '🚮', '☠️'}
 IGNORE_FILE = 'puzzle_ignore.json'
+CHAPTER_IGNORE_FILE = 'chapter_ignore.json'
 
 # Endless-Modus: aktive Sessions (in-memory)
 _endless_sessions: dict[int, dict] = {}   # user_id → {'book': str|None, 'count': int}
@@ -61,6 +62,73 @@ def unignore_puzzle(line_id: str):
     ignored = _load_ignore_list()
     ignored.discard(line_id)
     _save_ignore_list(ignored)
+
+
+def _load_chapter_ignore_list() -> set[str]:
+    """Lädt ignorierte Kapitel als Set von '<filename>:<chapter_prefix>'."""
+    try:
+        with open(CHAPTER_IGNORE_FILE) as f:
+            return set(json.load(f))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return set()
+
+def _save_chapter_ignore_list(ignored: set[str]):
+    with open(CHAPTER_IGNORE_FILE, 'w') as f:
+        json.dump(sorted(ignored), f, indent=2)
+
+def _is_chapter_ignored(line_id: str, chapter_ignored: set[str]) -> bool:
+    """Prüft, ob die line_id zu einem ignorierten Kapitel gehört.
+    Match: '<filename>:<prefix>.' (Punkt nach dem Präfix verhindert False-Positives)."""
+    return any(line_id.startswith(prefix + '.') for prefix in chapter_ignored)
+
+def _find_chapter_prefix(book_filename: str, chapter: int) -> str | None:
+    """Findet das tatsächliche Chapter-Präfix-Format (z.B. '003' vs '3') anhand
+    existierender Linien im Buch."""
+    for lid, _ in load_all_lines():
+        if not lid.startswith(book_filename + ':'):
+            continue
+        round_part = lid.split(':', 1)[1]
+        if '.' not in round_part:
+            continue
+        chap_str = round_part.split('.', 1)[0]
+        try:
+            if int(chap_str) == chapter:
+                return chap_str
+        except ValueError:
+            continue
+    return None
+
+def _list_chapters(book_filename: str) -> dict[str, int]:
+    """Gibt alle Kapitel-Präfixe eines Buchs mit Anzahl Linien zurück."""
+    counts: dict[str, int] = {}
+    for lid, _ in load_all_lines():
+        if not lid.startswith(book_filename + ':'):
+            continue
+        round_part = lid.split(':', 1)[1]
+        if '.' not in round_part:
+            continue
+        chap = round_part.split('.', 1)[0]
+        counts[chap] = counts.get(chap, 0) + 1
+    return counts
+
+def ignore_chapter(book_filename: str, chapter_prefix: str):
+    ignored = _load_chapter_ignore_list()
+    ignored.add(f'{book_filename}:{chapter_prefix}')
+    _save_chapter_ignore_list(ignored)
+
+def unignore_chapter(book_filename: str, chapter_prefix: str):
+    ignored = _load_chapter_ignore_list()
+    ignored.discard(f'{book_filename}:{chapter_prefix}')
+    _save_chapter_ignore_list(ignored)
+
+def get_chapter_from_line_id(line_id: str) -> tuple[str, str] | None:
+    """Extrahiert (book_filename, chapter_prefix) aus einer line_id, oder None."""
+    if ':' not in line_id:
+        return None
+    fname, _, round_part = line_id.partition(':')
+    if '.' not in round_part:
+        return None
+    return (fname, round_part.split('.', 1)[0])
 
 
 # --- Endless-Modus ---
@@ -400,8 +468,11 @@ def pick_sequential_lines(book_filename: str, start: int, count: int
     """Gibt bis zu `count` Linien ab Position `start` zurück (sequentiell)."""
     all_lines = load_all_lines()
     ignored = _load_ignore_list()
+    chapter_ignored = _load_chapter_ignore_list()
     book_lines = [(lid, g) for lid, g in all_lines
-                  if lid.startswith(book_filename + ':') and lid not in ignored]
+                  if lid.startswith(book_filename + ':')
+                  and lid not in ignored
+                  and not _is_chapter_ignored(lid, chapter_ignored)]
     end = min(start + count, len(book_lines))
     return book_lines[start:end]
 
@@ -450,10 +521,13 @@ def pick_random_lines(count: int = 1,
     """
     all_lines = load_all_lines()
     ignored = _load_ignore_list()
+    chapter_ignored = _load_chapter_ignore_list()
     if book_filename:
         all_lines = [(lid, g) for lid, g in all_lines
                      if lid.startswith(book_filename + ':')]
-    all_lines = [(lid, g) for lid, g in all_lines if lid not in ignored]
+    all_lines = [(lid, g) for lid, g in all_lines
+                 if lid not in ignored
+                 and not _is_chapter_ignored(lid, chapter_ignored)]
     if not all_lines:
         return []
 
@@ -1437,3 +1511,88 @@ def setup(bot: discord.ext.commands.Bot):
         except Exception as e:
             stop_endless(user_id)
             await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
+
+
+    @tree.command(name='ignore_kapitel',
+                  description='Ein ganzes Kapitel ignorieren oder Liste anzeigen (Admin)')
+    @discord.app_commands.describe(
+        buch='Buchnummer aus /kurs',
+        kapitel='Kapitel-Nummer (z.B. 3)',
+        aktion='ignore = ignorieren · unignore = wieder aktivieren · list = ohne Parameter zeigen',
+    )
+    @discord.app_commands.choices(aktion=[
+        discord.app_commands.Choice(name='ignore', value='ignore'),
+        discord.app_commands.Choice(name='unignore', value='unignore'),
+    ])
+    @discord.app_commands.default_permissions(administrator=True)
+    async def cmd_ignore_kapitel(
+        interaction: discord.Interaction,
+        buch: int = 0,
+        kapitel: int = 0,
+        aktion: discord.app_commands.Choice[str] = None,
+    ):
+        await interaction.response.defer(ephemeral=True)
+
+        # Ohne Parameter → Liste aller ignorierten Kapitel
+        if buch == 0 and kapitel == 0:
+            ignored = sorted(_load_chapter_ignore_list())
+            if not ignored:
+                await interaction.followup.send(
+                    'Keine Kapitel ignoriert.', ephemeral=True)
+                return
+            lines = ['**Ignorierte Kapitel:**']
+            for entry in ignored:
+                fname, _, prefix = entry.partition(':')
+                name = fname.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+                lines.append(f'• `{name}` — Kapitel {prefix}')
+            await interaction.followup.send('\n'.join(lines), ephemeral=True)
+            return
+
+        if buch == 0 or kapitel == 0:
+            await interaction.followup.send(
+                '⚠️ Bitte sowohl `buch` als auch `kapitel` angeben.', ephemeral=True)
+            return
+
+        # Buch auflösen
+        if not os.path.isdir(BOOKS_DIR):
+            await interaction.followup.send(
+                f'⚠️ Books-Verzeichnis fehlt: `{BOOKS_DIR}`', ephemeral=True)
+            return
+        books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
+        if not 1 <= buch <= len(books):
+            await interaction.followup.send(
+                f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die verfügbaren Bücher.',
+                ephemeral=True)
+            return
+        book_filename = books[buch - 1]
+        book_name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+
+        # Chapter-Präfix im tatsächlichen Format finden
+        prefix = _find_chapter_prefix(book_filename, kapitel)
+        if prefix is None:
+            chapters = _list_chapters(book_filename)
+            sample = ', '.join(sorted(chapters)[:10])
+            more = f' (von {len(chapters)})' if len(chapters) > 10 else ''
+            await interaction.followup.send(
+                f'⚠️ Kapitel {kapitel} in **{book_name}** nicht gefunden.\n'
+                f'Verfügbare Kapitel{more}: `{sample}`',
+                ephemeral=True)
+            return
+
+        action_value = aktion.value if aktion else 'ignore'
+        chapter_count = _list_chapters(book_filename).get(prefix, 0)
+
+        if action_value == 'unignore':
+            unignore_chapter(book_filename, prefix)
+            log.info('Kapitel reaktiviert: %s:%s', book_filename, prefix)
+            await interaction.followup.send(
+                f'♻️ Kapitel **{prefix}** in **{book_name}** wieder aktiviert '
+                f'({chapter_count} Linien).',
+                ephemeral=True)
+        else:
+            ignore_chapter(book_filename, prefix)
+            log.info('Kapitel ignoriert: %s:%s', book_filename, prefix)
+            await interaction.followup.send(
+                f'🚮 Kapitel **{prefix}** in **{book_name}** ignoriert '
+                f'({chapter_count} Linien werden nicht mehr gepostet).',
+                ephemeral=True)

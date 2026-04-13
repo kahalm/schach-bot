@@ -35,9 +35,11 @@ A Discord bot with two daily chess features:
 | `/tag <tag>` | Filter books by tag (e.g. Taktik, Endspiel) |
 | `/resourcen [url] [beschreibung]` | Show or add online learning resources |
 | `/youtube [url] [beschreibung]` | Show or add YouTube channels/videos |
+| `/elo [wert]` | Set or show your own chess Elo (with history + timestamps) |
 | `/stats` | Show usage statistics for all users |
 | `/help` | Show all available commands |
 | `/reindex` | Rebuild library catalog (admins only) |
+| `/ignore_kapitel [buch] [kapitel] [aktion]` | Ignore an entire chapter so its puzzles are skipped (admins only) |
 | `/reset` | Reset the chapter counter to 1 (admins only) |
 
 ## Requirements
@@ -224,6 +226,7 @@ This picks a random line, uploads it to Lichess, and prints the study URL and a 
 schach-bot/
 ├── bot.py              # All bot logic
 ├── reminder.py         # /reminder command (recurring puzzle DMs)
+├── elo.py              # /elo command (user-reported chess Elo with history)
 ├── resourcen.py        # /resourcen command (online learning resources)
 ├── youtube.py          # /youtube command (YouTube channels/videos)
 ├── test_puzzle.py      # Standalone puzzle upload test
