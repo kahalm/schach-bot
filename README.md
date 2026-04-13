@@ -37,6 +37,7 @@ A Discord bot with two daily chess features:
 | `/youtube [url] [beschreibung]` | Show or add YouTube channels/videos |
 | `/elo [wert]` | Set or show your own chess Elo (with history + timestamps) |
 | `/stats` | Show usage statistics for all users |
+| `/version` | Show the current bot version (major.minor.bugfix) |
 | `/help` | Show all available commands |
 | `/reindex` | Rebuild library catalog (admins only) |
 | `/ignore_kapitel [buch] [kapitel] [aktion]` | Ignore an entire chapter so its puzzles are skipped (admins only) |

@@ -61,6 +61,8 @@ from datetime import time
 from dotenv import load_dotenv
 load_dotenv()
 
+VERSION         = '1.0.0'
+
 DISCORD_TOKEN   = os.getenv('DISCORD_TOKEN')
 CHANNEL_ID      = int(os.getenv('CHANNEL_ID', '0'))
 PUZZLE_HOUR     = int(os.getenv('PUZZLE_HOUR', '9'))
@@ -359,7 +361,19 @@ async def cmd_help(interaction: discord.Interaction):
         value='Nutzungsstatistiken aller User anzeigen.',
         inline=False,
     )
+    embed.add_field(
+        name='/version',
+        value='Aktuelle Bot-Version anzeigen.',
+        inline=False,
+    )
+    embed.set_footer(text=f'Schach-Bot v{VERSION}')
     await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@tree.command(name='version', description='Aktuelle Bot-Version anzeigen')
+async def cmd_version(interaction: discord.Interaction):
+    await interaction.response.send_message(
+        f'♟️ **Schach-Bot** v{VERSION}', ephemeral=True)
 
 
 @tree.command(name='announce', description='Begrüßungsnachricht an einen User senden (Admin)')
