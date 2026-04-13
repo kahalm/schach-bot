@@ -1621,12 +1621,17 @@ def setup(bot: discord.ext.commands.Bot):
         anzahl='Anzahl Puzzles (1–20, Standard: 1)',
         buch='Buchnummer aus /kurs (Standard: alle Bücher)',
         id='Puzzle-ID (z.B. datei.pgn:123) – zeigt genau dieses Puzzle',
+        user='Puzzle an diesen User schicken (Standard: an dich selbst)',
     )
-    async def cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: int = 0, id: str = ''):
-        log.info('/puzzle von %s: anzahl=%d buch=%d id=%s', interaction.user, anzahl, buch, id)
+    async def cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: int = 0,
+                         id: str = '', user: discord.Member | None = None):
+        target_user = user or interaction.user
+        log.info('/puzzle von %s: anzahl=%d buch=%d id=%s user=%s',
+                 interaction.user, anzahl, buch, id, target_user)
         await interaction.response.defer(ephemeral=True)
         try:
-            dm = await interaction.user.create_dm()
+            dm = await target_user.create_dm()
+            target_uid = target_user.id
 
             if id:
                 result = find_line_by_id(id)
@@ -1644,7 +1649,7 @@ def setup(bot: discord.ext.commands.Bot):
                 rating = book_meta.get('rating', 0)
 
                 # Upload
-                reuse_study_id = _get_user_study_id(interaction.user.id)
+                reuse_study_id = _get_user_study_id(target_uid)
                 loop = asyncio.get_running_loop()
                 puzzle_url = await loop.run_in_executor(
                     None, lambda: upload_to_lichess(game, context_game=context,
@@ -1678,14 +1683,17 @@ def setup(bot: discord.ext.commands.Bot):
                 if puzzle_url:
                     await dm.send(f'[Klickbares Rätsel]({puzzle_url})')
 
-                await interaction.followup.send(f'✅ Puzzle `{line_id}` per DM gesendet.', ephemeral=True)
+                dest = f'an {target_user.mention}' if user else 'dir'
+                await interaction.followup.send(
+                    f'✅ Puzzle `{line_id}` {dest} per DM gesendet.', ephemeral=True)
                 return
 
-            sent = await post_puzzle(dm, count=anzahl, book_idx=buch, user_id=interaction.user.id)
+            sent = await post_puzzle(dm, count=anzahl, book_idx=buch, user_id=target_uid)
+            dest = f'an {target_user.mention}' if user else 'dir'
             if sent == anzahl:
-                msg = f'✅ {sent} Puzzle(s) wurde(n) dir per DM gesendet.'
+                msg = f'✅ {sent} Puzzle(s) wurde(n) {dest} per DM gesendet.'
             elif sent > 0:
-                msg = f'⚠️ Nur {sent}/{anzahl} Puzzle(s) konnten gesendet werden – Details im Bot-Log.'
+                msg = f'⚠️ Nur {sent}/{anzahl} Puzzle(s) konnten {dest} gesendet werden – Details im Bot-Log.'
             else:
                 msg = '❌ Es konnte kein Puzzle gesendet werden – Details im Bot-Log.'
             await interaction.followup.send(msg, ephemeral=True)

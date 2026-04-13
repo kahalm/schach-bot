@@ -4,6 +4,15 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.9.0] - 2026-04-13
+### Added
+- `/puzzle user:@Name` — Puzzle an einen anderen User schicken. Der
+  optionale `user:`-Parameter akzeptiert ein Discord-Member. DM,
+  Lichess-Studie und Stats werden dann dem Empfänger zugeordnet.
+  Ohne `user:` bleibt alles wie bisher (an sich selbst). Bestätigung
+  nennt den Empfänger, z.B. „✅ 2 Puzzle(s) wurde(n) an @Max per DM
+  gesendet."
+
 ## [1.8.4] - 2026-04-13
 ### Fixed
 - Discord-Bild war bei Puzzles mit `[%tqu]` im Root-Kommentar (z.B.
