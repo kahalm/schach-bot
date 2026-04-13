@@ -2,21 +2,25 @@
   "100 Tactical Patterns You Must Know_firstkey.pgn": {
     "difficulty": "Meister",
     "rating": 5,
-    "blind": true
+    "blind": true,
+    "random": true
   },
   "1001 Deadly Checkmates_firstkey.pgn": {
     "difficulty": "Anfänger",
     "rating": 3,
-    "blind": false
+    "blind": false,
+    "random": true
   },
   "The Checkmate Patterns Manual_firstkey.pgn": {
     "difficulty": "Anfänger",
     "rating": 6,
-    "blind": true
+    "blind": true,
+    "random": true
   },
   "The Ultimate Chess Puzzle Book_firstkey.pgn": {
     "difficulty": "Meister",
     "rating": 2,
-    "blind": false
+    "blind": false,
+    "random": true
   }
 }

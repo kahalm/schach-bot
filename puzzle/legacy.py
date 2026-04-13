@@ -520,12 +520,27 @@ def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
             lines.append((line_id, game))
     return lines
 
+def get_random_books() -> list[str]:
+    """Liefert Liste der für Zufalls-/Daily-Auswahl freigegebenen Bücher.
+
+    Default für fehlendes Flag = ``True`` (neu hinzugefügte Bücher sind
+    automatisch im Pool; einzelne Bücher können per ``random: false`` in
+    ``books/books.json`` ausgeschlossen werden).
+    """
+    config = _load_books_config()
+    return [fn for fn, meta in config.items() if meta.get('random', True)]
+
+
 def pick_random_lines(count: int = 1,
                       book_filename: str | None = None,
                       ) -> list[tuple[str, chess.pgn.Game]]:
     """Bis zu `count` zufällige noch nicht gepostete Linien wählen.
 
-    book_filename – nur Linien aus dieser Datei (None = alle Bücher).
+    book_filename – nur Linien aus dieser Datei (None = alle ``random:true``-Bücher).
+
+    Ohne expliziten ``book_filename`` werden ausschließlich Bücher mit
+    ``random: true`` (Default ``true``) berücksichtigt – das gilt sowohl
+    für ``/puzzle`` als auch für den täglichen Post.
     """
     all_lines = load_all_lines()
     ignored = _load_ignore_list()
@@ -533,6 +548,11 @@ def pick_random_lines(count: int = 1,
     if book_filename:
         all_lines = [(lid, g) for lid, g in all_lines
                      if lid.startswith(book_filename + ':')]
+    else:
+        # Pool auf für Zufallsauswahl freigegebene Bücher beschränken
+        random_books = set(get_random_books())
+        all_lines = [(lid, g) for lid, g in all_lines
+                     if lid.split(':')[0] in random_books]
     all_lines = [(lid, g) for lid, g in all_lines
                  if lid not in ignored
                  and not _is_chapter_ignored(lid, chapter_ignored)]
@@ -1482,6 +1502,8 @@ def setup(bot: discord.ext.commands.Bot):
                 info  = f'{done}/{total} gepostet'
                 if diff:
                     info += f'\n{diff}  {stars}' if stars else f'\n{diff}'
+                if meta.get('random', True):
+                    info += '\n🎲 Im Zufalls-/Daily-Pool'
                 if meta.get('blind'):
                     info += '\n🙈 Blind-Modus verfügbar'
                 embed.add_field(name=f'{i}: {name}', value=info, inline=False)

@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.6.0] - 2026-04-13
+### Added
+- Per-Buch-Flag `random: true|false` in `books/books.json` (analog zu
+  `blind`). Nur Bücher mit `random: true` (Default `true`) sind im Pool
+  für `/puzzle` (ohne `buch:`-Parameter) und für den täglichen Daily-Post.
+  Wird ein Buch explizit per `buch:N` gewählt, gilt das Flag nicht – der
+  User bekommt ein Puzzle aus genau diesem Buch.
+- `/kurs` zeigt 🎲 für Bücher, die im Zufalls-/Daily-Pool sind.
+- Helper `puzzle.get_random_books()` analog zu `get_blind_books()`.
+
 ## [1.5.3] - 2026-04-13
 ### Fixed
 - Nach 3–5 schnellen Klicks hängte der nächste Klick ~30 s. Ursache:
