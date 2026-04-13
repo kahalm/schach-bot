@@ -23,7 +23,7 @@ def setup(bot: commands.Bot):
         description='Blind-Puzzle: Stellung X Züge vor der eigentlichen Aufgabe.',
     )
     @discord.app_commands.describe(
-        moves='Anzahl Halbzüge, die du im Kopf spielen musst (1–20, Standard: 4)',
+        moves='Anzahl Halbzüge, die du im Kopf spielen musst (Standard: 4; hat das Spiel weniger, wird das Maximum verwendet)',
         anzahl='Anzahl Puzzles (1–20, Standard: 1)',
         buch='Buchnummer aus /kurs (Standard: zufälliges Blind-Buch)',
         user='Puzzle an diesen User schicken (Standard: an dich selbst)',

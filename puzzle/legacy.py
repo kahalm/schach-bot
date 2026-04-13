@@ -835,7 +835,9 @@ def _split_for_blind(original_game: chess.pgn.Game, x_moves: int):
         node = node.variations[0]
 
     plies_before = len(nodes) - 1  # Root hat keinen .move
-    if plies_before < x_moves:
+    # Wenn nicht genug Vorlauf-Züge vorhanden, so viele wie möglich nehmen.
+    x_moves = min(x_moves, plies_before)
+    if x_moves < 1:
         return None
 
     blind_root = nodes[-1 - x_moves]
@@ -1514,11 +1516,11 @@ async def post_blind_puzzle(channel,
                             user_id: int | None = None):
     """Postet Blind-Puzzles: Stellung X Halbzüge VOR der Trainingsposition.
 
-    moves    – Anzahl Halbzüge, die der User im Kopf spielen muss (1–20).
+    moves    – Anzahl Halbzüge, die der User im Kopf spielen muss (≥1).
     count    – Anzahl Puzzles (1–20).
     book_idx – 1-basierte Buchnummer (0 = alle blind-fähigen Bücher).
     """
-    moves = max(1, min(moves, 20))
+    moves = max(1, moves)
     count = max(1, min(count, 20))
 
     book_filename = None
