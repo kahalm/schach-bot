@@ -709,7 +709,14 @@ def pick_random_line() -> tuple[str, chess.pgn.Game] | None:
     return result[0] if result else None
 
 def find_line_by_id(line_id: str) -> tuple[str, chess.pgn.Game] | None:
-    """Sucht eine Linie anhand ihrer line_id (exakt oder Suffix-Match)."""
+    """Sucht eine Linie anhand ihrer line_id (exakt oder Suffix-Match).
+
+    Toleriert ein vorangestelltes ``ID:`` (wie es im Embed-Footer steht),
+    damit der User den Footer-String 1:1 in ``/puzzle id:`` einfügen kann.
+    """
+    line_id = line_id.strip()
+    if line_id.lower().startswith('id:'):
+        line_id = line_id[3:].lstrip()
     all_lines = load_all_lines()
     # Exakter Treffer
     for lid, game in all_lines:

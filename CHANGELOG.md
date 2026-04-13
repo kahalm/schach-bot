@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.8.3] - 2026-04-13
+### Fixed
+- `/puzzle id:` toleriert jetzt ein vorangestelltes `ID:` (Copy-Paste
+  aus dem Embed-Footer „ID: foo.pgn:003.004"). Vorher schlug die Suche
+  in dem Fall mit „⚠️ Puzzle nicht gefunden" fehl.
+
 ## [1.8.2] - 2026-04-13
 ### Fixed
 - Lichess spielte bei Puzzles mit FEN „Black to move" (z.B. The Chess
