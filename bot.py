@@ -57,10 +57,7 @@ tree = bot.tree
 # Module laden
 import puzzle
 import library
-import reminder
-import resourcen
-import youtube
-import elo
+from commands import reminder, resourcen, youtube, elo
 
 puzzle.setup(bot)
 library.setup(bot)
