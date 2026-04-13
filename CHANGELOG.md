@@ -4,6 +4,17 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.8.2] - 2026-04-13
+### Fixed
+- Lichess spielte bei Puzzles mit FEN „Black to move" (z.B. The Chess
+  Coach Companion `021.004`) den ersten Zug automatisch ab und zeigte
+  dem User die Stellung NACH dem Zug – während Discord die Stellung
+  korrekt davor zeigte. Ursache: Quell-PGN enthält nur `[FEN "..."]`,
+  aber kein `[SetUp "1"]`. Per PGN-Spec ist `SetUp` zwingend, sonst
+  ignoriert/„repariert" Lichess die Stellung. Fix: `_clean_pgn_for_lichess()`
+  ergänzt `[SetUp "1"]` automatisch direkt vor jedem `[FEN ...]`-Header,
+  wenn es noch nicht da ist.
+
 ## [1.8.1] - 2026-04-13
 ### Fixed
 - Discord-503 (transienter `DiscordServerError`) auf einem optionalen

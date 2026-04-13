@@ -903,11 +903,23 @@ def pick_random_blind_lines(count: int,
 
 
 def _clean_pgn_for_lichess(pgn_text: str) -> str:
-    """ChessBase-spezifische Annotationen entfernen, die Lichess nicht versteht."""
+    """ChessBase-spezifische Annotationen entfernen, die Lichess nicht versteht.
+
+    Stellt außerdem sicher, dass jedes PGN mit ``[FEN ...]`` auch ein
+    ``[SetUp "1"]`` mitführt – PGN-Spec verlangt das, und Lichess
+    interpretiert sonst die Startfarbe falsch (auto-played Black-Move,
+    obwohl FEN „Black to move\" sagt).
+    """
     # [%tqu ...] entfernen
     pgn_text = re.sub(r'\[%tqu\b[^\]]*\]', '', pgn_text)
     # leere Kommentare {} entfernen
     pgn_text = re.sub(r'\{\s*\}', '', pgn_text)
+    # SetUp "1" ergänzen, wenn FEN-Header vorhanden, aber SetUp fehlt
+    if re.search(r'^\[FEN\s+"', pgn_text, re.MULTILINE) and \
+       not re.search(r'^\[SetUp\s+"', pgn_text, re.MULTILINE):
+        pgn_text = re.sub(r'(^\[FEN\s+"[^"]*"\])',
+                          r'[SetUp "1"]\n\1',
+                          pgn_text, count=1, flags=re.MULTILINE)
     return pgn_text
 
 _LICHESS_COOLDOWN_SECS = 3600  # 1 Stunde
