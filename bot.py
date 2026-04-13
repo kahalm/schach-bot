@@ -57,7 +57,7 @@ tree = bot.tree
 # Module laden
 import puzzle
 import library
-from commands import reminder, resourcen, youtube, elo
+from commands import reminder, resourcen, youtube, elo, release_notes
 
 puzzle.setup(bot)
 library.setup(bot)
@@ -65,6 +65,7 @@ reminder.setup(bot)
 resourcen.setup(bot)
 youtube.setup(bot)
 elo.setup(bot)
+release_notes.setup(bot)
 
 
 @bot.event
@@ -320,6 +321,13 @@ async def cmd_help(interaction: discord.Interaction):
     embed.add_field(
         name='/version',
         value='Aktuelle Bot-Version anzeigen.',
+        inline=False,
+    )
+    embed.add_field(
+        name='/release-notes [version] [anzahl]',
+        value='Versionshistorie/Changelog des Bots anzeigen.\n'
+              '`/release-notes` — Letzte 3 Versionen\n'
+              '`/release-notes version:1.1.0` — Bestimmte Version',
         inline=False,
     )
     embed.set_footer(text=f'Schach-Bot v{VERSION}')
