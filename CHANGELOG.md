@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.7.1] - 2026-04-13
+### Added
+- Pro-Ordner-Filter via `ignore.json`: ein JSON-Array von fnmatch-Patterns
+  (`["*"]`, `["*.pgn"]`, `["A01.pgn", "A02.pgn"]`, …). Liegt im jeweiligen
+  Ordner unterhalb des Library-Roots und gilt rekursiv für alle Dateien in
+  diesem Ordner und allen Unterordnern. Greift bei `/bibliothek`, `/tag`,
+  `/autor`. Vorteil: wenn der Ordner verschoben wird, wandert die
+  ignore.json mit – Filter bleibt wirksam. `library.json` bleibt
+  unverändert (View-Layer auf den in-memory-Cache); aktiv nach Bot-Restart
+  oder `/reindex`.
+- Erste ignore.json angelegt für `AAAnew/Encyclopedia of Chess Openings/`
+  → blendet 505 ECO-Einträge (A01–E99) aus dem Trefferpool aus.
+
 ## [1.7.0] - 2026-04-13
 ### Added
 - 6 neue Puzzle-Bücher in `books/`:

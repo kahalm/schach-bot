@@ -1,6 +1,7 @@
 """Bibliothek-Katalog: index.txt parsen, Tags generieren, Suche, Slash-Commands."""
 
 import asyncio
+import fnmatch
 import json
 import logging
 import os
@@ -27,6 +28,67 @@ _SFTPGO_SHARE_ID       = os.getenv('SFTPGO_SHARE_ID', '')
 _SFTPGO_SHARE_PASSWORD = os.getenv('SFTPGO_SHARE_PASSWORD', '')
 
 _REMOTE_PREFIX_RE = re.compile(r'.*/schach/')
+
+# Per-Ordner-Filter via ``ignore.json``: ein JSON-Array fnmatch-tauglicher
+# Patterns (``*.pgn``, ``A01.pgn``, …). Eine ignore.json gilt rekursiv für
+# alle Dateien in diesem Ordner und allen Unterordnern. library.json bleibt
+# unverändert – die ignore.json wandert mit dem Ordner mit, sodass dieselben
+# Dateien an einem neuen Ort weiter gefiltert werden.
+_IGNORE_FILE = 'ignore.json'
+
+# Cache: folder-pfad → Liste von Patterns (oder [])
+_ignore_cache: dict[str, list[str]] = {}
+
+
+def _load_ignore_patterns(folder: str) -> list[str]:
+    """Lädt ``ignore.json`` aus ``folder`` (cached). Gibt fnmatch-Patterns zurück."""
+    if folder in _ignore_cache:
+        return _ignore_cache[folder]
+    patterns: list[str] = []
+    path = os.path.join(folder, _IGNORE_FILE)
+    if os.path.isfile(path):
+        try:
+            with open(path, encoding='utf-8') as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                patterns = [str(p) for p in data if p]
+        except (json.JSONDecodeError, OSError) as e:
+            log.warning('ignore.json kaputt (%s): %s', path, e)
+    _ignore_cache[folder] = patterns
+    return patterns
+
+
+def _file_is_ignored(remote: str) -> bool:
+    """Walkt vom File aufwärts und prüft jede ignore.json bis ``_LOCAL_BASE``."""
+    if not _LOCAL_BASE:
+        return False
+    local = _local_path(remote)
+    base  = os.path.normpath(_LOCAL_BASE)
+    folder = os.path.normpath(os.path.dirname(local))
+    basename = os.path.basename(local)
+    while folder.startswith(base):
+        for pat in _load_ignore_patterns(folder):
+            if fnmatch.fnmatch(basename, pat):
+                return True
+            rel = os.path.relpath(local, folder).replace('\\', '/')
+            if fnmatch.fnmatch(rel, pat):
+                return True
+        if folder == base:
+            break
+        parent = os.path.dirname(folder)
+        if parent == folder:
+            break
+        folder = parent
+    return False
+
+
+def _is_excluded(entry: dict) -> bool:
+    """Eintrag wird ausgeblendet, wenn ALLE seiner Files via ignore.json gefiltert sind."""
+    files = entry.get('files', [])
+    if not files:
+        return False
+    return all(_file_is_ignored(f) for f in files)
+
 
 def _local_path(remote: str) -> str:
     """Übersetzt einen remote-Pfad aus index.txt in den lokalen Syncthing-Pfad."""
@@ -361,13 +423,15 @@ _library_loaded: bool = False
 def _ensure_library() -> list[dict]:
     global _library_cache, _library_loaded
     if not _library_loaded:
-        _library_cache = _load_library()
+        full = _load_library()
+        _library_cache = [e for e in full if not _is_excluded(e)]
         _library_loaded = True
     return _library_cache
 
 def _reload_library():
     global _library_loaded
     _library_loaded = False
+    _ignore_cache.clear()
 
 def _author_str(author) -> str:
     """Gibt author als String zurück (egal ob str oder list)."""
