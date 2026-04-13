@@ -233,7 +233,7 @@ async def post_next_endless(bot, user_id: int):
 
     # Lösung als Spoiler
     exporter = chess.pgn.StringExporter(headers=False, variations=True, comments=True)
-    pgn_moves = game.accept(exporter).strip()
+    pgn_moves = _strip_pgn_annotations(game.accept(exporter))
     if pgn_moves:
         await dm.send(f'Lösung: ||`{pgn_moves}`||')
     if context:
@@ -922,6 +922,26 @@ def pick_random_blind_lines(count: int,
     return random.sample(candidates, count)
 
 
+def _strip_pgn_annotations(text: str) -> str:
+    """Entfernt grafische PGN-Annotationen aus einem exportierten PGN-String.
+
+    Betroffen sind alle ``[%cmd ...]``-Blöcke, z.B.:
+    - ``[%cal Gf4g5,...]``  — farbige Pfeile (colored arrows)
+    - ``[%csl Ga2]``        — eingefärbte Felder (colored squares)
+    - ``[%tqu ...]``        — ChessBase-Trainings-Quiz-Annotation
+
+    Nach dem Entfernen werden leere Kommentarblöcke ``{  }`` und
+    überflüssige Leerzeichen bereinigt.
+    """
+    # Alle [%...]-Blöcke entfernen
+    text = re.sub(r'\[%\w+[^\]]*\]', '', text)
+    # Leere Kommentarblöcke { } entfernen
+    text = re.sub(r'\{\s*\}', '', text)
+    # Mehrfache Leerzeichen zusammenführen
+    text = re.sub(r'  +', ' ', text)
+    return text.strip()
+
+
 def _clean_pgn_for_lichess(pgn_text: str) -> str:
     """ChessBase-spezifische Annotationen entfernen, die Lichess nicht versteht.
 
@@ -1467,7 +1487,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
 
         exporter = chess.pgn.StringExporter(
             headers=False, variations=True, comments=True)
-        pgn_moves = game.accept(exporter).strip()
+        pgn_moves = _strip_pgn_annotations(game.accept(exporter))
         if pgn_moves:
             await _send_optional(target, f'Lösung: ||`{pgn_moves}`||', label=f'Lösung {lid}')
         if context:
@@ -1601,7 +1621,7 @@ async def post_blind_puzzle(channel,
 
         exporter = chess.pgn.StringExporter(
             headers=False, variations=True, comments=True)
-        pgn_moves = puzzle_game.accept(exporter).strip()
+        pgn_moves = _strip_pgn_annotations(puzzle_game.accept(exporter))
         if pgn_moves:
             await _send_optional(target, f'Lösung des Puzzles: ||`{pgn_moves}`||',
                                  label=f'Blind-Lösung {line_id}')
@@ -1678,7 +1698,7 @@ def setup(bot: discord.ext.commands.Bot):
                 await msg.edit(view=_fresh_button_view())
 
                 exporter = chess.pgn.StringExporter(headers=False, variations=True, comments=True)
-                pgn_moves = game.accept(exporter).strip()
+                pgn_moves = _strip_pgn_annotations(game.accept(exporter))
                 if pgn_moves:
                     await dm.send(f'Lösung: ||`{pgn_moves}`||')
                 if context:
@@ -1952,7 +1972,7 @@ def setup(bot: discord.ext.commands.Bot):
             # PGN-Lösung als Spoiler
             exporter = chess.pgn.StringExporter(
                 headers=False, variations=True, comments=True)
-            pgn_moves = game.accept(exporter).strip()
+            pgn_moves = _strip_pgn_annotations(game.accept(exporter))
             if pgn_moves:
                 await dm.send(f'Lösung: ||`{pgn_moves}`||')
             if context:

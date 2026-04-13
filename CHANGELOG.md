@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.9.4] - 2026-04-13
+### Changed
+- Lösungs-Spoiler filtert jetzt grafische PGN-Annotationen heraus:
+  `[%cal ...]` (farbige Pfeile) und `[%csl ...]` (eingefärbte Felder)
+  sowie andere `[%cmd ...]`-Blöcke werden entfernt; reine Textkommentare
+  bleiben erhalten. Implementiert via neuem `_strip_pgn_annotations()`.
+
 ## [1.9.3] - 2026-04-13
 ### Changed
 - Lösungs-Spoiler enthält jetzt auch die PGN-Kommentare (Erklärungen
