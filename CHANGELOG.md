@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.9.3] - 2026-04-13
+### Changed
+- Lösungs-Spoiler enthält jetzt auch die PGN-Kommentare (Erklärungen
+  zu den Zügen). Vorher war `comments=False`; alle Lösungs-Exporter
+  (normal, blind, /train, endless) auf `comments=True` umgestellt.
+
 ## [1.9.2] - 2026-04-13
 ### Fixed
 - „Ganze Partie" wurde auch gesendet, wenn der Kontext keine Züge vor

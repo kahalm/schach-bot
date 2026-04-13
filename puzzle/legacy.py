@@ -232,7 +232,7 @@ async def post_next_endless(bot, user_id: int):
     await msg.edit(view=_fresh_button_view())
 
     # Lösung als Spoiler
-    exporter = chess.pgn.StringExporter(headers=False, variations=True, comments=False)
+    exporter = chess.pgn.StringExporter(headers=False, variations=True, comments=True)
     pgn_moves = game.accept(exporter).strip()
     if pgn_moves:
         await dm.send(f'Lösung: ||`{pgn_moves}`||')
@@ -1466,7 +1466,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
             log.warning('Button-View-Edit fehlgeschlagen (%s): %s', lid, e)
 
         exporter = chess.pgn.StringExporter(
-            headers=False, variations=True, comments=False)
+            headers=False, variations=True, comments=True)
         pgn_moves = game.accept(exporter).strip()
         if pgn_moves:
             await _send_optional(target, f'Lösung: ||`{pgn_moves}`||', label=f'Lösung {lid}')
@@ -1600,7 +1600,7 @@ async def post_blind_puzzle(channel,
             log.warning('Blind-Button-View-Edit fehlgeschlagen (%s): %s', line_id, e)
 
         exporter = chess.pgn.StringExporter(
-            headers=False, variations=True, comments=False)
+            headers=False, variations=True, comments=True)
         pgn_moves = puzzle_game.accept(exporter).strip()
         if pgn_moves:
             await _send_optional(target, f'Lösung des Puzzles: ||`{pgn_moves}`||',
@@ -1677,7 +1677,7 @@ def setup(bot: discord.ext.commands.Bot):
                 _register_puzzle_msg(msg.id, line_id)
                 await msg.edit(view=_fresh_button_view())
 
-                exporter = chess.pgn.StringExporter(headers=False, variations=True, comments=False)
+                exporter = chess.pgn.StringExporter(headers=False, variations=True, comments=True)
                 pgn_moves = game.accept(exporter).strip()
                 if pgn_moves:
                     await dm.send(f'Lösung: ||`{pgn_moves}`||')
@@ -1951,7 +1951,7 @@ def setup(bot: discord.ext.commands.Bot):
 
             # PGN-Lösung als Spoiler
             exporter = chess.pgn.StringExporter(
-                headers=False, variations=True, comments=False)
+                headers=False, variations=True, comments=True)
             pgn_moves = game.accept(exporter).strip()
             if pgn_moves:
                 await dm.send(f'Lösung: ||`{pgn_moves}`||')
