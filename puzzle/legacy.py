@@ -1729,13 +1729,87 @@ def setup(bot: discord.ext.commands.Bot):
             await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
 
 
-    @tree.command(name='kurs', description='Alle verfügbaren Puzzle-Bücher anzeigen')
-    async def cmd_buecher(interaction: discord.Interaction):
+    @tree.command(name='kurs', description='Puzzle-Bücher anzeigen; optional Details zu einem Buch')
+    @discord.app_commands.describe(
+        buch='Buchnummer aus /kurs für Detailansicht mit allen Kapiteln',
+    )
+    async def cmd_buecher(interaction: discord.Interaction, buch: int = 0):
         await interaction.response.defer(ephemeral=True)
         try:
             all_lines = load_all_lines()
             posted    = set(load_puzzle_state().get('posted', []))
+            books_config = _load_books_config()
 
+            # --- Detailansicht für ein einzelnes Buch ---
+            if buch > 0:
+                sorted_books = sorted(set(lid.split(':')[0] for lid, _ in all_lines))
+                if buch > len(sorted_books):
+                    await interaction.followup.send(
+                        f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die Liste.',
+                        ephemeral=True)
+                    return
+                book_fn = sorted_books[buch - 1]
+                book_name = book_fn.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+                meta  = books_config.get(book_fn, {})
+                diff  = meta.get('difficulty', '')
+                rat   = meta.get('rating', 0)
+                stars = '★' * rat + '☆' * (10 - rat) if rat else ''
+
+                # Kapitel aufbauen: round-Prefix → (name, total, posted)
+                chapters: dict[str, dict] = {}
+                for lid, game in all_lines:
+                    if lid.split(':')[0] != book_fn:
+                        continue
+                    round_hdr = lid.split(':')[1] if ':' in lid else ''
+                    prefix = round_hdr.split('.')[0] if '.' in round_hdr else round_hdr
+                    if prefix not in chapters:
+                        h = dict(game.headers)
+                        # Black-Header enthält den Kapitelnamen
+                        chap_name = h.get('Black', '') or h.get('Event', '')
+                        chapters[prefix] = {'name': chap_name, 'total': 0, 'posted': 0}
+                    chapters[prefix]['total'] += 1
+                    if lid in posted:
+                        chapters[prefix]['posted'] += 1
+
+                total_book  = sum(c['total']  for c in chapters.values())
+                posted_book = sum(c['posted'] for c in chapters.values())
+
+                flags = []
+                if meta.get('random', True):  flags.append('🎲 Im Zufalls-/Daily-Pool')
+                if meta.get('blind'):          flags.append('🙈 Blind-Modus')
+
+                desc_parts = [f'**{posted_book}/{total_book}** Linien gepostet']
+                if diff:
+                    desc_parts.append(f'{diff}  {stars}' if stars else diff)
+                desc_parts.extend(flags)
+
+                embed = discord.Embed(
+                    title=f'📖 {book_name}',
+                    description='\n'.join(desc_parts),
+                    color=0x7fa650,
+                )
+
+                sorted_chapters = sorted(chapters.items())
+                # Bis zu 25 Felder (Discord-Limit)
+                for prefix, info in sorted_chapters[:25]:
+                    chap_num = int(prefix) if prefix.isdigit() else prefix
+                    done  = info['posted']
+                    total = info['total']
+                    bar   = '█' * round(done / total * 8) + '░' * (8 - round(done / total * 8)) if total else '░' * 8
+                    name_field = f'Kap. {chap_num}: {info["name"]}' if info['name'] else f'Kapitel {chap_num}'
+                    if len(name_field) > 256:
+                        name_field = name_field[:253] + '...'
+                    embed.add_field(
+                        name=name_field,
+                        value=f'`{bar}` {done}/{total}',
+                        inline=False,
+                    )
+                if len(sorted_chapters) > 25:
+                    embed.set_footer(text=f'… {len(sorted_chapters) - 25} weitere Kapitel nicht angezeigt')
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+
+            # --- Übersichtsliste aller Bücher ---
             total_per_book:  dict[str, int] = defaultdict(int)
             posted_per_book: dict[str, int] = defaultdict(int)
             for lid, _ in all_lines:
@@ -1751,7 +1825,6 @@ def setup(bot: discord.ext.commands.Bot):
                 )
                 return
 
-            books_config = _load_books_config()
             embed = discord.Embed(title='📚 Puzzle-Bücher', color=0x7fa650)
             for i, book in enumerate(sorted(total_per_book), 1):
                 name  = book.removesuffix('_firstkey.pgn').removesuffix('.pgn')

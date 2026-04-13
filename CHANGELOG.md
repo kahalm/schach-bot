@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.9.5] - 2026-04-13
+### Added
+- `/kurs buch:N` zeigt Detailansicht eines Buches: Schwierigkeit,
+  Sterne, Flags (🎲/🙈), Fortschrittsbalken pro Kapitel (`████░░░░
+  4/17`) mit Kapitelname aus dem PGN-`Black`-Header. Discord-Limit
+  von 25 Feldern wird respektiert.
+
 ## [1.9.4] - 2026-04-13
 ### Changed
 - Lösungs-Spoiler filtert jetzt grafische PGN-Annotationen heraus:
