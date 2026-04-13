@@ -7,9 +7,11 @@ from datetime import datetime, timezone
 
 import discord
 
+from paths import CONFIG_DIR
+
 log = logging.getLogger('schach-bot')
 
-ELO_FILE = os.path.join('config', 'elo.json')
+ELO_FILE = os.path.join(CONFIG_DIR, 'elo.json')
 
 
 def _load() -> dict:

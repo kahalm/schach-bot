@@ -27,7 +27,7 @@ log = logging.getLogger('schach-bot')
 # typischerweise kurz nach dem Posten kommen)
 _puzzle_msg_ids: dict[int, str] = {}   # msg_id → line_id
 _PUZZLE_REACTIONS = {'✅', '❌', '👍', '👎', '🚮', '☠️'}
-CONFIG_DIR = 'config'
+from paths import CONFIG_DIR
 IGNORE_FILE = os.path.join(CONFIG_DIR, 'puzzle_ignore.json')
 CHAPTER_IGNORE_FILE = os.path.join(CONFIG_DIR, 'chapter_ignore.json')
 

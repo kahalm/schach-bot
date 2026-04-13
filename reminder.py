@@ -9,10 +9,11 @@ import discord
 from discord.ext import tasks
 
 import puzzle
+from paths import CONFIG_DIR
 
 log = logging.getLogger('schach-bot')
 
-REMINDER_FILE = os.path.join('config', 'reminder.json')
+REMINDER_FILE = os.path.join(CONFIG_DIR, 'reminder.json')
 
 
 def _load() -> dict:

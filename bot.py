@@ -65,8 +65,7 @@ load_dotenv()
 
 VERSION         = '1.0.0'
 
-CONFIG_DIR      = 'config'
-os.makedirs(CONFIG_DIR, exist_ok=True)
+from paths import CONFIG_DIR
 
 DISCORD_TOKEN   = os.getenv('DISCORD_TOKEN')
 CHANNEL_ID      = int(os.getenv('CHANNEL_ID', '0'))

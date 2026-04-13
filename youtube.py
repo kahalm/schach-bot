@@ -8,9 +8,11 @@ from datetime import date
 import discord
 from discord.ext import commands
 
+from paths import CONFIG_DIR
+
 log = logging.getLogger('schach-bot')
 
-YOUTUBE_FILE = os.path.join('config', 'youtube.json')
+YOUTUBE_FILE = os.path.join(CONFIG_DIR, 'youtube.json')
 
 
 def _load() -> list[dict]:

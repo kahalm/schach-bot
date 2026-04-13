@@ -8,9 +8,11 @@ from datetime import date
 import discord
 from discord.ext import commands
 
+from paths import CONFIG_DIR
+
 log = logging.getLogger('schach-bot')
 
-RESOURCEN_FILE = os.path.join('config', 'resourcen.json')
+RESOURCEN_FILE = os.path.join(CONFIG_DIR, 'resourcen.json')
 
 
 def _load() -> list[dict]:

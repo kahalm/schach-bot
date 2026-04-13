@@ -3,7 +3,9 @@
 import json
 import os
 
-STATS_FILE = os.path.join('config', 'user_stats.json')
+from paths import CONFIG_DIR
+
+STATS_FILE = os.path.join(CONFIG_DIR, 'user_stats.json')
 
 
 def _load() -> dict:
