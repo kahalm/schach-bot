@@ -32,6 +32,7 @@ WELCOME_MESSAGE = (
     'Hallo! Ich bin der Schach-Bot eurer Servergruppe. ♟️\n\n'
     '**Was ich kann:**\n'
     '🧩 `/puzzle` — Zufällige Taktikrätsel per DM\n'
+    '🙈 `/blind` — Stellung X Züge vor dem Puzzle (im Kopf rechnen)\n'
     '♾️ `/endless` — Endlos-Modus: nach jeder Antwort kommt das nächste Puzzle\n'
     '📖 `/train` + `/next` — Buch sequentiell durcharbeiten\n'
     '📚 `/kurs` — Alle Puzzle-Bücher mit Fortschritt\n'
@@ -57,7 +58,7 @@ tree = bot.tree
 # Module laden
 import puzzle
 import library
-from commands import reminder, resourcen, youtube, elo, release_notes
+from commands import reminder, resourcen, youtube, elo, release_notes, blind
 
 puzzle.setup(bot)
 library.setup(bot)
@@ -66,6 +67,7 @@ resourcen.setup(bot)
 youtube.setup(bot)
 elo.setup(bot)
 release_notes.setup(bot)
+blind.setup(bot)
 
 
 @bot.event
@@ -268,6 +270,15 @@ async def cmd_help(interaction: discord.Interaction):
     embed.add_field(
         name='/tag <tag>',
         value='Bücher nach Tag filtern (z.B. Taktik, Französisch, Endspiel).',
+        inline=False,
+    )
+    embed.add_field(
+        name='/blind moves [anzahl] [buch]',
+        value='Blind-Puzzle: Stellung X Halbzüge VOR dem eigentlichen Puzzle.\n'
+              'Du musst die X Züge im Kopf spielen, dann das Puzzle lösen.\n'
+              '`/blind moves:3` — 3 Züge im Voraus, zufälliges Blind-Buch\n'
+              '`/blind moves:5 anzahl:2 buch:3` — 2 Puzzles aus Buch 3, je 5 Züge blind\n'
+              'Nur Bücher mit `blind: true` in `books/books.json` sind nutzbar (siehe `/kurs`).',
         inline=False,
     )
     embed.add_field(

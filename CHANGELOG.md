@@ -4,6 +4,21 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.2.0] - 2026-04-13
+### Added
+- `/blind moves:X anzahl:Y buch:Z` — Blind-Modus. Zeigt die Stellung X Halbzüge
+  vor der eigentlichen Trainingsposition. Der User muss die X Züge im Kopf
+  spielen und dann das Puzzle lösen.
+- Per-Buch-Flag `blind: true|false` in `books/books.json`. Nur Bücher mit
+  `blind: true` werden für `/blind` ausgewählt.
+- `/kurs` zeigt 🙈 für Blind-Mode-fähige Bücher.
+- Stat-Counter `blind_puzzles` pro User.
+
+### Changed
+- `books.json` um `blind`-Feld erweitert; "100 Tactical Patterns" und
+  "The Checkmate Patterns Manual" sind als Default freigegeben (haben echte
+  Vorlauf-Züge), die anderen beiden Bücher (FEN-only) sind deaktiviert.
+
 ## [1.1.0] - 2026-04-13
 ### Added
 - `/release-notes` zeigt die letzten Einträge aus diesem Changelog (optional `version:`).

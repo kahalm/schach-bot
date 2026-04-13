@@ -632,6 +632,122 @@ def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
     _copy(node, new_game, tqu_board)
     return new_game
 
+
+# ---------------------------------------------------------------------------
+# Blind-Modus: zeigt Stellung X Züge VOR der Trainingsposition.
+# Der User muss die X Züge im Kopf spielen und dann das Puzzle lösen.
+# ---------------------------------------------------------------------------
+
+def _split_for_blind(original_game: chess.pgn.Game, x_moves: int):
+    """Findet erstes [%tqu]-Node, gibt (blind_board, blind_san_list, puzzle_game) zurück.
+
+    blind_board – Stellung X Halbzüge VOR der Trainingsposition (chess.Board)
+    blind_san_list – Liste der X Züge in SAN, die zur Trainingsposition führen
+    puzzle_game – chess.pgn.Game ab Trainingsposition (wie _trim_to_training_position)
+
+    Gibt None zurück wenn die Linie kein [%tqu] hat oder weniger als x_moves
+    Halbzüge davor enthält.
+    """
+    if x_moves < 1:
+        return None
+    nodes: list[chess.pgn.GameNode] = []
+    node = original_game
+    while True:
+        nodes.append(node)
+        if '[%tqu' in (node.comment or ''):
+            break
+        if not node.variations:
+            return None  # kein Trainingskommentar
+        node = node.variations[0]
+
+    plies_before = len(nodes) - 1  # Root hat keinen .move
+    if plies_before < x_moves:
+        return None
+
+    blind_root = nodes[-1 - x_moves]
+    blind_board = blind_root.board()
+
+    blind_san: list[str] = []
+    b = blind_board.copy()
+    for nxt in nodes[-x_moves:]:
+        if nxt.move is None:
+            return None
+        try:
+            blind_san.append(b.san(nxt.move))
+        except Exception:
+            return None
+        b.push(nxt.move)
+
+    puzzle_game = _trim_to_training_position(original_game)
+    return blind_board, blind_san, puzzle_game
+
+
+def _format_blind_moves(start_board: chess.Board, san_list: list[str]) -> str:
+    """Formatiert SAN-Liste als '15. Nf3 Nc6 16. Bb5' (mit korrekter Zugnummer)."""
+    parts: list[str] = []
+    move_num = start_board.fullmove_number
+    is_white = start_board.turn == chess.WHITE
+    for i, san in enumerate(san_list):
+        if is_white:
+            parts.append(f'{move_num}.')
+            parts.append(san)
+        else:
+            if i == 0:
+                parts.append(f'{move_num}...')
+            parts.append(san)
+            move_num += 1
+        is_white = not is_white
+    return ' '.join(parts)
+
+
+def get_blind_books() -> list[str]:
+    """Liefert Liste der für Blind-Modus freigegebenen Buch-Dateinamen."""
+    config = _load_books_config()
+    return [fn for fn, meta in config.items() if meta.get('blind')]
+
+
+def pick_random_blind_lines(count: int,
+                            book_filename: str | None,
+                            x_moves: int,
+                            ) -> list[tuple[str, chess.pgn.Game]]:
+    """Wählt zufällige Linien aus Blind-Büchern mit ≥ x_moves Vorlauf.
+
+    Berücksichtigt ignore-/chapter-ignore-Listen, aktualisiert aber NICHT
+    den `puzzle_state.posted`-Pool (damit reguläre /puzzle-Auswahl unbeeinflusst bleibt).
+    """
+    config = _load_books_config()
+    blind_books = {fn for fn, meta in config.items() if meta.get('blind')}
+    if book_filename:
+        if book_filename not in blind_books:
+            return []
+        eligible_files = {book_filename}
+    else:
+        eligible_files = blind_books
+    if not eligible_files:
+        return []
+
+    all_lines = load_all_lines()
+    ignored = _load_ignore_list()
+    chapter_ignored = _load_chapter_ignore_list()
+    candidates: list[tuple[str, chess.pgn.Game]] = []
+    for lid, g in all_lines:
+        fn = lid.split(':')[0]
+        if fn not in eligible_files:
+            continue
+        if lid in ignored:
+            continue
+        if _is_chapter_ignored(lid, chapter_ignored):
+            continue
+        if _split_for_blind(g, x_moves) is None:
+            continue
+        candidates.append((lid, g))
+
+    if not candidates:
+        return []
+    count = max(1, min(count, len(candidates)))
+    return random.sample(candidates, count)
+
+
 def _clean_pgn_for_lichess(pgn_text: str) -> str:
     """ChessBase-spezifische Annotationen entfernen, die Lichess nicht versteht."""
     # [%tqu ...] entfernen
@@ -1128,6 +1244,125 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         stats.inc(user_id, 'puzzles', len(puzzles))
 
 
+async def post_blind_puzzle(channel,
+                            moves: int,
+                            count: int = 1,
+                            book_idx: int = 0,
+                            user_id: int | None = None):
+    """Postet Blind-Puzzles: Stellung X Halbzüge VOR der Trainingsposition.
+
+    moves    – Anzahl Halbzüge, die der User im Kopf spielen muss (1–20).
+    count    – Anzahl Puzzles (1–20).
+    book_idx – 1-basierte Buchnummer (0 = alle blind-fähigen Bücher).
+    """
+    moves = max(1, min(moves, 20))
+    count = max(1, min(count, 20))
+
+    book_filename = None
+    if book_idx > 0:
+        if os.path.isdir(BOOKS_DIR):
+            books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
+            if 1 <= book_idx <= len(books):
+                book_filename = books[book_idx - 1]
+            else:
+                await channel.send(
+                    f'⚠️ Buch {book_idx} nicht gefunden. `/kurs` zeigt verfügbare Bücher.'
+                )
+                return
+
+    config = _load_books_config()
+    if book_filename and not config.get(book_filename, {}).get('blind'):
+        await channel.send(
+            f'⚠️ Buch `{book_filename}` ist nicht für den Blind-Modus freigegeben.\n'
+            'Setze in `books/books.json` `"blind": true` für dieses Buch.'
+        )
+        return
+
+    results = pick_random_blind_lines(count, book_filename, moves)
+    if not results:
+        if not any(m.get('blind') for m in config.values()):
+            await channel.send(
+                '⚠️ Kein Buch hat `blind: true` in `books/books.json`. '
+                'Bitte mindestens ein Buch dafür freigeben.'
+            )
+        else:
+            await channel.send(
+                f'⚠️ Kein Puzzle mit ≥{moves} Vorlauf-Zügen gefunden. '
+                'Versuche eine kleinere `moves:`-Zahl oder ein anderes Buch.'
+            )
+        return
+
+    h = dict(results[0][1].headers)
+    event = h.get('Event', 'Blind-Puzzle')
+    today = _date.today().strftime('%d.%m.%Y')
+    thread_name = f'🙈 {event} (blind {moves}) – {today}'
+    if len(thread_name) > 100:
+        thread_name = thread_name[:97] + '...'
+
+    is_dm = isinstance(channel, discord.DMChannel)
+    if is_dm:
+        target = channel
+    else:
+        target = await channel.create_thread(
+            name=thread_name,
+            type=discord.ChannelType.public_thread,
+            auto_archive_duration=1440,
+        )
+
+    posted = 0
+    for line_id, original_game in results:
+        split = _split_for_blind(original_game, moves)
+        if split is None:
+            continue
+        blind_board, blind_san, puzzle_game = split
+
+        fname = line_id.split(':')[0]
+        meta = config.get(fname, {})
+        diff = meta.get('difficulty', '')
+        rating = meta.get('rating', 0)
+
+        try:
+            img = _render_board(blind_board)
+        except Exception as e:
+            log.warning('Blind-Board-Render fehlgeschlagen: %s', e)
+            img = None
+
+        embed = build_puzzle_embed(
+            puzzle_game,
+            turn=blind_board.turn,
+            difficulty=diff,
+            rating=rating,
+            line_id=line_id,
+        )
+        embed.title = f'🙈 Blind-Puzzle ({moves} Züge)'
+        blind_pgn = _format_blind_moves(blind_board, blind_san)
+        embed.add_field(
+            name='🙈 Spiele in Gedanken',
+            value=f'`{blind_pgn}`\n_Visualisiere die Stellung danach und löse das Puzzle._',
+            inline=False,
+        )
+
+        if img:
+            file = discord.File(img, filename='board.png')
+            embed.set_image(url='attachment://board.png')
+            msg = await target.send(file=file, embed=embed)
+        else:
+            msg = await target.send(embed=embed)
+        _register_puzzle_msg(msg.id, line_id)
+        for emoji in ('✅', '❌', '👍', '👎'):
+            await msg.add_reaction(emoji)
+
+        exporter = chess.pgn.StringExporter(
+            headers=False, variations=True, comments=False)
+        pgn_moves = puzzle_game.accept(exporter).strip()
+        if pgn_moves:
+            await target.send(f'Lösung des Puzzles: ||`{pgn_moves}`||')
+        posted += 1
+
+    if user_id and posted:
+        stats.inc(user_id, 'blind_puzzles', posted)
+
+
 # ---------------------------------------------------------------------------
 # Slash-Commands registrieren
 # ---------------------------------------------------------------------------
@@ -1243,6 +1478,8 @@ def setup(bot: discord.ext.commands.Bot):
                 info  = f'{done}/{total} gepostet'
                 if diff:
                     info += f'\n{diff}  {stars}' if stars else f'\n{diff}'
+                if meta.get('blind'):
+                    info += '\n🙈 Blind-Modus verfügbar'
                 embed.add_field(name=f'{i}: {name}', value=info, inline=False)
 
             total_all = sum(total_per_book.values())
