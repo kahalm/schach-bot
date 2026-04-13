@@ -15,7 +15,7 @@ import json
 import os
 from datetime import time
 
-from core import stats
+from core import stats, event_log
 from core.paths import CONFIG_DIR
 from core.version import VERSION, START_TIME
 
@@ -95,6 +95,9 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
         return
     if not puzzle.is_puzzle_message(payload.message_id):
         return
+    line_id = puzzle.get_puzzle_line_id(payload.message_id)
+    mode = puzzle.get_puzzle_mode(payload.message_id) or 'normal'
+    event_log.log_reaction(payload.user_id, line_id, mode, emoji, delta=1)
     if emoji == '☠️':
         # Nur Admins dürfen ganze Kapitel ignorieren
         if not _is_admin(payload.user_id):
@@ -156,6 +159,9 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
         return
     if not puzzle.is_puzzle_message(payload.message_id):
         return
+    line_id = puzzle.get_puzzle_line_id(payload.message_id)
+    mode = puzzle.get_puzzle_mode(payload.message_id) or 'normal'
+    event_log.log_reaction(payload.user_id, line_id, mode, emoji, delta=-1)
     if emoji == '☠️':
         if not _is_admin(payload.user_id):
             return

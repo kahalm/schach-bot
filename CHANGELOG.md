@@ -4,6 +4,15 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.3.0] - 2026-04-13
+### Added
+- Append-only Reaktions-Log `config/reaction_log.jsonl`. Jede ✅/❌/👍/👎/🚮/☠️
+  (Add und Remove) wird mit Zeitstempel, User, `line_id`, Modus
+  (`normal`/`blind`), Emoji, ±1-Delta und der aktuellen Elo des Users protokolliert.
+- `puzzle.get_puzzle_mode(msg_id)` — verfügt jetzt über die Info, ob eine
+  Reaktion auf ein normales oder ein Blind-Puzzle erfolgt.
+- `core/event_log.py` mit `log_reaction()` und `read_all()` für Auswertungen.
+
 ## [1.2.1] - 2026-04-13
 ### Changed
 - `/blind`: `moves` ist jetzt optional (Default 4 Halbzüge).

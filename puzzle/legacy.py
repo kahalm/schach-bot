@@ -24,8 +24,9 @@ from reportlab.graphics import renderPM
 log = logging.getLogger('schach-bot')
 
 # Puzzle-Nachrichten-IDs für Reaction-Tracking (in-memory, reicht da Reactions
-# typischerweise kurz nach dem Posten kommen)
-_puzzle_msg_ids: dict[int, str] = {}   # msg_id → line_id
+# typischerweise kurz nach dem Posten kommen).
+# Wert: dict {'line_id': str, 'mode': 'normal'|'blind'}
+_puzzle_msg_ids: dict[int, dict] = {}
 _PUZZLE_REACTIONS = {'✅', '❌', '👍', '👎', '🚮', '☠️'}
 from core.paths import CONFIG_DIR
 IGNORE_FILE = os.path.join(CONFIG_DIR, 'puzzle_ignore.json')
@@ -34,14 +35,20 @@ CHAPTER_IGNORE_FILE = os.path.join(CONFIG_DIR, 'chapter_ignore.json')
 # Endless-Modus: aktive Sessions (in-memory)
 _endless_sessions: dict[int, dict] = {}   # user_id → {'book': str|None, 'count': int}
 
-def _register_puzzle_msg(msg_id: int, line_id: str):
-    _puzzle_msg_ids[msg_id] = line_id
+def _register_puzzle_msg(msg_id: int, line_id: str, mode: str = 'normal'):
+    _puzzle_msg_ids[msg_id] = {'line_id': line_id, 'mode': mode}
 
 def is_puzzle_message(msg_id: int) -> bool:
     return msg_id in _puzzle_msg_ids
 
 def get_puzzle_line_id(msg_id: int) -> str | None:
-    return _puzzle_msg_ids.get(msg_id)
+    entry = _puzzle_msg_ids.get(msg_id)
+    return entry['line_id'] if entry else None
+
+def get_puzzle_mode(msg_id: int) -> str | None:
+    """'normal' oder 'blind' — None wenn die Nachricht nicht registriert ist."""
+    entry = _puzzle_msg_ids.get(msg_id)
+    return entry['mode'] if entry else None
 
 def _load_ignore_list() -> set[str]:
     try:
@@ -1348,7 +1355,7 @@ async def post_blind_puzzle(channel,
             msg = await target.send(file=file, embed=embed)
         else:
             msg = await target.send(embed=embed)
-        _register_puzzle_msg(msg.id, line_id)
+        _register_puzzle_msg(msg.id, line_id, mode='blind')
         for emoji in ('✅', '❌', '👍', '👎'):
             await msg.add_reaction(emoji)
 
