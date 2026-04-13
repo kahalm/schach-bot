@@ -24,3 +24,7 @@ test_*.png
 
 # Generator scripts
 gen_*.py
+
+# Screenshots
+scrennshots/
+screenshots/
