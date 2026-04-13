@@ -1270,6 +1270,36 @@ def build_puzzle_embed(game: chess.pgn.Game,
     embed.set_footer(text=footer)
     return embed
 
+
+async def _resilient_send(target, *args, retries: int = 3, **kwargs):
+    """Wie target.send(), aber mit Retry bei transienten Discord-5xx-Fehlern.
+
+    Backoff: 1s, 2s, 4s. Wirft beim letzten Fehlversuch weiter.
+    """
+    delay = 1.0
+    for attempt in range(1, retries + 1):
+        try:
+            return await target.send(*args, **kwargs)
+        except discord.errors.DiscordServerError as e:
+            if attempt == retries:
+                raise
+            log.warning('Discord-5xx (Versuch %d/%d): %s – retry in %.1fs',
+                        attempt, retries, e, delay)
+            await asyncio.sleep(delay)
+            delay *= 2
+
+
+async def _send_optional(target, *args, label: str = '', **kwargs):
+    """Send, der bei Discord-5xx (auch nach Retries) nur loggt, nicht wirft."""
+    try:
+        return await _resilient_send(target, *args, **kwargs)
+    except discord.errors.DiscordServerError as e:
+        log.warning('Optionaler Send (%s) fehlgeschlagen nach Retries: %s', label, e)
+    except Exception as e:
+        log.warning('Optionaler Send (%s) fehlgeschlagen: %s', label, e)
+    return None
+
+
 async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int | None = None) -> int:
     """Puzzles auswählen, auf Lichess hochladen und posten.
 
@@ -1380,34 +1410,40 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
                 img  = None
 
             embed = build_puzzle_embed(game, turn=turn, puzzle_num=puzzle_num, puzzle_total=puzzle_total, difficulty=diff, rating=rating, line_id=lid)
+            # Haupt-Send: Brett + Embed. Nur das ist der Erfolgs-Anker;
+            # alles danach (Lösung, Lichess-Link) ist optional und darf
+            # bei Discord-5xx das Puzzle nicht als gescheitert markieren.
             if img:
                 file = discord.File(img, filename='board.png')
                 embed.set_image(url='attachment://board.png')
-                msg = await target.send(file=file, embed=embed)
+                msg = await _resilient_send(target, file=file, embed=embed)
             else:
-                msg = await target.send(embed=embed)
-            _register_puzzle_msg(msg.id, lid)
-            try:
-                await msg.edit(view=_fresh_button_view())
-            except Exception as e:
-                log.warning('Button-View-Edit fehlgeschlagen (%s): %s', lid, e)
-
-            # PGN-Lösung als Spoiler posten
-            exporter = chess.pgn.StringExporter(
-                headers=False, variations=True, comments=False)
-            pgn_moves = game.accept(exporter).strip()
-            if pgn_moves:
-                await target.send(f'Lösung: ||`{pgn_moves}`||')
-            if context:
-                prelude = _prelude_pgn(context, game)
-                if prelude:
-                    await target.send(f'Ganze Partie: ||`{prelude}`||')
-            if puzzle_url:
-                await target.send(f'[Klickbares Rätsel]({puzzle_url})')
+                msg = await _resilient_send(target, embed=embed)
             posted_ok += 1
+            _register_puzzle_msg(msg.id, lid)
         except Exception as e:
             log.exception('Puzzle %d/%d (%s) fehlgeschlagen: %s',
                           i + 1, len(puzzles), lid, e)
+            continue
+
+        # Ab hier ist das Puzzle „gepostet". Folgende Sends sind Beiwerk –
+        # wenn Discord 5xx wirft, loggen wir, zählen aber nicht runter.
+        try:
+            await msg.edit(view=_fresh_button_view())
+        except Exception as e:
+            log.warning('Button-View-Edit fehlgeschlagen (%s): %s', lid, e)
+
+        exporter = chess.pgn.StringExporter(
+            headers=False, variations=True, comments=False)
+        pgn_moves = game.accept(exporter).strip()
+        if pgn_moves:
+            await _send_optional(target, f'Lösung: ||`{pgn_moves}`||', label=f'Lösung {lid}')
+        if context:
+            prelude = _prelude_pgn(context, game)
+            if prelude:
+                await _send_optional(target, f'Ganze Partie: ||`{prelude}`||', label=f'Partie {lid}')
+        if puzzle_url:
+            await _send_optional(target, f'[Klickbares Rätsel]({puzzle_url})', label=f'Lichess-Link {lid}')
 
     log.info('post_puzzle: %d/%d Puzzle(s) gepostet', posted_ok, len(puzzles))
     if user_id and posted_ok:
@@ -1513,21 +1549,30 @@ async def post_blind_puzzle(channel,
             inline=False,
         )
 
-        if img:
-            file = discord.File(img, filename='board.png')
-            embed.set_image(url='attachment://board.png')
-            msg = await target.send(file=file, embed=embed)
-        else:
-            msg = await target.send(embed=embed)
-        _register_puzzle_msg(msg.id, line_id, mode='blind')
-        await msg.edit(view=_fresh_button_view())
+        try:
+            if img:
+                file = discord.File(img, filename='board.png')
+                embed.set_image(url='attachment://board.png')
+                msg = await _resilient_send(target, file=file, embed=embed)
+            else:
+                msg = await _resilient_send(target, embed=embed)
+            posted += 1
+            _register_puzzle_msg(msg.id, line_id, mode='blind')
+        except Exception as e:
+            log.exception('Blind-Puzzle (%s) fehlgeschlagen: %s', line_id, e)
+            continue
+
+        try:
+            await msg.edit(view=_fresh_button_view())
+        except Exception as e:
+            log.warning('Blind-Button-View-Edit fehlgeschlagen (%s): %s', line_id, e)
 
         exporter = chess.pgn.StringExporter(
             headers=False, variations=True, comments=False)
         pgn_moves = puzzle_game.accept(exporter).strip()
         if pgn_moves:
-            await target.send(f'Lösung des Puzzles: ||`{pgn_moves}`||')
-        posted += 1
+            await _send_optional(target, f'Lösung des Puzzles: ||`{pgn_moves}`||',
+                                 label=f'Blind-Lösung {line_id}')
 
     if user_id and posted:
         stats.inc(user_id, 'blind_puzzles', posted)

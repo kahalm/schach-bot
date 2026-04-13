@@ -4,6 +4,21 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.8.1] - 2026-04-13
+### Fixed
+- Discord-503 (transienter `DiscordServerError`) auf einem optionalen
+  Followup (Lösung-Spoiler, „Ganze Partie", Lichess-Link) markierte das
+  ganze Puzzle als gescheitert, obwohl Brett + Embed schon erfolgreich
+  angekommen waren. Bei `/puzzle 5` kam der User dann mit „⚠️ Nur 4/5"
+  raus, obwohl alle 5 Bretter sichtbar waren. Fix:
+  - Neuer Helper `_resilient_send()` mit Retry (1s/2s/4s Backoff) für
+    Discord-5xx.
+  - `posted_ok` wird jetzt direkt nach dem erfolgreichen Embed-Send
+    hochgezählt, nicht erst am Ende der Iteration.
+  - Optionale Sends laufen über `_send_optional()` (Retry + Logging,
+    aber kein Re-Raise) und können das Erfolgsergebnis nicht mehr kippen.
+- Gleiche Härtung für `post_blind_puzzle()`.
+
 ## [1.8.0] - 2026-04-13
 ### Added
 - `puzzle.load_all_lines()` cached jetzt zweistufig: in-memory + Pickle
