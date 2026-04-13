@@ -1834,6 +1834,7 @@ def setup(bot: discord.ext.commands.Bot):
                 user_done: set[str] = {lid_e for lid_e, n in _net.items() if n > 0}
 
                 # Kapitel aufbauen: round-Prefix → (name, total, done)
+                chapter_ignored = _load_chapter_ignore_list()
                 chapters: dict[str, dict] = {}
                 for lid, game in all_lines:
                     if lid.split(':')[0] != book_fn:
@@ -1842,9 +1843,14 @@ def setup(bot: discord.ext.commands.Bot):
                     prefix = round_hdr.split('.')[0] if '.' in round_hdr else round_hdr
                     if prefix not in chapters:
                         h = dict(game.headers)
-                        # Black-Header enthält den Kapitelnamen
                         chap_name = h.get('Black', '') or h.get('Event', '')
-                        chapters[prefix] = {'name': chap_name, 'total': 0, 'posted': 0}
+                        ignored_key = f'{book_fn}:{prefix}'
+                        chapters[prefix] = {
+                            'name': chap_name,
+                            'total': 0,
+                            'posted': 0,
+                            'ignored': ignored_key in chapter_ignored,
+                        }
                     chapters[prefix]['total'] += 1
                     if lid in user_done:
                         chapters[prefix]['posted'] += 1
@@ -1873,13 +1879,15 @@ def setup(bot: discord.ext.commands.Bot):
                     chap_num = int(prefix) if prefix.isdigit() else prefix
                     done  = info['posted']
                     total = info['total']
+                    is_ign = info['ignored']
                     bar   = '█' * round(done / total * 8) + '░' * (8 - round(done / total * 8)) if total else '░' * 8
-                    name_field = f'Kap. {chap_num}: {info["name"]}' if info['name'] else f'Kapitel {chap_num}'
-                    if len(name_field) > 256:
-                        name_field = name_field[:253] + '...'
+                    label = f'Kap. {chap_num}: {info["name"]}' if info['name'] else f'Kapitel {chap_num}'
+                    if len(label) > 250:
+                        label = label[:247] + '...'
+                    name_field = f'~~{label}~~ 🚫' if is_ign else label
                     embed.add_field(
                         name=name_field,
-                        value=f'`{bar}` {done}/{total}',
+                        value=f'`{bar}` {done}/{total}' + (' *(ignoriert)*' if is_ign else ''),
                         inline=False,
                     )
                 if len(sorted_chapters) > 25:

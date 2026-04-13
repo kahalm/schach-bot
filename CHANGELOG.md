@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.9.9] - 2026-04-13
+### Changed
+- `/kurs buch:N` markiert ignorierte Kapitel mit ~~Durchstreichung~~ und
+  🚫 im Feldnamen sowie *(ignoriert)* im Wert.
+
 ## [1.9.8] - 2026-04-13
 ### Changed
 - `/kurs buch:N` zeigt im Fortschrittsbalken nicht mehr die globalen
