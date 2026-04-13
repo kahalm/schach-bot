@@ -4,6 +4,24 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.8.0] - 2026-04-13
+### Added
+- `puzzle.load_all_lines()` cached jetzt zweistufig: in-memory + Pickle
+  in `config/puzzle_lines.pkl`. Cache-Key ist Fingerprint aller PGN-
+  Dateien + `books.json` (mtime + size); externe Edits triggern
+  automatisch Re-Parse beim nächsten Aufruf.
+- Performance: PGN-Re-Parse ~3.8 s → Pickle-Load ~0.4 s (~9× schneller),
+  weitere Aufrufe in derselben Bot-Session ms-schnell aus dem
+  Memory-Cache. Filterung (illegale Stellungen, leere FENs etc.) findet
+  nur noch beim Re-Parse statt.
+- `clear_lines_cache()` helper für manuelle Invalidierung.
+
+### Changed
+- `/reindex` (Admin) baut nun beides neu auf:
+  Bibliotheks-Katalog **und** Puzzle-Pickle-Cache. Bibliotheks-Teil
+  wird übersprungen, wenn `LIBRARY_INDEX` nicht in `.env` gesetzt ist
+  (vorher kompletter Abbruch).
+
 ## [1.7.3] - 2026-04-13
 ### Fixed
 - `/puzzle anzahl:N` brach bei einem einzigen kaputten Puzzle die ganze

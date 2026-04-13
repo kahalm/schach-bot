@@ -845,19 +845,30 @@ def setup(bot: discord.ext.commands.Bot):
             for a in authors[:25]
         ]
 
-    @tree.command(name='reindex', description='Bibliotheks-Katalog neu aufbauen (Admin)')
+    @tree.command(name='reindex', description='Bibliotheks-Katalog + Puzzle-Cache neu aufbauen (Admin)')
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_reindex(interaction: discord.Interaction):
+        from puzzle import legacy as _puzzle  # lazy: zirkuläre Imports vermeiden
         await interaction.response.defer(ephemeral=True)
-        if not LIBRARY_INDEX:
-            await interaction.followup.send(
-                '⚠️ `LIBRARY_INDEX` nicht in `.env` konfiguriert.', ephemeral=True)
-            return
+
         loop = asyncio.get_running_loop()
-        stats = await loop.run_in_executor(None, build_library_catalog)
-        _reload_library()
+
+        # Bibliotheks-Katalog – nur wenn LIBRARY_INDEX konfiguriert
+        if LIBRARY_INDEX:
+            lib_stats = await loop.run_in_executor(None, build_library_catalog)
+            _reload_library()
+            lib_msg = (
+                f'📚 Bibliothek: Dateien **{lib_stats[0]}** · Bücher **{lib_stats[1]}** · '
+                f'neu **{lib_stats[2]}** · aktualisiert **{lib_stats[3]}** · entfernt **{lib_stats[4]}**'
+            )
+        else:
+            lib_msg = '📚 Bibliothek: übersprungen (`LIBRARY_INDEX` nicht in `.env`).'
+
+        # Puzzle-Cache – PGNs neu parsen + filtern + auf Disk pickeln
+        _puzzle.clear_lines_cache()
+        puzzle_lines = await loop.run_in_executor(None, _puzzle.load_all_lines)
+        puzzle_msg = f'♟️ Puzzle-Cache: **{len(puzzle_lines)}** gültige Linien gepickelt.'
+
         await interaction.followup.send(
-            f'✅ Katalog abgeglichen:\n'
-            f'Dateien: **{stats[0]}** · Bücher: **{stats[1]}** · '
-            f'Neu: **{stats[2]}** · Aktualisiert: **{stats[3]}** · Entfernt: **{stats[4]}**',
+            f'✅ Reindex fertig:\n{lib_msg}\n{puzzle_msg}',
             ephemeral=True)

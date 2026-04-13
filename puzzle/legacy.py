@@ -6,6 +6,7 @@ import json
 from core import stats
 import logging
 import os
+import pickle
 import random
 import re
 import tempfile
@@ -499,9 +500,94 @@ _FATAL_STATUS = (
 )
 
 
+# Cache für load_all_lines(): in-memory + Pickle auf Disk. Der Re-Parse aller
+# PGNs (~6000 Spiele) dauert ~2 s; die Cache-Lookup nur ms. Invalidiert wird
+# automatisch über (mtime, size) jeder PGN-Datei – externe Edits triggern
+# also Re-Parse beim nächsten Aufruf. Manueller Reset via /reindex.
+PUZZLE_CACHE_FILE = os.path.join(CONFIG_DIR, 'puzzle_lines.pkl')
+
+_lines_cache: list[tuple[str, chess.pgn.Game]] | None = None
+_lines_cache_fp: tuple | None = None
+
+
+def _books_fingerprint() -> tuple:
+    """(filename, mtime, size) für jede .pgn in BOOKS_DIR + books.json."""
+    items = []
+    if os.path.isdir(BOOKS_DIR):
+        for fn in sorted(os.listdir(BOOKS_DIR)):
+            if fn.endswith('.pgn') or fn == 'books.json':
+                p = os.path.join(BOOKS_DIR, fn)
+                try:
+                    st = os.stat(p)
+                    items.append((fn, st.st_mtime_ns, st.st_size))
+                except OSError:
+                    pass
+    return tuple(items)
+
+
+def clear_lines_cache() -> None:
+    """In-Memory- und Disk-Cache löschen. Nächster ``load_all_lines()`` parst neu."""
+    global _lines_cache, _lines_cache_fp
+    _lines_cache = None
+    _lines_cache_fp = None
+    try:
+        os.remove(PUZZLE_CACHE_FILE)
+    except FileNotFoundError:
+        pass
+    except OSError as e:
+        log.warning('Pickle-Cache löschen fehlgeschlagen: %s', e)
+
+
 def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
-    """Alle Linien aus .pgn-Dateien in BOOKS_DIR laden."""
-    lines = []
+    """Alle Linien aus .pgn-Dateien in BOOKS_DIR laden – gecached.
+
+    Rückgabewert wird im Speicher und als Pickle in
+    ``config/puzzle_lines.pkl`` zwischengespeichert; bei unverändertem
+    Fingerprint (mtime+size aller PGNs + books.json) wird der Cache
+    zurückgegeben statt neu zu parsen.
+    """
+    global _lines_cache, _lines_cache_fp
+
+    fp = _books_fingerprint()
+
+    # 1) In-Memory-Cache
+    if _lines_cache is not None and _lines_cache_fp == fp:
+        return _lines_cache
+
+    # 2) Disk-Cache (nur einmal pro Restart relevant)
+    if os.path.exists(PUZZLE_CACHE_FILE):
+        try:
+            with open(PUZZLE_CACHE_FILE, 'rb') as f:
+                blob = pickle.load(f)
+            if isinstance(blob, dict) and blob.get('fp') == fp:
+                _lines_cache = blob['lines']
+                _lines_cache_fp = fp
+                log.info('Puzzle-Cache geladen (%d Linien aus %s)',
+                         len(_lines_cache), PUZZLE_CACHE_FILE)
+                return _lines_cache
+        except Exception as e:
+            log.warning('Puzzle-Cache nicht ladbar (%s) – parse neu.', e)
+
+    # 3) Volles Re-Parse
+    lines = _parse_all_lines()
+
+    _lines_cache = lines
+    _lines_cache_fp = fp
+    try:
+        os.makedirs(os.path.dirname(PUZZLE_CACHE_FILE), exist_ok=True)
+        with open(PUZZLE_CACHE_FILE, 'wb') as f:
+            pickle.dump({'fp': fp, 'lines': lines}, f, protocol=pickle.HIGHEST_PROTOCOL)
+        log.info('Puzzle-Cache geschrieben (%d Linien → %s)',
+                 len(lines), PUZZLE_CACHE_FILE)
+    except Exception as e:
+        log.warning('Puzzle-Cache schreiben fehlgeschlagen: %s', e)
+
+    return lines
+
+
+def _parse_all_lines() -> list[tuple[str, chess.pgn.Game]]:
+    """Tatsächlicher Parser; immer alle PGNs neu lesen + filtern."""
+    lines: list[tuple[str, chess.pgn.Game]] = []
     if not os.path.isdir(BOOKS_DIR):
         log.error('Books-Verzeichnis nicht gefunden: %s', BOOKS_DIR)
         return lines
