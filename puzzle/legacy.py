@@ -1181,12 +1181,14 @@ def build_puzzle_embed(game: chess.pgn.Game,
     embed.set_footer(text=footer)
     return embed
 
-async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int | None = None):
+async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int | None = None) -> int:
     """Puzzles auswählen, auf Lichess hochladen und posten.
 
     count    – Anzahl Puzzles (1–20).
     book_idx – 1-basierte Buchnummer aus /kurs (0 = alle Bücher).
     user_id  – Discord-User-ID; wenn gesetzt, wird die Tages-Studie wiederverwendet.
+
+    Gibt die Anzahl tatsächlich geposteter Puzzles zurück.
     """
     count = max(1, min(count, 20))
 
@@ -1201,12 +1203,12 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
                 await channel.send(
                     f'⚠️ Buch {book_idx} nicht gefunden. `/kurs` zeigt die verfügbaren Bücher.'
                 )
-                return
+                return 0
 
     results = pick_random_lines(count, book_filename)
     if not results:
         await channel.send('⚠️ Keine Puzzle-Linien gefunden. Bitte .pgn-Dateien in den `books/`-Ordner legen.')
-        return
+        return 0
 
     books_config = _load_books_config()
 
@@ -1267,45 +1269,61 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
             auto_archive_duration=1440,
         )
 
-    # Alle Puzzles als einzelne Bilder posten
+    # Alle Puzzles als einzelne Bilder posten. Jede Iteration in try/except,
+    # damit ein einzelner Crash (kaputtes Board, Discord-Edge-Case) nicht die
+    # restlichen Puzzles verschluckt – der User soll bei /puzzle 5 auch dann 4
+    # bekommen, wenn Nr. 2 schiefgeht.
+    posted_ok = 0
+    log.info('post_puzzle: poste %d Puzzle(s) in %s',
+             len(puzzles), 'DM' if is_dm else f'thread {target.id}')
     for i, (game, context, diff, rating, lid) in enumerate(puzzles):
-        puzzle_url = urls[i] if i < len(urls) else None
-        puzzle_num   = (base_count + i + 1) if user_id else 0
-        puzzle_total = (base_total + i + 1) if user_id else 0
         try:
-            board = game.board()
-            turn  = board.turn
-            img   = await asyncio.to_thread(_render_board, board)
+            puzzle_url = urls[i] if i < len(urls) else None
+            puzzle_num   = (base_count + i + 1) if user_id else 0
+            puzzle_total = (base_total + i + 1) if user_id else 0
+            try:
+                board = game.board()
+                turn  = board.turn
+                img   = await asyncio.to_thread(_render_board, board)
+            except Exception as e:
+                log.warning('Board-Render fehlgeschlagen (%s): %s', lid, e)
+                turn = None
+                img  = None
+
+            embed = build_puzzle_embed(game, turn=turn, puzzle_num=puzzle_num, puzzle_total=puzzle_total, difficulty=diff, rating=rating, line_id=lid)
+            if img:
+                file = discord.File(img, filename='board.png')
+                embed.set_image(url='attachment://board.png')
+                msg = await target.send(file=file, embed=embed)
+            else:
+                msg = await target.send(embed=embed)
+            _register_puzzle_msg(msg.id, lid)
+            try:
+                await msg.edit(view=_fresh_button_view())
+            except Exception as e:
+                log.warning('Button-View-Edit fehlgeschlagen (%s): %s', lid, e)
+
+            # PGN-Lösung als Spoiler posten
+            exporter = chess.pgn.StringExporter(
+                headers=False, variations=True, comments=False)
+            pgn_moves = game.accept(exporter).strip()
+            if pgn_moves:
+                await target.send(f'Lösung: ||`{pgn_moves}`||')
+            if context:
+                prelude = _prelude_pgn(context, game)
+                if prelude:
+                    await target.send(f'Ganze Partie: ||`{prelude}`||')
+            if puzzle_url:
+                await target.send(f'[Klickbares Rätsel]({puzzle_url})')
+            posted_ok += 1
         except Exception as e:
-            log.warning('Board-Render fehlgeschlagen: %s', e)
-            turn = None
-            img  = None
+            log.exception('Puzzle %d/%d (%s) fehlgeschlagen: %s',
+                          i + 1, len(puzzles), lid, e)
 
-        embed = build_puzzle_embed(game, turn=turn, puzzle_num=puzzle_num, puzzle_total=puzzle_total, difficulty=diff, rating=rating, line_id=lid)
-        if img:
-            file = discord.File(img, filename='board.png')
-            embed.set_image(url='attachment://board.png')
-            msg = await target.send(file=file, embed=embed)
-        else:
-            msg = await target.send(embed=embed)
-        _register_puzzle_msg(msg.id, lid)
-        await msg.edit(view=_fresh_button_view())
-
-        # PGN-Lösung als Spoiler posten
-        exporter = chess.pgn.StringExporter(
-            headers=False, variations=True, comments=False)
-        pgn_moves = game.accept(exporter).strip()
-        if pgn_moves:
-            await target.send(f'Lösung: ||`{pgn_moves}`||')
-        if context:
-            prelude = _prelude_pgn(context, game)
-            if prelude:
-                await target.send(f'Ganze Partie: ||`{prelude}`||')
-        if puzzle_url:
-            await target.send(f'[Klickbares Rätsel]({puzzle_url})')
-
-    if user_id:
-        stats.inc(user_id, 'puzzles', len(puzzles))
+    log.info('post_puzzle: %d/%d Puzzle(s) gepostet', posted_ok, len(puzzles))
+    if user_id and posted_ok:
+        stats.inc(user_id, 'puzzles', posted_ok)
+    return posted_ok
 
 
 async def post_blind_puzzle(channel,
@@ -1499,9 +1517,16 @@ def setup(bot: discord.ext.commands.Bot):
                 await interaction.followup.send(f'✅ Puzzle `{line_id}` per DM gesendet.', ephemeral=True)
                 return
 
-            await post_puzzle(dm, count=anzahl, book_idx=buch, user_id=interaction.user.id)
-            await interaction.followup.send(f'✅ {anzahl} Puzzle(s) wurde(n) dir per DM gesendet.', ephemeral=True)
+            sent = await post_puzzle(dm, count=anzahl, book_idx=buch, user_id=interaction.user.id)
+            if sent == anzahl:
+                msg = f'✅ {sent} Puzzle(s) wurde(n) dir per DM gesendet.'
+            elif sent > 0:
+                msg = f'⚠️ Nur {sent}/{anzahl} Puzzle(s) konnten gesendet werden – Details im Bot-Log.'
+            else:
+                msg = '❌ Es konnte kein Puzzle gesendet werden – Details im Bot-Log.'
+            await interaction.followup.send(msg, ephemeral=True)
         except Exception as e:
+            log.exception('/puzzle fehlgeschlagen: %s', e)
             await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
 
 

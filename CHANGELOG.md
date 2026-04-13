@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.7.3] - 2026-04-13
+### Fixed
+- `/puzzle anzahl:N` brach bei einem einzigen kaputten Puzzle die ganze
+  Schleife ab; der User sah nur die bis dahin geposteten (oft 1) plus
+  ephemer ein "❌ Fehler"-Followup, das leicht übersehen wurde. Jetzt
+  läuft jede Iteration in eigenem `try/except`, fehlgeschlagene Puzzles
+  werden mit `log.exception` protokolliert, der Rest wird trotzdem
+  gepostet. Folge-Message zeigt die echte Anzahl gesendeter Puzzles
+  (z.B. „⚠️ Nur 4/5 Puzzle(s) konnten gesendet werden …").
+- `post_puzzle()` gibt jetzt die Anzahl tatsächlich geposteter Puzzles
+  zurück, der Stats-Counter wird entsprechend nur um die geposteten
+  inkrementiert (vorher: optimistisch um die geplante Anzahl).
+
 ## [1.7.2] - 2026-04-13
 ### Fixed
 - `load_all_lines()` filtert Linien mit grob illegaler Startstellung raus
