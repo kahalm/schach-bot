@@ -547,8 +547,11 @@ def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
             status = root_board.status()
             if status & _FATAL_STATUS:
                 round_header = game.headers.get('Round', '')
-                log.warning('Illegale Stellung übersprungen in %s:%s – status=%d',
-                            filename, round_header, status)
+                # Auf DEBUG: load_all_lines() wird pro Command aufgerufen, das
+                # Pattern würde sonst bei jedem /puzzle das Terminal fluten.
+                # Die Summe wird unten als INFO geloggt, landet im File-Log.
+                log.debug('Illegale Stellung übersprungen in %s:%s – status=%d',
+                          filename, round_header, status)
                 invalid_count += 1
                 continue
             round_header = game.headers.get('Round', '')
