@@ -15,7 +15,7 @@ import json
 import os
 from datetime import time
 
-from core import stats, event_log
+from core import stats
 from core.paths import CONFIG_DIR
 from core.version import VERSION, START_TIME
 
@@ -72,129 +72,11 @@ blind.setup(bot)
 
 @bot.event
 async def on_ready():
+    # Persistente Button-View für Puzzle-Reaktionen registrieren
+    bot.add_view(puzzle.PuzzleView())
     await tree.sync()
     log.info('Bot online als %s', bot.user)
     puzzle_task.start()
-
-
-def _is_admin(user_id: int) -> bool:
-    """Prüft, ob der User in irgendeinem Guild des Bots Administrator ist."""
-    for guild in bot.guilds:
-        member = guild.get_member(user_id)
-        if member and member.guild_permissions.administrator:
-            return True
-    return False
-
-
-@bot.event
-async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    if payload.user_id == bot.user.id:
-        return
-    emoji = str(payload.emoji)
-    if emoji not in puzzle._PUZZLE_REACTIONS:
-        return
-    if not puzzle.is_puzzle_message(payload.message_id):
-        return
-    line_id = puzzle.get_puzzle_line_id(payload.message_id)
-    mode = puzzle.get_puzzle_mode(payload.message_id) or 'normal'
-    event_log.log_reaction(payload.user_id, line_id, mode, emoji, delta=1)
-    if emoji == '☠️':
-        # Nur Admins dürfen ganze Kapitel ignorieren
-        if not _is_admin(payload.user_id):
-            return
-        stats.inc(payload.user_id, 'reaction_☠️')
-        line_id = puzzle.get_puzzle_line_id(payload.message_id)
-        if not line_id:
-            return
-        chap = puzzle.get_chapter_from_line_id(line_id)
-        if not chap:
-            return
-        book_filename, prefix = chap
-        puzzle.ignore_chapter(book_filename, prefix)
-        try:
-            user = await bot.fetch_user(payload.user_id)
-            dm = await user.create_dm()
-            name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
-            await dm.send(
-                f'☠️ Kapitel **{prefix}** in **{name}** ignoriert. '
-                f'Alle Linien dieses Kapitels werden nicht mehr gepostet.')
-        except Exception as e:
-            log.warning('Chapter-Ignore-DM fehlgeschlagen: %s', e)
-        return
-    if emoji == '🚮':
-        stats.inc(payload.user_id, 'reaction_🚮')
-        line_id = puzzle.get_puzzle_line_id(payload.message_id)
-        if line_id:
-            puzzle.ignore_puzzle(line_id)
-            try:
-                user = await bot.fetch_user(payload.user_id)
-                dm = await user.create_dm()
-                await dm.send(f'🚮 Puzzle ignoriert und wird nicht mehr erscheinen:\n`{line_id}`')
-            except Exception as e:
-                log.warning('Ignore-DM fehlgeschlagen: %s', e)
-        # Thread (daily): Entschuldigung + Ersatz-Puzzle posten
-        channel = bot.get_channel(payload.channel_id)
-        if channel and isinstance(channel, discord.Thread):
-            await channel.send('🚮 Sorry für das schlechte Puzzle! Hier kommt ein neues:')
-            try:
-                await puzzle.post_puzzle(channel)
-            except Exception as e:
-                log.warning('Ersatz-Puzzle im Thread fehlgeschlagen: %s', e)
-        # Endless: nach 🚮 auch nächstes Puzzle senden
-        if puzzle.is_endless(payload.user_id):
-            await puzzle.post_next_endless(bot, payload.user_id)
-    else:
-        stats.inc(payload.user_id, f'reaction_{emoji}')
-        # Endless: nach ✅/❌ nächstes Puzzle senden
-        if emoji in ('✅', '❌') and puzzle.is_endless(payload.user_id):
-            await puzzle.post_next_endless(bot, payload.user_id)
-
-
-@bot.event
-async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
-    if payload.user_id == bot.user.id:
-        return
-    emoji = str(payload.emoji)
-    if emoji not in puzzle._PUZZLE_REACTIONS:
-        return
-    if not puzzle.is_puzzle_message(payload.message_id):
-        return
-    line_id = puzzle.get_puzzle_line_id(payload.message_id)
-    mode = puzzle.get_puzzle_mode(payload.message_id) or 'normal'
-    event_log.log_reaction(payload.user_id, line_id, mode, emoji, delta=-1)
-    if emoji == '☠️':
-        if not _is_admin(payload.user_id):
-            return
-        stats.inc(payload.user_id, 'reaction_☠️', -1)
-        line_id = puzzle.get_puzzle_line_id(payload.message_id)
-        if not line_id:
-            return
-        chap = puzzle.get_chapter_from_line_id(line_id)
-        if not chap:
-            return
-        book_filename, prefix = chap
-        puzzle.unignore_chapter(book_filename, prefix)
-        try:
-            user = await bot.fetch_user(payload.user_id)
-            dm = await user.create_dm()
-            name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
-            await dm.send(f'♻️ Kapitel **{prefix}** in **{name}** wieder aktiviert.')
-        except Exception as e:
-            log.warning('Chapter-Unignore-DM fehlgeschlagen: %s', e)
-        return
-    if emoji == '🚮':
-        stats.inc(payload.user_id, 'reaction_🚮', -1)
-        line_id = puzzle.get_puzzle_line_id(payload.message_id)
-        if line_id:
-            puzzle.unignore_puzzle(line_id)
-            try:
-                user = await bot.fetch_user(payload.user_id)
-                dm = await user.create_dm()
-                await dm.send(f'♻️ Puzzle wieder aktiviert:\n`{line_id}`')
-            except Exception as e:
-                log.warning('Unignore-DM fehlgeschlagen: %s', e)
-    else:
-        stats.inc(payload.user_id, f'reaction_{emoji}', -1)
 
 
 @bot.event

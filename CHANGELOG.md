@@ -4,6 +4,23 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.4.0] - 2026-04-13
+### Changed
+- Reaktionen ersetzt durch **Buttons**. Jedes Puzzle bekommt eine Reihe
+  ✅ ❌ 👍 👎 plus 🚮 ☠️. Counter starten bei 0 (kein Bot-Vorklick mehr) und
+  zählen pro User einmalig hoch — zweiter Klick desselben Users entfernt
+  seine Stimme wieder (Toggle).
+- ☠️ ist Admin-only (Klick eines Nicht-Admins → ephemerer Hinweis, keine Aktion).
+- Gleiche Side-Effects wie zuvor: 🚮 ignoriert das Puzzle und postet im
+  Thread ein Ersatz-Puzzle, ☠️ ignoriert das ganze Kapitel, ✅/❌ triggern
+  im Endless-Modus das nächste Puzzle.
+- Reaktions-Counter sind in-memory; nach Restart starten sie wieder bei 0,
+  die vollständige Historie bleibt im Reaction-Log erhalten.
+
+### Removed
+- `on_raw_reaction_add` / `on_raw_reaction_remove` Handler in `bot.py`
+- Lokales `_is_admin` in `bot.py` (wandert in `puzzle/buttons.py`)
+
 ## [1.3.0] - 2026-04-13
 ### Added
 - Append-only Reaktions-Log `config/reaction_log.jsonl`. Jede ✅/❌/👍/👎/🚮/☠️

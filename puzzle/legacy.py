@@ -23,6 +23,8 @@ from reportlab.graphics import renderPM
 
 log = logging.getLogger('schach-bot')
 
+from puzzle.buttons import fresh_view as _fresh_button_view
+
 # Puzzle-Nachrichten-IDs für Reaction-Tracking (in-memory, reicht da Reactions
 # typischerweise kurz nach dem Posten kommen).
 # Wert: dict {'line_id': str, 'mode': 'normal'|'blind'}
@@ -227,8 +229,7 @@ async def post_next_endless(bot, user_id: int):
         msg = await dm.send(embed=embed)
 
     _register_puzzle_msg(msg.id, line_id)
-    for emoji in ('✅', '❌', '👍', '👎'):
-        await msg.add_reaction(emoji)
+    await msg.edit(view=_fresh_button_view())
 
     # Lösung als Spoiler
     exporter = chess.pgn.StringExporter(headers=False, variations=True, comments=False)
@@ -1231,8 +1232,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         else:
             msg = await target.send(embed=embed)
         _register_puzzle_msg(msg.id, lid)
-        for emoji in ('✅', '❌', '👍', '👎'):
-            await msg.add_reaction(emoji)
+        await msg.edit(view=_fresh_button_view())
 
         # PGN-Lösung als Spoiler posten
         exporter = chess.pgn.StringExporter(
@@ -1356,8 +1356,7 @@ async def post_blind_puzzle(channel,
         else:
             msg = await target.send(embed=embed)
         _register_puzzle_msg(msg.id, line_id, mode='blind')
-        for emoji in ('✅', '❌', '👍', '👎'):
-            await msg.add_reaction(emoji)
+        await msg.edit(view=_fresh_button_view())
 
         exporter = chess.pgn.StringExporter(
             headers=False, variations=True, comments=False)
@@ -1427,8 +1426,7 @@ def setup(bot: discord.ext.commands.Bot):
                 else:
                     msg = await dm.send(embed=embed)
                 _register_puzzle_msg(msg.id, line_id)
-                for emoji in ('✅', '❌', '👍', '👎'):
-                    await msg.add_reaction(emoji)
+                await msg.edit(view=_fresh_button_view())
 
                 exporter = chess.pgn.StringExporter(headers=False, variations=True, comments=False)
                 pgn_moves = game.accept(exporter).strip()
@@ -1686,8 +1684,7 @@ def setup(bot: discord.ext.commands.Bot):
             else:
                 msg = await dm.send(embed=embed)
             _register_puzzle_msg(msg.id, lid)
-            for emoji in ('✅', '❌', '👍', '👎'):
-                await msg.add_reaction(emoji)
+            await msg.edit(view=_fresh_button_view())
 
             # PGN-Lösung als Spoiler
             exporter = chess.pgn.StringExporter(
