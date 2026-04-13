@@ -4,6 +4,48 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.5.3] - 2026-04-13
+### Fixed
+- Nach 3–5 schnellen Klicks hängte der nächste Klick ~30 s. Ursache:
+  `interaction.response.edit_message` lief in den Discord-Rate-Limit-Bucket
+  fürs Editieren der Puzzle-Nachricht. Jetzt wird der Klick mit `defer()`
+  bestätigt (eigener, viel großzügigerer Bucket), die Counter-Labels werden
+  per `edit_original_response` im Background-Task nachgezogen. Folge:
+  Klicks bleiben flüssig, das visuelle Counter-Update kann bei Bursts
+  hinterherhinken, blockt aber nichts.
+
+## [1.5.2] - 2026-04-13
+### Fixed
+- Button-Klicks blockierten den Event-Loop für teils Minuten, weil das
+  sync Pillow-Rendering (`_render_board`) und sync File-I/O (Logging,
+  Stats) den asyncio-Loop festhielten. Folge: ein Klick antwortete schnell,
+  der nächste hing fest hinter dem Rendering-Task des Vorgängers.
+  Fix in zwei Stufen:
+  1. `_handle_click` bestätigt die Interaktion sofort via `edit_message`
+     und schiebt alle Side-Effects (Logging, Stats, 🚮-DM, Endless-Next)
+     in einen Background-Task (`asyncio.create_task`).
+  2. Sync Blocking-Calls laufen jetzt in `asyncio.to_thread` —
+     `_render_board` an allen 5 Aufrufstellen sowie `event_log.log_reaction`
+     und `stats.inc` im Side-Effect-Task.
+
+## [1.5.1] - 2026-04-13
+### Fixed
+- Button-Klicks blockierten teils sehr lange (Discord-Spinner), besonders
+  wenn die mutex-Gegenstimme automatisch entfernt wurde. Jetzt wird zuerst
+  die Interaktion bestätigt (3-Sekunden-Limit eingehalten), Logging und
+  Stats laufen erst danach.
+
+## [1.5.0] - 2026-04-13
+### Changed
+- Reaktions-Buttons sind jetzt **wechselseitig exklusiv pro User**:
+  ✅ ↔ ❌ und 👍 ↔ 👎. Klick auf einen schaltet den eigenen Vorgänger
+  automatisch ab (und protokolliert dies sauber im Reaction-Log).
+- Alle 5 Buttons (✅ ❌ 👍 👎 🚮) liegen jetzt in einer Reihe.
+
+### Removed
+- ☠️-Button (ganzes Kapitel ignorieren) entfernt. Admins können Kapitel
+  weiterhin per `/ignore_kapitel` ignorieren.
+
 ## [1.4.0] - 2026-04-13
 ### Changed
 - Reaktionen ersetzt durch **Buttons**. Jedes Puzzle bekommt eine Reihe

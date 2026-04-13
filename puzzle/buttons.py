@@ -1,19 +1,26 @@
 """Button-basierte Reaktionen für Puzzle-Nachrichten.
 
-Jede Puzzle-Nachricht bekommt eine ``PuzzleView`` mit 6 Buttons
-(✅ ❌ 👍 👎 🚮 ☠️). Counter starten bei 0 und zählen pro User
-*einmalig* hoch (Toggle: zweiter Klick desselben Users entfernt seine
-Stimme wieder). ☠️ ist Admin-only.
+Jede Puzzle-Nachricht bekommt eine ``PuzzleView`` mit 5 Buttons
+(✅ ❌ 👍 👎 🚮). Counter starten bei 0 und zählen pro User einmalig.
 
-Die Button-Counter sind in-memory; nach einem Restart starten sie wieder
-bei 0. Die vollständige Historie liegt im Append-Only-Log
+Wechselseitig exklusiv pro User:
+* ✅ ↔ ❌  (Lösung: korrekt vs falsch)
+* 👍 ↔ 👎  (Bewertung: gut vs schlecht)
+
+Klick auf den Partner schaltet den eigenen Vorgänger automatisch ab.
+Erneuter Klick auf dasselbe Emoji nimmt die eigene Stimme wieder zurück.
+
+Die Counter sind in-memory; nach einem Restart starten sie wieder bei 0.
+Die vollständige Historie liegt im Append-Only-Log
 ``config/reaction_log.jsonl`` (siehe ``core/event_log``).
 
-Persistente View: ``bot.add_view(PuzzleView())`` in ``on_ready`` sorgt
-dafür, dass Klicks auf bereits existierende Puzzle-Nachrichten auch nach
-einem Restart funktionieren.
+WICHTIG: Button-Interaktionen müssen innerhalb von 3 Sekunden bestätigt
+werden, sonst zeigt Discord den Spinner ewig. Wir bestätigen daher SOFORT
+via ``edit_message`` und schieben jede File-I/O / langsame Side-Effect-
+Arbeit in einen Background-Task (mit ``asyncio.to_thread`` für sync I/O).
 """
 
+import asyncio
 import logging
 
 import discord
@@ -21,42 +28,53 @@ from discord import ui
 
 log = logging.getLogger('schach-bot')
 
-# Button-Reihen (Discord erlaubt max. 5 Buttons pro Reihe)
+# Alle 5 Buttons in einer Reihe (Discord-Maximum)
 _BUTTONS: list[tuple[str, discord.ButtonStyle, int]] = [
     ('✅', discord.ButtonStyle.success,   0),
     ('❌', discord.ButtonStyle.danger,    0),
     ('👍', discord.ButtonStyle.secondary, 0),
     ('👎', discord.ButtonStyle.secondary, 0),
-    ('🚮', discord.ButtonStyle.danger,    1),
-    ('☠️', discord.ButtonStyle.danger,    1),
+    ('🚮', discord.ButtonStyle.danger,    0),
 ]
+
+# Wechselseitig exklusive Paare – Klick auf einen entfernt automatisch den anderen
+_MUTEX_PAIRS = {'✅': '❌', '❌': '✅', '👍': '👎', '👎': '👍'}
 
 # msg_id → emoji → set[user_id]
 _clicks: dict[int, dict[str, set[int]]] = {}
-
-
-def _is_admin(bot: discord.Client, user_id: int) -> bool:
-    """Prüft, ob der User in irgendeinem Guild Administrator ist."""
-    for guild in bot.guilds:
-        member = guild.get_member(user_id)
-        if member and member.guild_permissions.administrator:
-            return True
-    return False
 
 
 def _count(msg_id: int, emoji: str) -> int:
     return len(_clicks.get(msg_id, {}).get(emoji, set()))
 
 
-def _toggle(msg_id: int, emoji: str, user_id: int) -> int:
-    """Toggle: gibt +1 zurück wenn hinzugefügt, -1 wenn entfernt."""
+def _apply_click(msg_id: int, emoji: str, user_id: int
+                 ) -> tuple[int, str | None]:
+    """Wendet einen Klick an.
+
+    Gibt ``(delta, removed_partner)`` zurück:
+    * ``delta`` = +1 wenn die Stimme hinzugefügt, -1 wenn entfernt wurde
+    * ``removed_partner`` = das mutex-Partner-Emoji, falls dem User dabei
+      die Gegenstimme entzogen wurde, sonst ``None``
+    """
     by_emoji = _clicks.setdefault(msg_id, {})
-    users    = by_emoji.setdefault(emoji, set())
+
+    # Mutex: hat der User die Gegenstimme bereits abgegeben? → entfernen
+    removed: str | None = None
+    partner = _MUTEX_PAIRS.get(emoji)
+    if partner:
+        partner_users = by_emoji.get(partner)
+        if partner_users and user_id in partner_users:
+            partner_users.remove(user_id)
+            removed = partner
+
+    # Eigentlicher Toggle
+    users = by_emoji.setdefault(emoji, set())
     if user_id in users:
         users.remove(user_id)
-        return -1
+        return -1, removed
     users.add(user_id)
-    return +1
+    return +1, removed
 
 
 def _build_view(msg_id: int | None = None) -> 'PuzzleView':
@@ -78,76 +96,86 @@ def fresh_view() -> 'PuzzleView':
 async def _handle_click(interaction: discord.Interaction, emoji: str):
     # Lazy-Import um Zirkular-Imports zu vermeiden
     from puzzle import legacy as _legacy
-    from core import event_log, stats
 
-    bot      = interaction.client
     msg_id   = interaction.message.id
     user_id  = interaction.user.id
     line_id  = _legacy.get_puzzle_line_id(msg_id)
     mode     = _legacy.get_puzzle_mode(msg_id) or 'normal'
 
-    # Admin-Gate für ☠️
-    if emoji == '☠️' and not _is_admin(bot, user_id):
-        await interaction.response.send_message(
-            '🔒 Nur Admins können ganze Kapitel ignorieren.', ephemeral=True)
-        return
+    delta, removed = _apply_click(msg_id, emoji, user_id)
 
-    delta = _toggle(msg_id, emoji, user_id)
+    # 1) SOFORT mit defer() bestätigen. Das ist die billigste Quittung und
+    #    nutzt NICHT den Message-Edit-Rate-Limit-Bucket – sonst hängt nach
+    #    ein paar schnellen Klicks der nächste Klick 30 s an Discord-RL.
+    try:
+        await interaction.response.defer()
+    except discord.errors.InteractionResponded:
+        pass  # Race-Edge-Case: schon beantwortet, egal
 
-    event_log.log_reaction(user_id, line_id, mode, emoji, delta=delta)
-    stats.inc(user_id, f'reaction_{emoji}', delta)
+    # 2) Alles andere (Counter-Edit, Logging, Stats, Endless) als Background-
+    #    Task – Klicks bleiben dadurch flüssig.
+    asyncio.create_task(_run_side_effects(
+        interaction, msg_id, user_id, line_id, mode, emoji, delta, removed))
 
-    # View mit aktualisierten Labels zurücksenden
-    new_view = _build_view(msg_id)
-    await interaction.response.edit_message(view=new_view)
 
-    # --- Side Effects ---
+async def _run_side_effects(interaction: discord.Interaction,
+                            msg_id: int, user_id: int,
+                            line_id: str | None, mode: str,
+                            emoji: str, delta: int, removed: str | None):
+    """Side-Effects nach einem Button-Klick – läuft losgelöst vom Handler."""
+    from puzzle import legacy as _legacy
+    from core import event_log, stats
 
-    # 🚮 Puzzle ignorieren / wieder aktivieren
-    if emoji == '🚮' and line_id:
+    bot = interaction.client
+
+    try:
+        # Counter-Labels visuell nachziehen (best-effort – darf langsam sein,
+        # blockiert nicht den nächsten Klick)
         try:
-            dm = await interaction.user.create_dm()
-            if delta > 0:
-                _legacy.ignore_puzzle(line_id)
-                await dm.send(f'🚮 Puzzle ignoriert und wird nicht mehr erscheinen:\n`{line_id}`')
-            else:
-                _legacy.unignore_puzzle(line_id)
-                await dm.send(f'♻️ Puzzle wieder aktiviert:\n`{line_id}`')
+            new_view = _build_view(msg_id)
+            await interaction.edit_original_response(view=new_view)
         except Exception as e:
-            log.warning('🚮-DM fehlgeschlagen: %s', e)
-        # Im Thread: Ersatz-Puzzle posten (nur beim Hinzufügen)
-        if delta > 0 and isinstance(interaction.channel, discord.Thread):
-            try:
-                await interaction.channel.send('🚮 Sorry für das schlechte Puzzle! Hier kommt ein neues:')
-                await _legacy.post_puzzle(interaction.channel)
-            except Exception as e:
-                log.warning('Ersatz-Puzzle fehlgeschlagen: %s', e)
+            log.warning('View-Update fehlgeschlagen: %s', e)
 
-    # ☠️ Ganzes Kapitel ignorieren / wieder aktivieren
-    if emoji == '☠️' and line_id:
-        chap = _legacy.get_chapter_from_line_id(line_id)
-        if chap:
-            book_filename, prefix = chap
+        # Logging + Stats (sync File-I/O → in Thread, blockt sonst Loop)
+        if removed:
+            await asyncio.to_thread(event_log.log_reaction,
+                                    user_id, line_id, mode, removed, -1)
+            await asyncio.to_thread(stats.inc,
+                                    user_id, f'reaction_{removed}', -1)
+        await asyncio.to_thread(event_log.log_reaction,
+                                user_id, line_id, mode, emoji, delta)
+        await asyncio.to_thread(stats.inc,
+                                user_id, f'reaction_{emoji}', delta)
+
+        # 🚮 Puzzle ignorieren / wieder aktivieren
+        if emoji == '🚮' and line_id:
             try:
                 dm = await interaction.user.create_dm()
-                name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
                 if delta > 0:
-                    _legacy.ignore_chapter(book_filename, prefix)
-                    await dm.send(
-                        f'☠️ Kapitel **{prefix}** in **{name}** ignoriert. '
-                        'Alle Linien dieses Kapitels werden nicht mehr gepostet.')
+                    await asyncio.to_thread(_legacy.ignore_puzzle, line_id)
+                    await dm.send(f'🚮 Puzzle ignoriert und wird nicht mehr erscheinen:\n`{line_id}`')
                 else:
-                    _legacy.unignore_chapter(book_filename, prefix)
-                    await dm.send(f'♻️ Kapitel **{prefix}** in **{name}** wieder aktiviert.')
+                    await asyncio.to_thread(_legacy.unignore_puzzle, line_id)
+                    await dm.send(f'♻️ Puzzle wieder aktiviert:\n`{line_id}`')
             except Exception as e:
-                log.warning('☠️-DM fehlgeschlagen: %s', e)
+                log.warning('🚮-DM fehlgeschlagen: %s', e)
+            # Im Thread: Ersatz-Puzzle posten (nur beim Hinzufügen)
+            if delta > 0 and isinstance(interaction.channel, discord.Thread):
+                try:
+                    await interaction.channel.send('🚮 Sorry für das schlechte Puzzle! Hier kommt ein neues:')
+                    await _legacy.post_puzzle(interaction.channel)
+                except Exception as e:
+                    log.warning('Ersatz-Puzzle fehlgeschlagen: %s', e)
 
-    # Endless: nach ✅/❌ nächstes Puzzle senden (nur beim Hinzufügen)
-    if delta > 0 and emoji in ('✅', '❌') and _legacy.is_endless(user_id):
-        try:
-            await _legacy.post_next_endless(bot, user_id)
-        except Exception as e:
-            log.warning('Endless-Next fehlgeschlagen: %s', e)
+        # Endless: nach ✅/❌ nächstes Puzzle senden (nur beim Hinzufügen)
+        if delta > 0 and emoji in ('✅', '❌') and _legacy.is_endless(user_id):
+            try:
+                await _legacy.post_next_endless(bot, user_id)
+            except Exception as e:
+                log.warning('Endless-Next fehlgeschlagen: %s', e)
+    except Exception:
+        log.exception('Side-effect crash nach Button-Klick')
 
 
 def _make_callback(emoji: str):
@@ -157,7 +185,7 @@ def _make_callback(emoji: str):
 
 
 class PuzzleView(ui.View):
-    """Persistente View mit den 6 Reaktions-Buttons."""
+    """Persistente View mit den 5 Reaktions-Buttons."""
 
     def __init__(self):
         super().__init__(timeout=None)

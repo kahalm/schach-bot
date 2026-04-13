@@ -29,7 +29,6 @@ from puzzle.buttons import fresh_view as _fresh_button_view
 # typischerweise kurz nach dem Posten kommen).
 # Wert: dict {'line_id': str, 'mode': 'normal'|'blind'}
 _puzzle_msg_ids: dict[int, dict] = {}
-_PUZZLE_REACTIONS = {'✅', '❌', '👍', '👎', '🚮', '☠️'}
 from core.paths import CONFIG_DIR
 IGNORE_FILE = os.path.join(CONFIG_DIR, 'puzzle_ignore.json')
 CHAPTER_IGNORE_FILE = os.path.join(CONFIG_DIR, 'chapter_ignore.json')
@@ -214,7 +213,7 @@ async def post_next_endless(bot, user_id: int):
     try:
         board = game.board()
         turn = board.turn
-        img = _render_board(board)
+        img = await asyncio.to_thread(_render_board, board)
     except Exception:
         turn, img = None, None
 
@@ -1218,7 +1217,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         try:
             board = game.board()
             turn  = board.turn
-            img   = _render_board(board)
+            img   = await asyncio.to_thread(_render_board, board)
         except Exception as e:
             log.warning('Board-Render fehlgeschlagen: %s', e)
             turn = None
@@ -1329,7 +1328,7 @@ async def post_blind_puzzle(channel,
         rating = meta.get('rating', 0)
 
         try:
-            img = _render_board(blind_board)
+            img = await asyncio.to_thread(_render_board, blind_board)
         except Exception as e:
             log.warning('Blind-Board-Render fehlgeschlagen: %s', e)
             img = None
@@ -1414,7 +1413,7 @@ def setup(bot: discord.ext.commands.Bot):
                 try:
                     board = game.board()
                     turn = board.turn
-                    img = _render_board(board)
+                    img = await asyncio.to_thread(_render_board, board)
                 except Exception:
                     turn, img = None, None
 
@@ -1664,7 +1663,7 @@ def setup(bot: discord.ext.commands.Bot):
             try:
                 board = game.board()
                 turn = board.turn  # Lichess spielt den 1. Zug als Setup
-                img = _render_board(board)
+                img = await asyncio.to_thread(_render_board, board)
             except Exception:
                 turn, img = None, None
 
