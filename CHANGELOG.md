@@ -4,6 +4,15 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.9.6] - 2026-04-13
+### Added
+- Blind-Puzzles haben jetzt eine eigene ID-Notation im Embed-Footer:
+  `ID: datei.pgn:021.004:blind:4` (Suffix `:blind:<moves>`).
+- `/puzzle id: datei.pgn:021.004:blind:4` erkennt das Suffix und sendet
+  das Puzzle direkt im Blind-Modus mit der angegebenen Züge-Anzahl.
+  Kombination mit `user:` funktioniert ebenfalls.
+- `/blind user:@Name` — `user:`-Parameter auch für `/blind` (v1.9.5.1).
+
 ## [1.9.5] - 2026-04-13
 ### Added
 - `/kurs buch:N` zeigt Detailansicht eines Buches: Schwierigkeit,

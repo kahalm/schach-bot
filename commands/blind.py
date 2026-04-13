@@ -26,29 +26,35 @@ def setup(bot: commands.Bot):
         moves='Anzahl Halbzüge, die du im Kopf spielen musst (1–20, Standard: 4)',
         anzahl='Anzahl Puzzles (1–20, Standard: 1)',
         buch='Buchnummer aus /kurs (Standard: zufälliges Blind-Buch)',
+        user='Puzzle an diesen User schicken (Standard: an dich selbst)',
     )
     async def cmd_blind(interaction: discord.Interaction,
                         moves: int = 4,
                         anzahl: int = 1,
-                        buch: int = 0):
-        log.info('/blind von %s: moves=%d anzahl=%d buch=%d',
-                 interaction.user, moves, anzahl, buch)
+                        buch: int = 0,
+                        user: discord.Member | None = None):
+        target_user = user or interaction.user
+        log.info('/blind von %s: moves=%d anzahl=%d buch=%d user=%s',
+                 interaction.user, moves, anzahl, buch, target_user)
         if moves < 1:
             await interaction.response.send_message(
                 '⚠️ `moves` muss mindestens 1 sein.', ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True)
         try:
-            dm = await interaction.user.create_dm()
+            dm = await target_user.create_dm()
+            if user:
+                await dm.send(f'**{interaction.user.display_name}** schickt dir ein Blind-Puzzle 🙈')
             await puzzle.post_blind_puzzle(
                 dm,
                 moves=moves,
                 count=anzahl,
                 book_idx=buch,
-                user_id=interaction.user.id,
+                user_id=target_user.id,
             )
+            dest = f'an {target_user.mention}' if user else 'dir'
             await interaction.followup.send(
-                f'🙈 Blind-Puzzle ({anzahl}× / {moves} Züge) per DM gesendet.',
+                f'🙈 Blind-Puzzle ({anzahl}× / {moves} Züge) {dest} per DM gesendet.',
                 ephemeral=True)
         except Exception as e:
             log.exception('/blind fehlgeschlagen')

@@ -1283,7 +1283,8 @@ def build_puzzle_embed(game: chess.pgn.Game,
                        puzzle_total: int = 0,
                        difficulty: str = '',
                        rating: int = 0,
-                       line_id: str = '') -> discord.Embed:
+                       line_id: str = '',
+                       blind_moves: int = 0) -> discord.Embed:
     h = dict(game.headers)
     line_name  = h.get('White', h.get('Event', 'Linie'))
     event_name = h.get('Event', '')
@@ -1318,7 +1319,10 @@ def build_puzzle_embed(game: chess.pgn.Game,
         stats = f'Heute: **{puzzle_num}** · Gesamt: **{puzzle_total}**'
         embed.add_field(name='\u200b', value=stats, inline=False)
 
-    footer = f'ID: {line_id}' if line_id else '🧩 Tägliches Puzzle'
+    if line_id:
+        footer = f'ID: {line_id}:blind:{blind_moves}' if blind_moves else f'ID: {line_id}'
+    else:
+        footer = '🧩 Tägliches Puzzle'
     embed.set_footer(text=footer)
     return embed
 
@@ -1592,6 +1596,7 @@ async def post_blind_puzzle(channel,
             difficulty=diff,
             rating=rating,
             line_id=line_id,
+            blind_moves=moves,
         )
         embed.title = f'🙈 Blind-Puzzle ({moves} Züge)'
         blind_pgn = _format_blind_moves(blind_board, blind_san)
@@ -1656,10 +1661,68 @@ def setup(bot: discord.ext.commands.Bot):
             target_uid = target_user.id
 
             if id:
-                result = find_line_by_id(id)
+                # Blind-Referenz: "lid:blind:N" → post_blind_puzzle
+                _blind_moves = 0
+                _lookup_id = id
+                _blind_match = re.search(r':blind:(\d+)$', id, re.IGNORECASE)
+                if _blind_match:
+                    _blind_moves = int(_blind_match.group(1))
+                    _lookup_id = id[:_blind_match.start()]
+
+                result = find_line_by_id(_lookup_id)
                 if not result:
                     await interaction.followup.send(f'⚠️ Puzzle `{id}` nicht gefunden.', ephemeral=True)
                     return
+
+                if _blind_moves:
+                    if user:
+                        await dm.send(f'**{interaction.user.display_name}** schickt dir ein Blind-Puzzle 🙈')
+                    line_id = result[0]
+                    # post_blind_puzzle erwartet einen Channel und sucht selbst
+                    # eine passende Linie – wir nutzen find_line_by_id-Ergebnis
+                    # direkt via pick_random_blind_lines-Bypass:
+                    orig = result[1]
+                    split = _split_for_blind(orig, _blind_moves)
+                    if split is None:
+                        await interaction.followup.send(
+                            f'⚠️ Puzzle `{line_id}` hat nicht genug Vorlauf-Züge für blind:{_blind_moves}.',
+                            ephemeral=True)
+                        return
+                    blind_board, blind_san, puzzle_game = split
+                    fname = line_id.split(':')[0]
+                    meta  = _load_books_config().get(fname, {})
+                    try:
+                        img = await asyncio.to_thread(_render_board, blind_board)
+                    except Exception:
+                        img = None
+                    embed = build_puzzle_embed(
+                        puzzle_game, turn=blind_board.turn,
+                        difficulty=meta.get('difficulty',''), rating=meta.get('rating', 0),
+                        line_id=line_id, blind_moves=_blind_moves)
+                    embed.title = f'🙈 Blind-Puzzle ({_blind_moves} Züge)'
+                    blind_pgn = _format_blind_moves(blind_board, blind_san)
+                    embed.add_field(name='🙈 Spiele in Gedanken',
+                                    value=f'`{blind_pgn}`\n_Visualisiere die Stellung danach und löse das Puzzle._',
+                                    inline=False)
+                    if img:
+                        file = discord.File(img, filename='board.png')
+                        embed.set_image(url='attachment://board.png')
+                        msg = await _resilient_send(dm, file=file, embed=embed)
+                    else:
+                        msg = await _resilient_send(dm, embed=embed)
+                    _register_puzzle_msg(msg.id, line_id, mode='blind')
+                    try:
+                        await msg.edit(view=_fresh_button_view())
+                    except Exception:
+                        pass
+                    exporter = chess.pgn.StringExporter(headers=False, variations=True, comments=True)
+                    pgn_moves = _strip_pgn_annotations(puzzle_game.accept(exporter))
+                    if pgn_moves:
+                        await _send_optional(dm, f'Lösung des Puzzles: ||`{pgn_moves}`||', label=f'Blind-Lösung {line_id}')
+                    dest = f'an {target_user.mention}' if user else 'dir'
+                    await interaction.followup.send(f'🙈 Blind-Puzzle `{line_id}:blind:{_blind_moves}` {dest} per DM gesendet.', ephemeral=True)
+                    return
+
                 line_id, original_game = result
                 game = _trim_to_training_position(original_game)
                 context = original_game if game is not original_game else None
