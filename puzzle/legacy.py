@@ -748,7 +748,9 @@ def _prelude_pgn(context: chess.pgn.Game, puzzle: chess.pgn.Game) -> str:
         node_src = child
     exporter = chess.pgn.StringExporter(
         headers=False, variations=False, comments=False)
-    return prelude.accept(exporter).strip()
+    result = prelude.accept(exporter).strip()
+    # Leeres Vorspiel (keine Züge) ergibt nur "*" – nicht sinnvoll anzeigen.
+    return '' if result == '*' else result
 
 def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
     """Spiel auf erste [%tqu]-Stellung kürzen.

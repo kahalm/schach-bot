@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.9.2] - 2026-04-13
+### Fixed
+- „Ganze Partie" wurde auch gesendet, wenn der Kontext keine Züge vor
+  der Puzzle-Stellung enthält (Rückgabe `*`). `_prelude_pgn()` gibt
+  jetzt leeren String zurück, wenn kein echtes Vorspiel existiert.
+
 ## [1.9.1] - 2026-04-13
 ### Added
 - Wenn `/puzzle user:@Name` verwendet wird, erscheint in der DM des
