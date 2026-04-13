@@ -6,66 +6,21 @@ try:
 except (OSError, ImportError):
     sys.modules['cairocffi'] = None  # type: ignore[assignment]
 
-import logging
-import sys
-from logging.handlers import RotatingFileHandler
-
-# python-chess schreibt Parsing-Warnungen direkt auf stdout/stderr –
-# nicht über das logging-Modul. Beide Streams filtern.
-class _SuppressEmptyFen:
-    _SUPPRESS = ('empty fen while parsing', 'illegal san:', 'no matching legal move', 'ambiguous san:')
-    def __init__(self, stream): self._s = stream
-    def write(self, s):
-        if not any(p in s for p in self._SUPPRESS):
-            try:
-                self._s.write(s)
-            except (UnicodeEncodeError, UnicodeDecodeError):
-                self._s.write(s.encode('ascii', 'replace').decode('ascii'))
-    def flush(self): self._s.flush()
-    def __getattr__(self, n): return getattr(self._s, n)
-
-sys.stdout = _SuppressEmptyFen(sys.stdout)
-sys.stderr = _SuppressEmptyFen(sys.stderr)
-
-# ---------------------------------------------------------------------------
-# Rolling Log  (bot.log, max 1 MB, 5 Backups)
-# ---------------------------------------------------------------------------
-
-_log_fmt = logging.Formatter('%(asctime)s [%(levelname)-8s] %(message)s',
-                              datefmt='%Y-%m-%d %H:%M:%S')
-
-_file_handler = RotatingFileHandler(
-    'bot.log', maxBytes=1_000_000, backupCount=5, encoding='utf-8'
-)
-_file_handler.setFormatter(_log_fmt)
-_file_handler.setLevel(logging.DEBUG)
-
-# Terminal: nur WARNING+ (z.B. Book-Lesefehler)
-_term_handler = logging.StreamHandler(sys.stderr)
-_term_handler.setFormatter(_log_fmt)
-_term_handler.setLevel(logging.WARNING)
-
-log = logging.getLogger('schach-bot')
-log.setLevel(logging.DEBUG)
-log.addHandler(_file_handler)
-log.addHandler(_term_handler)
-log.propagate = False
+from core import log_setup
+log = log_setup.setup()
 
 import discord
 from discord.ext import tasks, commands
 import json
 import os
-import stats
-from datetime import time, datetime, timezone
+from datetime import time
 
-START_TIME = datetime.now(timezone.utc)
+from core import stats
+from core.paths import CONFIG_DIR
+from core.version import VERSION, START_TIME
 
 from dotenv import load_dotenv
 load_dotenv()
-
-VERSION         = '1.0.0'
-
-from paths import CONFIG_DIR
 
 DISCORD_TOKEN   = os.getenv('DISCORD_TOKEN')
 CHANNEL_ID      = int(os.getenv('CHANNEL_ID', '0'))

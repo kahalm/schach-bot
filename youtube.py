@@ -8,7 +8,7 @@ from datetime import date
 import discord
 from discord.ext import commands
 
-from paths import CONFIG_DIR
+from core.paths import CONFIG_DIR
 
 log = logging.getLogger('schach-bot')
 

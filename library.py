@@ -5,8 +5,9 @@ import json
 import logging
 import os
 import re
-import stats
 from collections import defaultdict
+
+from core import stats
 
 import discord
 

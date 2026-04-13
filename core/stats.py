@@ -3,7 +3,7 @@
 import json
 import os
 
-from paths import CONFIG_DIR
+from core.paths import CONFIG_DIR
 
 STATS_FILE = os.path.join(CONFIG_DIR, 'user_stats.json')
 

@@ -1,6 +1,6 @@
 """Zentrale Pfad-Konstanten.
 
-Importiert via `from paths import CONFIG_DIR`.
+Importiert via `from core.paths import CONFIG_DIR`.
 Der `config/`-Ordner wird beim ersten Import automatisch angelegt.
 """
 
