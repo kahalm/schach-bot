@@ -752,9 +752,9 @@ def _prelude_pgn(context: chess.pgn.Game, puzzle: chess.pgn.Game) -> str:
         child = node_src.variations[0]
         cb = child.board()
         child_key = cb.board_fen() + (' w ' if cb.turn == chess.WHITE else ' b ')
+        node_dst = node_dst.add_variation(child.move)
         if child_key == target_board:
             break
-        node_dst = node_dst.add_variation(child.move)
         node_src = child
     exporter = chess.pgn.StringExporter(
         headers=False, variations=False, comments=False)
@@ -770,6 +770,10 @@ def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
     ihrerseits noch Untervarianten hat, ist sie nur der Setup-Zug und
     das eigentliche Training beginnt danach. Gilt sowohl für Root- als
     auch für Nicht-Root-Knoten.
+
+    Discord-Board zeigt die Position *nach* dem Setup-Zug (returned Game).
+    Für den Lichess-Gamebook-Upload (Setup-Zug wird auto-gespielt) wird
+    die Position *vor* dem Advance als ``._lichess_game`` angehängt.
     """
     node = game
     while True:
@@ -779,34 +783,14 @@ def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
             return game  # kein Trainingskommentar → Original
         node = node.variations[0]
 
-    # [%tqu] ist der Quiz-Zug: „finde diesen Zug". Wenn die erste Variante
-    # (= die Antwort) ihrerseits noch Untervarianten hat, IST diese Antwort
-    # nur der Setup-Zug und das eigentliche Training beginnt danach.
-    # Beispiel: h3 ist die [%tqu]-Antwort, aber das Puzzle ist Nd4 danach.
-    if node.variations:
-        candidate = node.variations[0]
-        if candidate.variations:
-            node = candidate
-
-    tqu_board = node.board()
-    new_game = chess.pgn.Game()
-    new_game.setup(tqu_board)
-    # Metadaten übernehmen – FEN und SetUp NICHT überschreiben (setup() hat sie korrekt gesetzt)
-    for key, val in game.headers.items():
-        if key not in ('FEN', 'SetUp'):
-            new_game.headers[key] = val
-    # [%tqu]-Annotation entfernen, restlichen Kommentartext behalten
-    cleaned = re.sub(r'\[%tqu\b[^\]]*\]', '', node.comment or '').strip()
-    new_game.comment = cleaned
-
-    def _gather_comments(node: chess.pgn.GameNode) -> str:
+    def _gather_comments(n: chess.pgn.GameNode) -> str:
         """Alle Kommentare aus einem Teilbaum sammeln (fuer Nullzug-Varianten)."""
         parts = []
-        if node.starting_comment:
-            parts.append(node.starting_comment)
-        if node.comment:
-            parts.append(node.comment)
-        for v in node.variations:
+        if n.starting_comment:
+            parts.append(n.starting_comment)
+        if n.comment:
+            parts.append(n.comment)
+        for v in n.variations:
             sub = _gather_comments(v)
             if sub:
                 parts.append(sub)
@@ -817,8 +801,6 @@ def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
         """Baum ab src nach dst kopieren; board ist die Stellung bei dst."""
         for var in src.variations:
             if var.move not in board.legal_moves:
-                # Illegale Variante (Nullzug / Parsing-Fehler):
-                # Kommentare retten und an den Elternknoten anhaengen.
                 text = _gather_comments(var)
                 if text:
                     dst.comment = ((dst.comment or '') + ' ' + text).strip()
@@ -833,8 +815,30 @@ def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
             next_board.push(var.move)
             _copy(var, child, next_board)
 
-    _copy(node, new_game, tqu_board)
-    return new_game
+    def _build(src_node):
+        """Neues Game ab src_node's Stellung mit dessen Varianten bauen."""
+        brd = src_node.board()
+        g = chess.pgn.Game()
+        g.setup(brd)
+        for key, val in game.headers.items():
+            if key not in ('FEN', 'SetUp'):
+                g.headers[key] = val
+        g.comment = re.sub(r'\[%tqu\b[^\]]*\]', '', src_node.comment or '').strip()
+        _copy(src_node, g, brd)
+        return g
+
+    # Advance: wenn die erste Variante (Antwort) Untervarianten hat,
+    # ist sie der Setup-Zug → für Discord vorrücken, für Lichess behalten.
+    pre_node = node
+    if node.variations:
+        candidate = node.variations[0]
+        if candidate.variations:
+            node = candidate
+
+    display_game = _build(node)
+    if node is not pre_node:
+        display_game._lichess_game = _build(pre_node)
+    return display_game
 
 
 # ---------------------------------------------------------------------------
@@ -1112,9 +1116,13 @@ def upload_to_lichess(game: chess.pgn.Game,
         remaining = int(_lichess_cooldown_until() - _time_mod.time())
         log.info('Lichess-Upload übersprungen (Cooldown noch %ds).', remaining)
         return None
+    # Falls _trim_to_training_position einen Advance gemacht hat, enthält
+    # ._lichess_game die Version VOR dem Advance (Setup-Zug als erster Zug,
+    # wird im Gamebook auto-gespielt).
+    lichess_game = getattr(game, '_lichess_game', game)
     try:
         exporter = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
-        pgn_text = game.accept(exporter)
+        pgn_text = lichess_game.accept(exporter)
     except Exception as e:
         log.error('PGN-Export fehlgeschlagen: %s', e)
         return None
