@@ -511,8 +511,13 @@ _lines_cache_fp: tuple | None = None
 
 
 def _books_fingerprint() -> tuple:
-    """(filename, mtime, size) für jede .pgn in BOOKS_DIR + books.json."""
-    items = []
+    """(filename, mtime, size) für jede .pgn in BOOKS_DIR + books.json.
+
+    Enthält auch VERSION, damit Code-Änderungen am Parser (z.B.
+    _flatten_null_move_variations) den Cache automatisch invalidieren.
+    """
+    from core.version import VERSION
+    items: list = [('__version__', VERSION)]
     if os.path.isdir(BOOKS_DIR):
         for fn in sorted(os.listdir(BOOKS_DIR)):
             if fn.endswith('.pgn') or fn == 'books.json':
@@ -602,6 +607,7 @@ def _parse_all_lines() -> list[tuple[str, chess.pgn.Game]]:
         except OSError as e:
             log.error('Kann PGN-Datei nicht lesen: %s – %s', filepath, e)
             continue
+        pgn_text = _flatten_null_move_variations(pgn_text)
         stream = io.StringIO(pgn_text)
         while True:
             try:
@@ -733,7 +739,11 @@ def find_line_by_id(line_id: str) -> tuple[str, chess.pgn.Game] | None:
 def _prelude_pgn(context: chess.pgn.Game, puzzle: chess.pgn.Game) -> str:
     """Züge aus context VOR der Puzzle-Startstellung exportieren (ohne Lösung)."""
     # Nur Brettposition vergleichen (ohne Halbzug-/Zugzähler)
-    target_board = puzzle.board().board_fen() + (' w ' if puzzle.board().turn == chess.WHITE else ' b ')
+    def _key(b): return b.board_fen() + (' w ' if b.turn == chess.WHITE else ' b ')
+    target_board = _key(puzzle.board())
+    # Puzzle-Stellung = Root der Originalpartie → kein Vorspiel
+    if _key(context.board()) == target_board:
+        return ''
     prelude = chess.pgn.Game()
     prelude.headers.clear()
     node_src = context
@@ -772,10 +782,14 @@ def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
         node = node.variations[0]
 
     if node is game:
-        # [%tqu] im Root-Kommentar: erste Variante als Setup-Zug behandeln.
+        # [%tqu] im Root-Kommentar: erste Variante als Setup-Zug behandeln,
+        # aber nur wenn danach noch Varianten folgen. Sonst IST der Root
+        # die Trainingsstellung (z.B. 100 Tactical Patterns).
         if not node.variations:
             return game
-        node = node.variations[0]
+        candidate = node.variations[0]
+        if candidate.variations:
+            node = candidate
 
     tqu_board = node.board()
     new_game = chess.pgn.Game()
@@ -784,15 +798,34 @@ def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
     for key, val in game.headers.items():
         if key not in ('FEN', 'SetUp'):
             new_game.headers[key] = val
-    # [%tqu]-Kommentar nicht weitergeben – wird beim Export sowieso entfernt
-    new_game.comment = ''
+    # [%tqu]-Annotation entfernen, restlichen Kommentartext behalten
+    cleaned = re.sub(r'\[%tqu\b[^\]]*\]', '', node.comment or '').strip()
+    new_game.comment = cleaned
+
+    def _gather_comments(node: chess.pgn.GameNode) -> str:
+        """Alle Kommentare aus einem Teilbaum sammeln (fuer Nullzug-Varianten)."""
+        parts = []
+        if node.starting_comment:
+            parts.append(node.starting_comment)
+        if node.comment:
+            parts.append(node.comment)
+        for v in node.variations:
+            sub = _gather_comments(v)
+            if sub:
+                parts.append(sub)
+        return ' '.join(parts)
 
     def _copy(src: chess.pgn.GameNode, dst: chess.pgn.GameNode,
               board: chess.Board):
         """Baum ab src nach dst kopieren; board ist die Stellung bei dst."""
         for var in src.variations:
             if var.move not in board.legal_moves:
-                continue  # illegale Varianten (Parsing-Fehler) überspringen
+                # Illegale Variante (Nullzug / Parsing-Fehler):
+                # Kommentare retten und an den Elternknoten anhaengen.
+                text = _gather_comments(var)
+                if text:
+                    dst.comment = ((dst.comment or '') + ' ' + text).strip()
+                continue
             child = dst.add_variation(
                 var.move,
                 comment=var.comment,
@@ -922,6 +955,63 @@ def pick_random_blind_lines(count: int,
         return []
     count = max(1, min(count, len(candidates)))
     return random.sample(candidates, count)
+
+
+def _flatten_null_move_variations(pgn_text: str) -> str:
+    """Varianten mit Nullzuegen (--) in Kommentarbloecke umwandeln.
+
+    python-chess kann Folgezuege nach ``--`` nicht validieren und verwirft
+    sie samt Kommentaren.  Diese Funktion extrahiert den Kommentartext aus
+    solchen Varianten und haengt ihn als ``{...}``-Block an die Hauptlinie,
+    bevor python-chess den PGN-String parst.
+    """
+    result: list[str] = []
+    i = 0
+    n = len(pgn_text)
+    while i < n:
+        ch = pgn_text[i]
+        if ch == '{':
+            # Kommentarblock komplett uebernehmen
+            end = pgn_text.find('}', i + 1)
+            if end < 0:
+                end = n - 1
+            result.append(pgn_text[i:end + 1])
+            i = end + 1
+        elif ch == '(':
+            # Variante finden: passende Klammer suchen
+            j = i + 1
+            depth = 1
+            while j < n and depth > 0:
+                c = pgn_text[j]
+                if c == '{':
+                    close = pgn_text.find('}', j + 1)
+                    j = (close + 1) if close >= 0 else (n)
+                elif c == '(':
+                    depth += 1
+                    j += 1
+                elif c == ')':
+                    depth -= 1
+                    j += 1
+                else:
+                    j += 1
+            var_content = pgn_text[i + 1:j - 1]
+            # Pruefen ob -- ausserhalb von Kommentaren vorkommt
+            without_comments = re.sub(r'\{[^}]*\}', '', var_content)
+            if '--' in without_comments:
+                # Alle Kommentartexte extrahieren und zusammenfuegen
+                comments = re.findall(r'\{([^}]*)\}', var_content)
+                merged = ' '.join(c.strip() for c in comments if c.strip())
+                if merged:
+                    result.append('{' + merged + '}')
+            else:
+                # Normale Variante: rekursiv vorverarbeiten
+                inner = _flatten_null_move_variations(var_content)
+                result.append('(' + inner + ')')
+            i = j
+        else:
+            result.append(ch)
+            i += 1
+    return ''.join(result)
 
 
 def _strip_pgn_annotations(text: str) -> str:
