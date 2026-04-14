@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.10.5] - 2026-04-14
+### Added
+- `/test`-Dropdown zeigt bei Puzzle-Vorschau einen Lichess-Studien-Link
+  zur direkten Prüfung im Gamebook-Modus.
+
 ## [1.10.4] - 2026-04-14
 ### Fixed
 - Lichess-Gamebook-Orientierung wird jetzt automatisch gesetzt: bei

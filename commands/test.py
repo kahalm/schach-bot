@@ -13,7 +13,7 @@ import discord
 from puzzle.legacy import (
     find_line_by_id, _trim_to_training_position, build_puzzle_embed,
     _render_board, _load_books_config, _strip_pgn_annotations, _prelude_pgn,
-    _flatten_null_move_variations,
+    _flatten_null_move_variations, upload_to_lichess,
 )
 
 log = logging.getLogger('schach-bot')
@@ -107,6 +107,15 @@ class _PuzzleSelect(discord.ui.Select):
             if prelude:
                 embed.add_field(
                     name='Ganze Partie', value=_field_val(prelude), inline=False)
+
+        # Lichess-Upload
+        loop = asyncio.get_running_loop()
+        puzzle_url = await loop.run_in_executor(
+            None, lambda: upload_to_lichess(game, context_game=context))
+
+        if puzzle_url:
+            embed.add_field(
+                name='Lichess', value=f'[Studie öffnen]({puzzle_url})', inline=False)
 
         if img:
             file = discord.File(img, filename='board.png')
