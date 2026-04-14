@@ -35,7 +35,10 @@ def _find_game(filename, round_id):
         pgn_text = _flatten_null_move_variations(f.read())
     stream = io.StringIO(pgn_text)
     while True:
-        game = chess.pgn.read_game(stream)
+        try:
+            game = chess.pgn.read_game(stream)
+        except Exception:
+            continue
         if game is None:
             raise ValueError(f'Round {round_id!r} nicht gefunden in {filename}')
         if game.headers.get('Round', '') == round_id:
