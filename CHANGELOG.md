@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.10.9] - 2026-04-14
+### Added
+- Snapshot-Tests für alle 12 Bücher (je 3 Testfälle: Anfang, Mitte, Ende).
+  Insgesamt 37 Snapshots, sortiert nach Buchname.
+
 ## [1.10.8] - 2026-04-14
 ### Added
 - 3 Snapshot-Tests aus *1001 Chess Exercises For Club Players*
