@@ -142,8 +142,11 @@ def setup(bot):
     @discord.app_commands.default_permissions(administrator=True)
     @discord.app_commands.describe(
         kurs='Buchnummer aus /kurs (Standard: alle Buecher)',
+        puzzle='1 = Board-Bild + Loesung pro Snapshot',
+        lichess='1 = Lichess-Studienlink pro Snapshot',
     )
-    async def test_cmd(interaction: discord.Interaction, kurs: int = 0):
+    async def test_cmd(interaction: discord.Interaction, kurs: int = 0,
+                       puzzle: int = 0, lichess: int = 0):
         await interaction.response.defer(ephemeral=True)
 
         snapshots = _load_snapshots()
@@ -162,9 +165,14 @@ def setup(bot):
                     f'Keine Snapshots fuer Buch {kurs} (`{_book_label(book_fn)}`).',
                     ephemeral=True)
                 return
+        show_puzzle = puzzle == 1
+        show_lichess = lichess == 1
+
         ok_count = 0
         fields = []
         puzzle_ids = []  # (label, puzzle_id) fuer Dropdown
+        # Fuer Detail-Ausgabe (puzzle/lichess) die Ergebnisse merken
+        detail_results: list[dict] = []
 
         # Pro Buch zaehlen fuer #1, #2, #3 ...
         book_counter = {}
@@ -185,6 +193,9 @@ def setup(bot):
             book_seen[filename] = book_seen.get(filename, 0) + 1
             label = f'{base} #{book_seen[filename]}' if book_counter[filename] > 1 else base
             errors = []
+            trimmed_game = None
+            context_game = None
+            solution_text = ''
 
             try:
                 game = _find_game(filename, round_id)
@@ -210,20 +221,22 @@ def setup(bot):
                 if first_move != exp_first:
                     errors.append(f'move: {first_move}, erwartet {exp_first}')
 
-                context = game if was_trimmed else None
+                context_game = game if was_trimmed else None
 
                 exporter = chess.pgn.StringExporter(
                     headers=False, variations=True, comments=True)
-                solution = _strip_pgn_annotations(result.accept(exporter))
+                solution_text = _strip_pgn_annotations(result.accept(exporter))
                 exp_solution = snap.get('solution', '')
-                if exp_solution and solution != exp_solution:
+                if exp_solution and solution_text != exp_solution:
                     errors.append(f'solution abweichend')
 
                 if exp_trimmed:
-                    prelude = _prelude_pgn(context, result) if context else ''
+                    prelude = _prelude_pgn(context_game, result) if context_game else ''
                     exp_prelude = snap.get('prelude', '')
                     if exp_prelude and prelude != exp_prelude:
                         errors.append(f'prelude abweichend')
+
+                trimmed_game = result
 
             except Exception as exc:
                 errors.append(str(exc))
@@ -244,6 +257,16 @@ def setup(bot):
                     f'OK {label}',
                     f'`{puzzle_id}`\n{"trimmed" if exp_trimmed else "untrimmed"} · {side_label} am Zug · {move_info}',
                 ))
+
+            if (show_puzzle or show_lichess) and trimmed_game is not None:
+                detail_results.append({
+                    'label': label,
+                    'puzzle_id': puzzle_id,
+                    'game': trimmed_game,
+                    'context': context_game,
+                    'solution': solution_text,
+                    'side': exp_side,
+                })
 
         total = len(snapshots)
         all_ok = ok_count == total
@@ -267,3 +290,42 @@ def setup(bot):
         view.add_item(_PuzzleSelect(puzzle_ids[:25]))  # Select max 25 Optionen
 
         await interaction.followup.send(embeds=embeds, view=view, ephemeral=True)
+
+        # Detail-Nachrichten (puzzle / lichess)
+        for det in detail_results:
+            g = det['game']
+            ctx = det['context']
+            side_str = 'Weiss' if det['side'] == 'w' else 'Schwarz'
+            header = f"**{det['label']}** · `{det['puzzle_id']}` · {side_str} am Zug"
+
+            parts = [header]
+
+            # Loesung als Spoiler
+            if show_puzzle and det['solution']:
+                sol = det['solution']
+                if len(sol) > 1900:
+                    sol = sol[:1900] + '…'
+                parts.append(f'||`{sol}`||')
+
+            # Lichess-Link
+            lichess_url = None
+            if show_lichess:
+                loop = asyncio.get_running_loop()
+                lichess_url = await loop.run_in_executor(
+                    None, lambda _g=g, _c=ctx: upload_to_lichess(_g, context_game=_c))
+                if lichess_url:
+                    parts.append(lichess_url)
+
+            text = '\n'.join(parts)
+
+            # Board-Bild
+            if show_puzzle:
+                try:
+                    img = await asyncio.to_thread(_render_board, g.board())
+                    file = discord.File(img, filename='board.png')
+                    await interaction.followup.send(
+                        text, file=file, ephemeral=True)
+                except Exception:
+                    await interaction.followup.send(text, ephemeral=True)
+            else:
+                await interaction.followup.send(text, ephemeral=True)

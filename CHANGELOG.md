@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.10.11] - 2026-04-14
+### Added
+- `/test puzzle:1` zeigt Board-Bild, Seite am Zug und Lösung (Spoiler) pro Snapshot.
+- `/test lichess:1` generiert Lichess-Studienlink pro Snapshot.
+
 ## [1.10.10] - 2026-04-14
 ### Added
 - `/test kurs:`-Parameter zum Filtern der Snapshot-Tests nach Buch.
