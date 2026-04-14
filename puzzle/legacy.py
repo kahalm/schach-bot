@@ -1119,6 +1119,8 @@ def upload_to_lichess(game: chess.pgn.Game,
     h = dict(game.headers)
     line_name  = h.get('White', h.get('Event', 'Puzzle'))
     event_name = h.get('Event', 'Puzzle')
+    # Orientierung: Seite am Zug = Seite des Studenten im Gamebook
+    orientation = 'black' if game.board().turn == chess.BLACK else 'white'
     today      = _date.today().strftime('%d.%m.%Y')
     study_name = f'{event_name} – {today}'
     if len(study_name) > 100:
@@ -1187,7 +1189,8 @@ def upload_to_lichess(game: chess.pgn.Game,
                 # Kapitel 1: Gamebook ab Trainingsposition
                 r2 = _lichess_request(
                     'POST', f'https://lichess.org/api/study/{study_id}/import-pgn',
-                    data={'pgn': pgn_text, 'name': line_name, 'mode': 'gamebook'},
+                    data={'pgn': pgn_text, 'name': line_name, 'mode': 'gamebook',
+                          'orientation': orientation},
                     headers=auth_headers,
                     timeout=15,
                 )
@@ -1307,9 +1310,11 @@ def upload_many_to_lichess(
                 pgn  = _clean_pgn_for_lichess(game.accept(exp))
                 h    = dict(game.headers)
                 name = h.get('White', h.get('Event', 'Puzzle'))[:70]
+                ori  = 'black' if game.board().turn == chess.BLACK else 'white'
                 r_ch = _lichess_request(
                     'POST', f'https://lichess.org/api/study/{study_id}/import-pgn',
-                    data={'pgn': pgn, 'name': name, 'mode': 'gamebook'},
+                    data={'pgn': pgn, 'name': name, 'mode': 'gamebook',
+                          'orientation': ori},
                     headers=auth_headers, timeout=15,
                 )
                 r_ch.raise_for_status()

@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.10.4] - 2026-04-14
+### Fixed
+- Lichess-Gamebook-Orientierung wird jetzt automatisch gesetzt: bei
+  Schwarz am Zug `orientation=black`, damit der erste Zug als Aufgabe
+  gestellt wird statt auto-gespielt.
+
 ## [1.10.3] - 2026-04-14
 ### Fixed
 - `_trim_to_training_position` rückt jetzt auch bei Nicht-Root-`[%tqu]`-Knoten
