@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.10.8] - 2026-04-14
+### Added
+- 3 Snapshot-Tests aus *1001 Chess Exercises For Club Players*
+  (003.003 Anfang, 009.091 Mitte, 013.152 Ende).
+
 ## [1.10.7] - 2026-04-14
 ### Fixed
 - Auto-Advance in `_trim_to_training_position` komplett entfernt. Die

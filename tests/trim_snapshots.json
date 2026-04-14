@@ -30,6 +30,36 @@
     "prelude": "1. d4 Nf6 2. c4 e5 3. dxe5 Ne4 4. Nf3 b6 *"
   },
   {
+    "filename": "1001 Chess Exercises For Club Players_firstkey.pgn",
+    "round": "003.003",
+    "trimmed": false,
+    "fen": "1q5r/4kpp1/Q2p1n1p/1r2p3/8/4B3/1P3PPP/R2R2K1 w - - 0 1",
+    "side": "w",
+    "first_move_uci": "e3a7",
+    "solution": "{ The black queen is overloaded. She has to defend the rook on b5 and the d6-pawn. By chasing away the defender White ensures that Black cannot protect both: }\n1. Ba7 ( 1. Ba7 Qc7 2. Qxb5 { , winning the rook; } ) ( { or } 1. Ba7 Qb7 2.\nQxd6+ Ke8 3. Qd8# ) ( 1. Rxd6\n{ was played in the game. With this move, White lures away the defender of the rook. After }\n1... Qxd6\n{ (not capturing the rook is too dangerous with the king in the middle; Black is happy to remove an attacking piece from the board) }\n2. Qxb5 Rb8 3. Qc4\n{ White has the better chances, and eventually she won the game, but 22. Ba7 would have been winning at once ! }\n) *",
+    "prelude": ""
+  },
+  {
+    "filename": "1001 Chess Exercises For Club Players_firstkey.pgn",
+    "round": "009.091",
+    "trimmed": false,
+    "fen": "8/ppp3k1/r5nR/2p1PKP1/2P4B/8/P1P5/8 w - - 0 1",
+    "side": "w",
+    "first_move_uci": "h6g6",
+    "solution": "{ Mix } 1. Rxg6+ ( 1. Bf2 { was played in the game. } ) 1... Rxg6 2. e6 Kh7 3.\ne7 Rg8 4. Kf6\n{ On its way to f7 to support the e-pawn, and shouldering the black king. }\n4... Rg6+ 5. Kf7 Rg7+ 6. Ke6 Rg8 7. Kd7 Rg7 8. Kd8 *",
+    "prelude": ""
+  },
+  {
+    "filename": "1001 Chess Exercises For Club Players_firstkey.pgn",
+    "round": "013.152",
+    "trimmed": false,
+    "fen": "1q5k/1B4bp/8/5Q2/5P2/r6P/3p2P1/1R5K w - - 0 1",
+    "side": "w",
+    "first_move_uci": "b7e4",
+    "solution": "{ 49. Be4, yes or no? Answer: Yes! } 1. Be4 ( 1. Qd7\n{ was played in the game. } ) 1... Qxb1+ 2. Kh2\n{ Chess is not checkers! Capturing is not mandatory! } ( 2. Bxb1 d1=Q+ 3. Kh2\nKg8 4. Qc8+ { and White can save herself by giving a perpetual. } ) 2... Qg1+ (\n2... Qxe4 3. Qc8+ { , mating. } ) ( 2... Qb8 3. Qxh7# ) ( 2... Kg8 3. Bd5+ Kh8\n4. Qc8+ Bf8 5. Qxf8# ) 3. Kxg1 d1=Q+ 4. Kh2 Kg8 5. Bd5+ Qxd5 ( 5... Kh8 6. Qc8+\nBf8 7. Qxf8# ) 6. Qxd5+ Kf8 ( 6... Kh8 7. Qd8+ Bf8 8. Qxf8# ) 7. Qd6+ ( { Or }\n7. Qc5+ { . } ) *",
+    "prelude": ""
+  },
+  {
     "filename": "100 Tactical Patterns You Must Know_firstkey.pgn",
     "round": "014.010",
     "trimmed": true,
