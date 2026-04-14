@@ -4,6 +4,15 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.10.7] - 2026-04-14
+### Fixed
+- Auto-Advance in `_trim_to_training_position` komplett entfernt. Die
+  Heuristik war nicht zuverlässig (funktionierte für 007.061 aber brach
+  011.032). Trim gibt jetzt immer die exakte [%tqu]-Position zurück.
+
+### Added
+- Neuer Snapshot-Test für Puzzle 011.032 (Budapester Gambit, Dd5-Falle).
+
 ## [1.10.6] - 2026-04-14
 ### Fixed
 - Trim-Advance nur noch bei Nicht-Root-`[%tqu]`-Knoten. Bei Root-`[%tqu]`

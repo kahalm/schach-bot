@@ -766,10 +766,8 @@ def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
     """Spiel auf erste [%tqu]-Stellung kürzen.
     Ohne [%tqu]-Annotation → Original unverändert zurückgeben.
 
-    `[%tqu]` markiert den Quiz-Zug. Wenn die erste Variante (= Antwort)
-    ihrerseits noch Untervarianten hat, ist sie nur der Setup-Zug und
-    das eigentliche Training beginnt danach. Gilt sowohl für Root- als
-    auch für Nicht-Root-Knoten.
+    Gibt ein neues Game ab der Position des [%tqu]-Knotens zurück,
+    mit dessen Varianten als Lösungsbaum.
     """
     node = game
     while True:
@@ -822,15 +820,6 @@ def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
         g.comment = re.sub(r'\[%tqu\b[^\]]*\]', '', src_node.comment or '').strip()
         _copy(src_node, g, brd)
         return g
-
-    # Advance nur bei Nicht-Root-[%tqu]: dort ist der [%tqu]-Knoten tief
-    # in der Hauptlinie und die Antwort (z.B. h3) ist nur ein Setup-Zug –
-    # das eigentliche Training beginnt danach (z.B. Sd4).
-    # Bei Root-[%tqu] ist die erste Variante immer der gesuchte Zug selbst.
-    if node is not game and node.variations:
-        candidate = node.variations[0]
-        if candidate.variations:
-            node = candidate
 
     return _build(node)
 
