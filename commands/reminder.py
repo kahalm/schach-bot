@@ -57,7 +57,7 @@ async def _reminder_loop():
         except discord.Forbidden:
             log.warning('Reminder: DM an %s nicht möglich (DMs deaktiviert).', uid)
         except Exception as e:
-            log.warning('Reminder: Fehler für User %s: %s', uid, e)
+            log.info('Reminder: Fehler für User %s: %s', uid, e)
 
         # Nächsten Zeitpunkt setzen
         hours = entry['hours']
