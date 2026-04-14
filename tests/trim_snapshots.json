@@ -73,10 +73,10 @@
     "filename": "1001 Deadly Checkmates_firstkey.pgn",
     "round": "002.002",
     "trimmed": true,
-    "fen": "3r3k/2p2p1p/p1pq1p1Q/4pP2/1nP5/1P5P/P5P1/2B1R1K1 b - - 0 1",
-    "side": "b",
-    "first_move_uci": "c6c5",
-    "solution": "{ In chess, checkmate\n(often shortened to just ‘mate’)\nfinishes the game. If you win a pawn, the game continues and the struggle probably has a long way to go, but there’s no coming back from checkmate; it’s game over. One of the easiest ways to improve your chess and win more games is to make sure that you spot any mating opportunities that arise. How can this be achieved? Chess-players work to a great extent by ‘pattern recognition’, spotting similarities to ideas they have seen before. One of the best ways to make sure you don’t overlook mating ideas is to increase your experience of mating patterns, and that is what this book sets out to achieve. (World Cup, Reykjavik 1988) Players of all standards can benefit from studying mating patterns. In this position I was facing leading Hungarian grandmaster Lajos Portisch, who was an eight time World Championship Candidate. Portisch played }\n1... c5 { and I replied the immediate } ( 1... Rg8\n{ would have drawn after, for example, } 2. Re2 Qd1+ 3. Kh2 Qxe2 4. Qxf6+ Rg7\n5. Qd8+ { with perpetual check. } ) 2. Re4\n{ threatening 3. Rh4 and mate on h7. Portisch continued } 2... Rg8\n{ which is the only defence to White’s threat, aiming to meet } 3. Rh4 { with }\n3... Qd1+ 4. Kh2 Rxg2+ 5. Kxg2 Qe2+ { forcing perpetual check. } *",
+    "fen": "3r3k/2p2p1p/p2q1p1Q/2p1pP2/1nP5/1P5P/P5P1/2B1R1K1 w - - 0 2",
+    "side": "w",
+    "first_move_uci": "e1e4",
+    "solution": "{ and I replied the immediate } 2. Re4\n{ threatening 3. Rh4 and mate on h7. Portisch continued } 2... Rg8\n{ which is the only defence to White\u2019s threat, aiming to meet } 3. Rh4 { with }\n3... Qd1+ 4. Kh2 Rxg2+ 5. Kxg2 Qe2+ { forcing perpetual check. } *",
     "prelude": ""
   },
   {
