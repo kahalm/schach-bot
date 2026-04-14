@@ -8,7 +8,7 @@ from logging.handlers import RotatingFileHandler
 class _SuppressEmptyFen:
     """python-chess schreibt Parsing-Warnungen direkt auf stdout/stderr –
     nicht über das logging-Modul. Beide Streams filtern."""
-    _SUPPRESS = ('empty fen while parsing', 'illegal san:',
+    _SUPPRESS = ('empty fen while parsing', 'illegal san:', 'invalid san:',
                  'no matching legal move', 'ambiguous san:')
 
     def __init__(self, stream):
