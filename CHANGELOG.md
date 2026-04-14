@@ -4,11 +4,17 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
-## [1.10.2] - 2026-04-14
+## [1.10.3] - 2026-04-14
 ### Fixed
 - `_trim_to_training_position` rückt jetzt auch bei Nicht-Root-`[%tqu]`-Knoten
   über den Antwort-Zug hinaus vor, wenn danach Varianten folgen. Behebt falsche
   Trainingsstellung bei Puzzles wie 007.061 (zeigte Weiß am Zug statt Schwarz).
+- Lichess-Gamebook bekommt jetzt dieselbe Post-Advance-Stellung wie Discord
+  (Schwarz am Zug, Schwarz-Perspektive statt Weiß-Perspektive).
+- `_prelude_pgn` enthält jetzt den letzten Zug vor der Puzzle-Stellung
+  (z.B. 9. h3 fehlte vorher im Vorspiel).
+- Reminder-Fehler (illegaler Zug bei PGN-Parsing) nur noch im Log, nicht
+  mehr im Terminal.
 
 ## [1.10.1] - 2026-04-14
 ### Added
