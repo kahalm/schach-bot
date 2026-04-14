@@ -244,7 +244,7 @@ def setup(bot):
 
             if errors:
                 fields.append((
-                    f'FAIL {label}',
+                    f'❌ {label}',
                     f'`{puzzle_id}`\n' + '\n'.join(errors),
                 ))
             else:
@@ -252,7 +252,7 @@ def setup(bot):
                 side_label = 'w' if exp_side == 'w' else 'b'
                 move_info = exp_first if exp_first != '-' else 'keine Variante'
                 fields.append((
-                    f'OK {label}',
+                    f'✅ {label}',
                     f'`{puzzle_id}`\n{"trimmed" if exp_trimmed else "untrimmed"} · {side_label} am Zug · {move_info}',
                 ))
 

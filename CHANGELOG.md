@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.11.0] - 2026-04-14
+### Changed
+- Lines ohne `[%tqu]`-Annotation werden in allen Puzzle-Modi übersprungen
+  (Daily, `/puzzle`, `/endless`). Nur `/next` zeigt sie als offenes Kapitel an.
+- `/puzzle id:` gibt eine Warnung aus wenn die ID auf eine Line ohne
+  Trainingskommentar zeigt.
+- `/next` rendert non-`[%tqu]`-Lines als "📖 Kapitel" mit offenen Zügen
+  statt als Spoiler-Puzzle (keine Buttons, keine Reactions).
+- `/test` zeigt ✅/❌ Emoji vor jedem Snapshot-Eintrag.
+- Alle 12 PGN-Bücher aus frischem Chessable-Export aktualisiert.
+  Trim-Snapshots an neue Solutions/Preludes angepasst; 5 Intro-Kapitel
+  ohne `[%tqu]` aus Snapshots entfernt.
+
 ## [1.10.15] - 2026-04-14
 ### Fixed
 - `_prelude_pgn` crashte mit `san() expect move to be legal` wenn das

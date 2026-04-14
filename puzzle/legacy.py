@@ -689,6 +689,7 @@ def pick_random_lines(count: int = 1,
     all_lines = [(lid, g) for lid, g in all_lines
                  if lid not in ignored
                  and not _is_chapter_ignored(lid, chapter_ignored)]
+    all_lines = [(lid, g) for lid, g in all_lines if _has_training_comment(g)]
     if not all_lines:
         return []
 
@@ -765,6 +766,16 @@ def _prelude_pgn(context: chess.pgn.Game, puzzle: chess.pgn.Game) -> str:
     result = prelude.accept(exporter).strip()
     # Leeres Vorspiel (keine Züge) ergibt nur "*" – nicht sinnvoll anzeigen.
     return '' if result == '*' else result
+
+def _has_training_comment(game: chess.pgn.Game) -> bool:
+    """Prüft ob irgendein Knoten in der Hauptlinie [%tqu] enthält."""
+    node = game
+    while True:
+        if '[%tqu' in (node.comment or ''):
+            return True
+        if not node.variations:
+            return False
+        node = node.variations[0]
 
 def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
     """Spiel auf erste [%tqu]-Stellung kürzen.
@@ -1759,6 +1770,11 @@ def setup(bot: discord.ext.commands.Bot):
                     await interaction.followup.send(f'⚠️ Puzzle `{id}` nicht gefunden.', ephemeral=True)
                     return
 
+                if not _has_training_comment(result[1]):
+                    await interaction.followup.send(
+                        f'⚠️ `{id}` hat keinen Trainingskommentar.', ephemeral=True)
+                    return
+
                 if _blind_moves:
                     if user:
                         await dm.send(f'**{interaction.user.display_name}** schickt dir ein Blind-Puzzle 🙈')
@@ -2184,49 +2200,72 @@ def setup(bot: discord.ext.commands.Bot):
         total_in_book = sum(1 for lid, _ in all_book_lines
                             if lid.startswith(book_filename + ':'))
 
+        puzzle_count = 0
         for i, (game, context, d, r, lid) in enumerate(puzzles):
             puzzle_url = urls[i] if i < len(urls) else None
-            puzzle_num = base_count + i + 1
-            puzzle_total = base_total + i + 1
-            try:
-                board = game.board()
-                turn = board.turn  # Lichess spielt den 1. Zug als Setup
-                img = await asyncio.to_thread(_render_board, board)
-            except Exception:
-                turn, img = None, None
+            is_chapter = context is None  # kein [%tqu] → Kapitel
 
-            embed = build_puzzle_embed(game, turn=turn,
-                                       puzzle_num=puzzle_num,
-                                       puzzle_total=puzzle_total,
-                                       difficulty=d, rating=r,
-                                       line_id=lid)
-            # Fortschrittsanzeige im Footer (überschreibt line_id-Footer)
-            embed.set_footer(
-                text=f'📖 Training: {position + i + 1}/{total_in_book} · ID: {lid}')
-
-            if img:
-                file = discord.File(img, filename='board.png')
-                embed.set_image(url='attachment://board.png')
-                msg = await dm.send(file=file, embed=embed)
-            else:
+            if is_chapter:
+                # Kapitel: Züge offen anzeigen, keine Puzzle-Buttons
+                h = dict(game.headers)
+                chapter_name = h.get('White', h.get('Event', 'Kapitel'))
+                embed = discord.Embed(
+                    title=f'📖 Kapitel: {chapter_name}',
+                    color=0x7fa650)
+                embed.set_footer(
+                    text=f'📖 Training: {position + i + 1}/{total_in_book} · ID: {lid}')
+                exporter = chess.pgn.StringExporter(
+                    headers=False, variations=True, comments=True)
+                pgn_moves = _strip_pgn_annotations(game.accept(exporter))
+                if pgn_moves:
+                    embed.add_field(name='Züge', value=f'`{pgn_moves}`', inline=False)
                 msg = await dm.send(embed=embed)
-            _register_puzzle_msg(msg.id, lid)
-            await msg.edit(view=_fresh_button_view())
+                if puzzle_url:
+                    await dm.send(f'[Auf Lichess ansehen]({puzzle_url})')
+            else:
+                puzzle_count += 1
+                puzzle_num = base_count + puzzle_count
+                puzzle_total = base_total + puzzle_count
+                try:
+                    board = game.board()
+                    turn = board.turn  # Lichess spielt den 1. Zug als Setup
+                    img = await asyncio.to_thread(_render_board, board)
+                except Exception:
+                    turn, img = None, None
 
-            # PGN-Lösung als Spoiler
-            exporter = chess.pgn.StringExporter(
-                headers=False, variations=True, comments=True)
-            pgn_moves = _strip_pgn_annotations(game.accept(exporter))
-            if pgn_moves:
-                await dm.send(f'Lösung: ||`{pgn_moves}`||')
-            if context:
-                prelude = _prelude_pgn(context, game)
-                if prelude:
-                    await dm.send(f'Ganze Partie: ||`{prelude}`||')
-            if puzzle_url:
-                await dm.send(f'[Klickbares Rätsel]({puzzle_url})')
+                embed = build_puzzle_embed(game, turn=turn,
+                                           puzzle_num=puzzle_num,
+                                           puzzle_total=puzzle_total,
+                                           difficulty=d, rating=r,
+                                           line_id=lid)
+                # Fortschrittsanzeige im Footer (überschreibt line_id-Footer)
+                embed.set_footer(
+                    text=f'📖 Training: {position + i + 1}/{total_in_book} · ID: {lid}')
 
-        stats.inc(user_id, 'puzzles', len(puzzles))
+                if img:
+                    file = discord.File(img, filename='board.png')
+                    embed.set_image(url='attachment://board.png')
+                    msg = await dm.send(file=file, embed=embed)
+                else:
+                    msg = await dm.send(embed=embed)
+                _register_puzzle_msg(msg.id, lid)
+                await msg.edit(view=_fresh_button_view())
+
+                # PGN-Lösung als Spoiler
+                exporter = chess.pgn.StringExporter(
+                    headers=False, variations=True, comments=True)
+                pgn_moves = _strip_pgn_annotations(game.accept(exporter))
+                if pgn_moves:
+                    await dm.send(f'Lösung: ||`{pgn_moves}`||')
+                if context:
+                    prelude = _prelude_pgn(context, game)
+                    if prelude:
+                        await dm.send(f'Ganze Partie: ||`{prelude}`||')
+                if puzzle_url:
+                    await dm.send(f'[Klickbares Rätsel]({puzzle_url})')
+
+        if puzzle_count:
+            stats.inc(user_id, 'puzzles', puzzle_count)
         name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
         await interaction.followup.send(
             f'✅ {len(results)} Linie(n) aus **{name}** per DM gesendet '
