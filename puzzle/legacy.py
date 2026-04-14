@@ -2036,6 +2036,8 @@ def setup(bot: discord.ext.commands.Bot):
             all_lines = load_all_lines()
             total = sum(1 for lid, _ in all_lines if lid.startswith(book_filename + ':'))
             name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+            books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
+            kurs_nr = books.index(book_filename) + 1 if book_filename in books else 0
             books_config = _load_books_config()
             meta = books_config.get(book_filename, {})
             diff = meta.get('difficulty', '')
@@ -2043,7 +2045,7 @@ def setup(bot: discord.ext.commands.Bot):
             stars = ('★' * rat + '☆' * (10 - rat)) if rat else ''
             pct = f' ({pos * 100 // total}%)' if total else ''
 
-            embed = discord.Embed(title=f'📖 Training: {name}', color=0x7fa650)
+            embed = discord.Embed(title=f'📖 Training: {name} ({kurs_nr})', color=0x7fa650)
             embed.add_field(name='Fortschritt', value=f'{pos}/{total} Linien{pct}', inline=True)
             if diff:
                 embed.add_field(name='Schwierigkeit',
@@ -2088,7 +2090,7 @@ def setup(bot: discord.ext.commands.Bot):
         rat = meta.get('rating', 0)
         stars = ('★' * rat + '☆' * (10 - rat)) if rat else ''
 
-        embed = discord.Embed(title=f'📖 Training: {name}', color=0x7fa650)
+        embed = discord.Embed(title=f'📖 Training: {name} ({buch})', color=0x7fa650)
         embed.add_field(name='Fortschritt', value=f'{pos}/{total} Linien', inline=True)
         if diff:
             embed.add_field(name='Schwierigkeit',
