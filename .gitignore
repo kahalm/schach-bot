@@ -11,7 +11,6 @@ bot.log
 bot.log.*
 
 # User books
-books/*.pgn
 books/*.ini
 books/*.pgi
 

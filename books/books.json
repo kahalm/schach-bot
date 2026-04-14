@@ -58,5 +58,17 @@
     "rating": 7,
     "blind": true,
     "random": true
+  },
+  "The Fundamentals 2 Boost Your Chess_firstkey.pgn": {
+    "difficulty": "Fortgeschritten",
+    "rating": 7,
+    "blind": false,
+    "random": true
+  },
+  "1001 Chess Exercises For Club Players_firstkey.pgn": {
+    "difficulty": "Fortgeschritten",
+    "rating": 6,
+    "blind": false,
+    "random": true
   }
 }
