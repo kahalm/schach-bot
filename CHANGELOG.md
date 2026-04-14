@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.10.15] - 2026-04-14
+### Fixed
+- `_prelude_pgn` crashte mit `san() expect move to be legal` wenn das
+  Original-Game von einer FEN-Position statt der Standardstellung startet.
+  Prelude übernimmt jetzt die Startstellung vom Context-Game.
+
 ## [1.10.14] - 2026-04-14
 ### Changed
 - `/train` zeigt Kursnummer in Klammern hinter dem Buchnamen an.

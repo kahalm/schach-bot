@@ -746,6 +746,10 @@ def _prelude_pgn(context: chess.pgn.Game, puzzle: chess.pgn.Game) -> str:
         return ''
     prelude = chess.pgn.Game()
     prelude.headers.clear()
+    ctx_fen = context.board().fen()
+    if ctx_fen != chess.STARTING_FEN:
+        prelude.headers['SetUp'] = '1'
+        prelude.headers['FEN'] = ctx_fen
     node_src = context
     node_dst = prelude
     while node_src.variations:
