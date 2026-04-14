@@ -770,10 +770,6 @@ def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
     ihrerseits noch Untervarianten hat, ist sie nur der Setup-Zug und
     das eigentliche Training beginnt danach. Gilt sowohl für Root- als
     auch für Nicht-Root-Knoten.
-
-    Discord-Board zeigt die Position *nach* dem Setup-Zug (returned Game).
-    Für den Lichess-Gamebook-Upload (Setup-Zug wird auto-gespielt) wird
-    die Position *vor* dem Advance als ``._lichess_game`` angehängt.
     """
     node = game
     while True:
@@ -828,17 +824,13 @@ def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
         return g
 
     # Advance: wenn die erste Variante (Antwort) Untervarianten hat,
-    # ist sie der Setup-Zug → für Discord vorrücken, für Lichess behalten.
-    pre_node = node
+    # ist sie der Setup-Zug → vorrücken zum eigentlichen Training.
     if node.variations:
         candidate = node.variations[0]
         if candidate.variations:
             node = candidate
 
-    display_game = _build(node)
-    if node is not pre_node:
-        display_game._lichess_game = _build(pre_node)
-    return display_game
+    return _build(node)
 
 
 # ---------------------------------------------------------------------------
@@ -1116,13 +1108,9 @@ def upload_to_lichess(game: chess.pgn.Game,
         remaining = int(_lichess_cooldown_until() - _time_mod.time())
         log.info('Lichess-Upload übersprungen (Cooldown noch %ds).', remaining)
         return None
-    # Falls _trim_to_training_position einen Advance gemacht hat, enthält
-    # ._lichess_game die Version VOR dem Advance (Setup-Zug als erster Zug,
-    # wird im Gamebook auto-gespielt).
-    lichess_game = getattr(game, '_lichess_game', game)
     try:
         exporter = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
-        pgn_text = lichess_game.accept(exporter)
+        pgn_text = game.accept(exporter)
     except Exception as e:
         log.error('PGN-Export fehlgeschlagen: %s', e)
         return None
