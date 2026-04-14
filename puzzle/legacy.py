@@ -823,9 +823,11 @@ def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
         _copy(src_node, g, brd)
         return g
 
-    # Advance: wenn die erste Variante (Antwort) Untervarianten hat,
-    # ist sie der Setup-Zug → vorrücken zum eigentlichen Training.
-    if node.variations:
+    # Advance nur bei Nicht-Root-[%tqu]: dort ist der [%tqu]-Knoten tief
+    # in der Hauptlinie und die Antwort (z.B. h3) ist nur ein Setup-Zug –
+    # das eigentliche Training beginnt danach (z.B. Sd4).
+    # Bei Root-[%tqu] ist die erste Variante immer der gesuchte Zug selbst.
+    if node is not game and node.variations:
         candidate = node.variations[0]
         if candidate.variations:
             node = candidate

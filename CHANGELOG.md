@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.10.6] - 2026-04-14
+### Fixed
+- Trim-Advance nur noch bei Nicht-Root-`[%tqu]`-Knoten. Bei Root-`[%tqu]`
+  (z.B. 014.010) ist die erste Variante der gesuchte Zug selbst, nicht
+  ein Setup-Zug. Behebt falsche Stellung (Kh1 statt Kg1, Weiß statt
+  Schwarz am Zug).
+
 ## [1.10.5] - 2026-04-14
 ### Added
 - `/test`-Dropdown zeigt bei Puzzle-Vorschau einen Lichess-Studien-Link

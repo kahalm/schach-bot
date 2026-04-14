@@ -23,10 +23,10 @@
     "filename": "100 Tactical Patterns You Must Know_firstkey.pgn",
     "round": "014.010",
     "trimmed": true,
-    "fen": "8/1P6/8/8/8/4q1QK/8/7k w - - 1 69",
-    "side": "w",
-    "first_move_uci": "b7b8q",
-    "solution": "{ Black engineers a stalemate in a king vs queen position (Pattern 80). In the game, White made it easy for Black by capturing the queen, resulting in an immediate stalemate, but with... }\n69. b8=Q\n{ he could have prolonged the game and tested the 16th World Champion a bit more. }\n69... Qe6+ 70. Qg4 ( 70. Kh4 { allows } 70... Qg4+\n{ , a kamikaze queen, a variant of Pattern 79(the rampant rook) . If } 71. Qxg4\n{ , the g3-queen has cleared the way for the other queen, which means that the h2-square is still covered and Black is stalemated. }\n) 70... Qe3+ 71. Qbg3 ( 71. Kh4 Qf2+ $1 72. Kh5 Qf7+ $1 73.\nQg6 Qf3+ $1 74. Kh6 Qf4+ $1 75. Qxf4 { stalemate. } ) 71... Qh6+\n 72. Q4h4 Qe6+\n{ Thanks to the blocking perpetual from Pattern 78, Black forces a draw. Each time one of the white queens interposes, it impedes the king's escape. Regrettably, this marks the conclusion of this book, but that does not mean it's the end of your journey! In The 100 Tactical Patterns You Must Know Workbook, there is a wealth of further discoveries awaiting you, allowing you to apply the theory learned in this book with the help of more than 500 exercises! }\n*",
+    "fen": "8/1P6/8/8/8/4q1QK/8/6k1 b - - 0 68",
+    "side": "b",
+    "first_move_uci": "g1h1",
+    "solution": "68... Kh1\n{ Black engineers a stalemate in a king vs queen position (Pattern 80). In the game, White made it easy for Black by capturing the queen, resulting in an immediate stalemate, but with... }\n69. b8=Q\n{ he could have prolonged the game and tested the 16th World Champion a bit more. }\n69... Qe6+ 70. Qg4 ( 70. Kh4 { allows } 70... Qg4+\n{ , a kamikaze queen, a variant of Pattern 79(the rampant rook) . If } 71. Qxg4\n{ , the g3-queen has cleared the way for the other queen, which means that the h2-square is still covered and Black is stalemated. }\n) 70... Qe3+ 71. Qbg3 ( 71. Kh4 Qf2+ $1 72. Kh5 Qf7+ $1 73.\nQg6 Qf3+ $1 74. Kh6 Qf4+ $1 75. Qxf4 { stalemate. } ) 71... Qh6+\n 72. Q4h4 Qe6+\n{ Thanks to the blocking perpetual from Pattern 78, Black forces a draw. Each time one of the white queens interposes, it impedes the king's escape. Regrettably, this marks the conclusion of this book, but that does not mean it's the end of your journey! In The 100 Tactical Patterns You Must Know Workbook, there is a wealth of further discoveries awaiting you, allowing you to apply the theory learned in this book with the help of more than 500 exercises! }\n*",
     "prelude": ""
   }
 ]
