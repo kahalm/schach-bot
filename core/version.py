@@ -2,5 +2,5 @@
 
 from datetime import datetime, timezone
 
-VERSION = '1.10.9'
+VERSION = '1.10.10'
 START_TIME = datetime.now(timezone.utc)

@@ -30,8 +30,8 @@ for mod_name in (
     sys.modules.setdefault(mod_name, _mock.MagicMock())
 
 from puzzle.legacy import (
-    _trim_to_training_position, _strip_pgn_annotations, _prelude_pgn,
-    _flatten_null_move_variations,
+    _trim_to_training_position, trim_and_advance, _strip_pgn_annotations,
+    _prelude_pgn, _flatten_null_move_variations,
 )
 import chess.pgn
 
@@ -97,7 +97,8 @@ def main():
         print(f'[{label}]  Round {round_id}')
 
         game = find_game(filename, round_id)
-        result = _trim_to_training_position(game)
+        line_id_key = f'{filename}:{round_id}'
+        result = trim_and_advance(game, line_id=line_id_key)
         was_trimmed = result is not game
 
         check('trimmed', was_trimmed == exp_trimmed,

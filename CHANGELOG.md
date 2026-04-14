@@ -4,6 +4,18 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.10.10] - 2026-04-14
+### Added
+- `/test kurs:`-Parameter zum Filtern der Snapshot-Tests nach Buch.
+- `/test` splittet Ergebnisse auf mehrere Embeds bei >25 Snapshots
+  (Discord-Limit 25 Felder pro Embed).
+
+### Fixed
+- Advance-Override-System für `_trim_to_training_position`: Puzzles, bei denen
+  der Trim die Stellung VOR dem Setup-Zug liefert, werden per manueller
+  Override-Datei (`config/advance_overrides.json`) einen Zug weiter vorgerückt.
+  Betrifft 007.061 (h3→Nd4) und 035.119 (Nc3→Qh4+).
+
 ## [1.10.9] - 2026-04-14
 ### Added
 - Snapshot-Tests für alle 12 Bücher (je 3 Testfälle: Anfang, Mitte, Ende).

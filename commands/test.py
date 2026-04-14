@@ -11,7 +11,8 @@ import chess.pgn
 import discord
 
 from puzzle.legacy import (
-    find_line_by_id, _trim_to_training_position, build_puzzle_embed,
+    find_line_by_id, _trim_to_training_position, trim_and_advance,
+    build_puzzle_embed,
     _render_board, _load_books_config, _strip_pgn_annotations, _prelude_pgn,
     _flatten_null_move_variations, upload_to_lichess,
 )
@@ -70,7 +71,7 @@ class _PuzzleSelect(discord.ui.Select):
             return
 
         line_id, original_game = result
-        game = _trim_to_training_position(original_game)
+        game = trim_and_advance(original_game, line_id=line_id)
         context = original_game if game is not original_game else None
 
         board = game.board()
@@ -126,13 +127,41 @@ class _PuzzleSelect(discord.ui.Select):
             await interaction.followup.send(embed=embed, ephemeral=True)
 
 
+def _resolve_book_filename(book_idx: int) -> str | None:
+    """1-basierte Buchnummer → Dateiname oder None."""
+    if book_idx < 1:
+        return None
+    books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
+    if 1 <= book_idx <= len(books):
+        return books[book_idx - 1]
+    return None
+
+
 def setup(bot):
     @bot.tree.command(name='test', description='Trim-Snapshot-Tests ausfuehren (Admin)')
     @discord.app_commands.default_permissions(administrator=True)
-    async def test_cmd(interaction: discord.Interaction):
+    @discord.app_commands.describe(
+        kurs='Buchnummer aus /kurs (Standard: alle Buecher)',
+    )
+    async def test_cmd(interaction: discord.Interaction, kurs: int = 0):
         await interaction.response.defer(ephemeral=True)
 
         snapshots = _load_snapshots()
+
+        # Optional nach Buch filtern
+        if kurs > 0:
+            book_fn = _resolve_book_filename(kurs)
+            if not book_fn:
+                await interaction.followup.send(
+                    f'Buch {kurs} nicht gefunden. `/kurs` zeigt die Liste.',
+                    ephemeral=True)
+                return
+            snapshots = [s for s in snapshots if s['filename'] == book_fn]
+            if not snapshots:
+                await interaction.followup.send(
+                    f'Keine Snapshots fuer Buch {kurs} (`{_book_label(book_fn)}`).',
+                    ephemeral=True)
+                return
         ok_count = 0
         fields = []
         puzzle_ids = []  # (label, puzzle_id) fuer Dropdown
@@ -159,7 +188,8 @@ def setup(bot):
 
             try:
                 game = _find_game(filename, round_id)
-                result = _trim_to_training_position(game)
+                line_id_key = f'{filename}:{round_id}'
+                result = trim_and_advance(game, line_id=line_id_key)
                 was_trimmed = result is not game
 
                 if was_trimmed != exp_trimmed:
@@ -219,15 +249,21 @@ def setup(bot):
         all_ok = ok_count == total
         colour = 0x4e9e4e if all_ok else 0xe74c3c
 
-        embed = discord.Embed(
-            title='Trim-Snapshot-Tests',
-            colour=colour,
-        )
-        for name, value in fields:
-            embed.add_field(name=name, value=value, inline=False)
-        embed.set_footer(text=f'{ok_count}/{total} OK')
+        # Discord max 25 Felder pro Embed — bei Bedarf auf mehrere aufteilen.
+        MAX_FIELDS = 25
+        embeds = []
+        for i in range(0, len(fields), MAX_FIELDS):
+            chunk = fields[i:i + MAX_FIELDS]
+            embed = discord.Embed(
+                title='Trim-Snapshot-Tests' if i == 0 else None,
+                colour=colour,
+            )
+            for name, value in chunk:
+                embed.add_field(name=name, value=value, inline=False)
+            embeds.append(embed)
+        embeds[-1].set_footer(text=f'{ok_count}/{total} OK')
 
         view = discord.ui.View(timeout=300)
         view.add_item(_PuzzleSelect(puzzle_ids[:25]))  # Select max 25 Optionen
 
-        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        await interaction.followup.send(embeds=embeds, view=view, ephemeral=True)
