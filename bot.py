@@ -58,7 +58,7 @@ tree = bot.tree
 # Module laden
 import puzzle
 import library
-from commands import reminder, resourcen, youtube, elo, release_notes, blind
+from commands import reminder, resourcen, youtube, elo, release_notes, blind, test
 
 puzzle.setup(bot)
 library.setup(bot)
@@ -68,6 +68,7 @@ youtube.setup(bot)
 elo.setup(bot)
 release_notes.setup(bot)
 blind.setup(bot)
+test.setup(bot)
 
 
 @bot.event

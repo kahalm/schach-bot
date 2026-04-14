@@ -1,0 +1,12 @@
+[
+  {
+    "filename": "100 Tactical Patterns You Must Know_firstkey.pgn",
+    "round": "002.003",
+    "trimmed": true,
+    "fen": "q4rk1/rb2p1b1/1n1p2Q1/2pP4/8/6P1/PP2PPB1/RN2K2R w KQ - 0 19",
+    "side": "w",
+    "first_move_uci": "g2e4",
+    "solution": "{ Only after... } 19. Be4\n{ ...did I realize what was going on: followed by 21. Qh7# cannot be prevented: is just a stay of execution. Although this magnet sacrifice is quite standard, I had not considered it at all. Undoubtedly, my belief that the h8-square was protected twice played a significant role, although this is based on an optical illusion: the bishop on g7 is pinned, and pinned pieces are poor defenders. Even though I was only 15 years old and not very experienced, I had a rating of almost 2200 and had solved many tactical puzzles in my life. Based on that, and on general positional features (black king in danger, many attackers nearby, few defenders), I should have seen this tactic coming. However, I was clearly unfamiliar with this specific pattern, and it would have helped me if I had been aware of it before this game. Now I will never forget this pattern. Naturally, also because the emotions of a game influence the way you store something in your memory, but also based on the way I now look at such a position. I see a bishop pinned by a queen and a rook on an open file that can attract the king directly. I immediately know that a rook sacrifice is possible! More than ten years later, when I was watching the following game live between two up-and-coming world-class players (aged 16 and 15 respectively at the time) , I didn't have to think long to find Giri's move... }\n*",
+    "prelude": ""
+  }
+]
