@@ -26,8 +26,8 @@
   "The Chess Coach Companion Intermediate Syllabus_firstkey.pgn": {
     "difficulty": "Fortgeschritten",
     "rating": 5,
-    "blind": true,
-    "random": true
+    "blind": false,
+    "random": false
   },
   "The Fundamentals 3 Chess Evolution_firstkey.pgn": {
     "difficulty": "Fortgeschritten",
