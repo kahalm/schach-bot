@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.10.2] - 2026-04-14
+### Fixed
+- `_trim_to_training_position` rückt jetzt auch bei Nicht-Root-`[%tqu]`-Knoten
+  über den Antwort-Zug hinaus vor, wenn danach Varianten folgen. Behebt falsche
+  Trainingsstellung bei Puzzles wie 007.061 (zeigte Weiß am Zug statt Schwarz).
+
 ## [1.10.1] - 2026-04-14
 ### Added
 - `/test` Slash-Command (Admin-only): fuehrt Trim-Snapshot-Regressionstests

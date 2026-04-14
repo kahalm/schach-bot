@@ -766,12 +766,10 @@ def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
     """Spiel auf erste [%tqu]-Stellung kürzen.
     Ohne [%tqu]-Annotation → Original unverändert zurückgeben.
 
-    `[%tqu]` ist immer der „bekannte" Setup-Zug; die Trainingsstellung
-    liegt nach diesem Zug. Liegt das `[%tqu]` an einem Kindknoten N, ist
-    `node.board()` schon die Stellung *nach* N's Zug — passt also direkt.
-    Liegt es am Root (z.B. The Chess Coach Companion), müssen wir noch
-    eine Variante vorrücken, sonst zeigt Discord die Stellung „einen Zug
-    zu früh" und Lichess hängt einen Zug hinterher.
+    `[%tqu]` markiert den Quiz-Zug. Wenn die erste Variante (= Antwort)
+    ihrerseits noch Untervarianten hat, ist sie nur der Setup-Zug und
+    das eigentliche Training beginnt danach. Gilt sowohl für Root- als
+    auch für Nicht-Root-Knoten.
     """
     node = game
     while True:
@@ -781,12 +779,11 @@ def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
             return game  # kein Trainingskommentar → Original
         node = node.variations[0]
 
-    if node is game:
-        # [%tqu] im Root-Kommentar: erste Variante als Setup-Zug behandeln,
-        # aber nur wenn danach noch Varianten folgen. Sonst IST der Root
-        # die Trainingsstellung (z.B. 100 Tactical Patterns).
-        if not node.variations:
-            return game
+    # [%tqu] ist der Quiz-Zug: „finde diesen Zug". Wenn die erste Variante
+    # (= die Antwort) ihrerseits noch Untervarianten hat, IST diese Antwort
+    # nur der Setup-Zug und das eigentliche Training beginnt danach.
+    # Beispiel: h3 ist die [%tqu]-Antwort, aber das Puzzle ist Nd4 danach.
+    if node.variations:
         candidate = node.variations[0]
         if candidate.variations:
             node = candidate
