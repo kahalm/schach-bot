@@ -11,8 +11,7 @@ import chess.pgn
 import discord
 
 from puzzle.legacy import (
-    find_line_by_id, _trim_to_training_position, trim_and_advance,
-    build_puzzle_embed,
+    find_line_by_id, _trim_to_training_position, build_puzzle_embed,
     _render_board, _load_books_config, _strip_pgn_annotations, _prelude_pgn,
     _flatten_null_move_variations, upload_to_lichess,
 )
@@ -71,7 +70,7 @@ class _PuzzleSelect(discord.ui.Select):
             return
 
         line_id, original_game = result
-        game = trim_and_advance(original_game, line_id=line_id)
+        game = _trim_to_training_position(original_game)
         context = original_game if game is not original_game else None
 
         board = game.board()
@@ -199,8 +198,7 @@ def setup(bot):
 
             try:
                 game = _find_game(filename, round_id)
-                line_id_key = f'{filename}:{round_id}'
-                result = trim_and_advance(game, line_id=line_id_key)
+                result = _trim_to_training_position(game)
                 was_trimmed = result is not game
 
                 if was_trimmed != exp_trimmed:

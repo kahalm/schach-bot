@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.10.12] - 2026-04-14
+### Removed
+- Advance-Override-System komplett entfernt (`config/advance_overrides.json`,
+  `trim_and_advance`, `_advance_past_answer`). Einzelne Puzzle-Fixes per
+  Override-Datei sind nicht gewünscht — Korrekturen müssen musterbasiert sein.
+
 ## [1.10.11] - 2026-04-14
 ### Added
 - `/test puzzle:1` zeigt Board-Bild, Seite am Zug und Lösung (Spoiler) pro Snapshot.

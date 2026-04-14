@@ -175,7 +175,7 @@ async def post_next_endless(bot, user_id: int):
         return
 
     line_id, original_game = results[0]
-    game = trim_and_advance(original_game, line_id=line_id)
+    game = _trim_to_training_position(original_game)
     context = original_game if game is not original_game else None
 
     books_config = _load_books_config()
@@ -825,86 +825,6 @@ def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
 
 
 # ---------------------------------------------------------------------------
-# Advance-Override: nach dem Trim einen Zug weiter vorrücken.
-# Manche Puzzles zeigen die Stellung VOR dem Setup-Zug statt danach.
-# Eine manuelle Override-Datei steuert, welche Puzzles betroffen sind.
-# ---------------------------------------------------------------------------
-
-ADVANCE_OVERRIDES_FILE = os.path.join(CONFIG_DIR, 'advance_overrides.json')
-
-def _load_advance_overrides() -> set[str]:
-    """Lädt die Liste von line_ids, bei denen nach dem Trim vorgerückt wird."""
-    try:
-        with open(ADVANCE_OVERRIDES_FILE) as f:
-            return set(json.load(f))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return set()
-
-
-def _advance_past_answer(trimmed_game: chess.pgn.Game) -> chess.pgn.Game:
-    """Rückt ein getrimmtes Game um einen Zug vor (den Antwort-Zug).
-
-    Baut ein neues Game ab der Stellung nach dem ersten Zug des Lösungsbaums.
-    """
-    if not trimmed_game.variations:
-        return trimmed_game
-
-    first_child = trimmed_game.variations[0]
-    brd = first_child.board()
-
-    g = chess.pgn.Game()
-    g.setup(brd)
-    for key, val in trimmed_game.headers.items():
-        if key not in ('FEN', 'SetUp'):
-            g.headers[key] = val
-    g.comment = (first_child.comment or '').strip()
-
-    def _gather_comments(n: chess.pgn.GameNode) -> str:
-        parts = []
-        if n.starting_comment:
-            parts.append(n.starting_comment)
-        if n.comment:
-            parts.append(n.comment)
-        for v in n.variations:
-            sub = _gather_comments(v)
-            if sub:
-                parts.append(sub)
-        return ' '.join(parts)
-
-    def _copy(src, dst, board):
-        for var in src.variations:
-            if var.move not in board.legal_moves:
-                text = _gather_comments(var)
-                if text:
-                    dst.comment = ((dst.comment or '') + ' ' + text).strip()
-                continue
-            child = dst.add_variation(
-                var.move,
-                comment=var.comment,
-                starting_comment=var.starting_comment,
-                nags=list(var.nags),
-            )
-            next_board = board.copy()
-            next_board.push(var.move)
-            _copy(var, child, next_board)
-
-    _copy(first_child, g, brd)
-    return g
-
-
-def trim_and_advance(game: chess.pgn.Game,
-                     line_id: str | None = None) -> chess.pgn.Game:
-    """_trim_to_training_position + optionaler Advance per Override-Datei."""
-    result = _trim_to_training_position(game)
-    if result is game or not line_id:
-        return result
-    overrides = _load_advance_overrides()
-    if line_id in overrides and result.variations:
-        return _advance_past_answer(result)
-    return result
-
-
-# ---------------------------------------------------------------------------
 # Blind-Modus: zeigt Stellung X Züge VOR der Trainingsposition.
 # Der User muss die X Züge im Kopf spielen und dann das Puzzle lösen.
 # ---------------------------------------------------------------------------
@@ -1551,7 +1471,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
     # Trimmen
     puzzles: list[tuple[chess.pgn.Game, chess.pgn.Game | None, str, int, str]] = []
     for line_id, original_game in results:
-        game    = trim_and_advance(original_game, line_id=line_id)
+        game    = _trim_to_training_position(original_game)
         context = original_game if game is not original_game else None
         fname   = line_id.split(':')[0]
         book_meta = books_config.get(fname, {})
@@ -1885,7 +1805,7 @@ def setup(bot: discord.ext.commands.Bot):
                     return
 
                 line_id, original_game = result
-                game = trim_and_advance(original_game, line_id=line_id)
+                game = _trim_to_training_position(original_game)
                 context = original_game if game is not original_game else None
 
                 books_config = _load_books_config()
@@ -2219,7 +2139,7 @@ def setup(bot: discord.ext.commands.Bot):
 
         puzzles = []
         for line_id, original_game in results:
-            game = trim_and_advance(original_game, line_id=line_id)
+            game = _trim_to_training_position(original_game)
             context = original_game if game is not original_game else None
             puzzles.append((game, context, diff, rating, line_id))
 
