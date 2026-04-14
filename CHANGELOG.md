@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.11.1] - 2026-04-14
+### Fixed
+- Lichess-Gamebook-Kapitel ohne Kommentare exportieren — Chessable-Annotationen
+  störten den Gamebook-Modus.
+
 ## [1.11.0] - 2026-04-14
 ### Changed
 - Lines ohne `[%tqu]`-Annotation werden in allen Puzzle-Modi übersprungen

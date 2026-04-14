@@ -1115,7 +1115,8 @@ def upload_to_lichess(game: chess.pgn.Game,
         log.info('Lichess-Upload übersprungen (Cooldown noch %ds).', remaining)
         return None
     try:
-        exporter = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
+        # Gamebook: nur Züge + Varianten, keine Kommentare (stören im Gamebook-Modus)
+        exporter = chess.pgn.StringExporter(headers=True, variations=True, comments=False)
         pgn_text = game.accept(exporter)
     except Exception as e:
         log.error('PGN-Export fehlgeschlagen: %s', e)
