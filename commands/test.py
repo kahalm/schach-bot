@@ -128,6 +128,13 @@ def setup(bot):
         fields = []
         puzzle_ids = []  # (label, puzzle_id) fuer Dropdown
 
+        # Pro Buch zaehlen fuer #1, #2, #3 ...
+        book_counter = {}
+        for snap in snapshots:
+            fn = snap['filename']
+            book_counter[fn] = book_counter.get(fn, 0) + 1
+
+        book_seen = {}
         for snap in snapshots:
             filename = snap['filename']
             round_id = snap['round']
@@ -136,7 +143,9 @@ def setup(bot):
             exp_side = snap['side']
             exp_first = snap['first_move_uci']
 
-            label = _book_label(filename)
+            base = _book_label(filename)
+            book_seen[filename] = book_seen.get(filename, 0) + 1
+            label = f'{base} #{book_seen[filename]}' if book_counter[filename] > 1 else base
             errors = []
 
             try:
