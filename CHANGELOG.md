@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.10.1] - 2026-04-14
+### Added
+- `/test` Slash-Command (Admin-only): fuehrt Trim-Snapshot-Regressionstests
+  live im Discord aus und zeigt Ergebnisse als Embed (gruen/rot).
+
 ## [1.10.0] - 2026-04-14
 ### Added
 - Zwei neue Bücher in der Bibliothek:
