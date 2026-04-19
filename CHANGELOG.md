@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.11.3] - 2026-04-19
+### Changed
+- Release-Regel in `CLAUDE.md` verankert (Version-Bump + Changelog bei jedem Commit).
+
 ## [1.11.2] - 2026-04-19
 ### Changed
 - Daily-/Random-Pool auf 5 Bücher reduziert (Basic Endgames, Fundamentals 1–3,

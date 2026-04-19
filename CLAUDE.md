@@ -35,6 +35,15 @@ Everything lives in a single file `bot.py`. Key sections:
 - **Bot + slash commands**: Uses `discord.py` app commands (`/partie`, `/studie`, `/reset`). Commands are synced globally on `on_ready`. `/reset` is admin-only via `default_permissions`.
 - **Daily task**: `@tasks.loop(time=...)` fires once per day at `POST_HOUR:POST_MINUTE` UTC.
 
+## Release-Regel (PFLICHT bei jedem Commit!)
+
+Vor jedem `git commit` MÜSSEN diese beiden Dateien mitgeändert werden:
+
+1. **`core/version.py`** – `VERSION` bumpen (bugfix bei Fix, minor bei Feature, major bei Breaking Change)
+2. **`CHANGELOG.md`** – Neue Sektion `## [x.y.z] - YYYY-MM-DD` mit Added/Changed/Fixed (Keep-a-Changelog)
+
+Beide Dateien gehören in denselben Commit – nie nachträglich! Kein Commit ohne Version-Bump + Changelog-Eintrag.
+
 ## Dependencies
 
 | Package | Purpose |
