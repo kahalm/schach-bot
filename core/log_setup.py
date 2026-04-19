@@ -45,7 +45,7 @@ def setup() -> logging.Logger:
 
     term_handler = logging.StreamHandler(sys.stderr)
     term_handler.setFormatter(fmt)
-    term_handler.setLevel(logging.WARNING)
+    term_handler.setLevel(logging.ERROR)
 
     log = logging.getLogger('schach-bot')
     log.setLevel(logging.DEBUG)

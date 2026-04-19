@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.12.3] - 2026-04-19
+### Fixed
+- Terminal-Log-Level von WARNING auf ERROR angehoben — nur noch echte
+  Fehler im Terminal, Warnungen gehen nur ins Log-File.
+
 ## [1.12.2] - 2026-04-19
 ### Fixed
 - 🚮-Ersatzpuzzle im Daily-Thread funktioniert jetzt — `post_puzzle`
