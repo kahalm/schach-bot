@@ -43,25 +43,37 @@ async def _reminder_loop():
         if now < next_time:
             continue
 
+        hours = entry['hours']
+        missed = int((now - next_time).total_seconds() // (hours * 3600))
+
         uid = int(uid_str)
         try:
             user = await _bot.fetch_user(uid)
             dm = await user.create_dm()
-            await puzzle.post_puzzle(
-                dm,
-                count=entry.get('puzzle', 1),
-                book_idx=entry.get('buch', 0),
-                user_id=uid,
-            )
-            log.info('Reminder: %d Puzzle(s) an User %s gesendet.', entry.get('puzzle', 1), uid)
+            if missed > 0:
+                # Bot war offline — nur 1 Puzzle nachreichen statt alle verpassten
+                await dm.send(
+                    f'Ich war leider offline und habe **{missed}** '
+                    f'Reminder verpasst. Hier ist ein Puzzle zum Nachholen:'
+                )
+                await puzzle.post_puzzle(dm, count=1, book_idx=entry.get('buch', 0), user_id=uid)
+                log.info('Reminder: %d verpasst, 1 nachgereicht für User %s.', missed, uid)
+            else:
+                await puzzle.post_puzzle(
+                    dm,
+                    count=entry.get('puzzle', 1),
+                    book_idx=entry.get('buch', 0),
+                    user_id=uid,
+                )
+                log.info('Reminder: %d Puzzle(s) an User %s gesendet.', entry.get('puzzle', 1), uid)
         except discord.Forbidden:
             log.warning('Reminder: DM an %s nicht möglich (DMs deaktiviert).', uid)
         except Exception as e:
             log.info('Reminder: Fehler für User %s: %s', uid, e)
 
-        # Nächsten Zeitpunkt setzen
-        hours = entry['hours']
-        entry['next'] = (next_time + timedelta(hours=hours)).isoformat()
+        # Nächsten Zeitpunkt ab jetzt setzen (verpasste Runden überspringen)
+        new_next = next_time + timedelta(hours=hours) * (missed + 1)
+        entry['next'] = new_next.isoformat()
         changed = True
 
     if changed:
