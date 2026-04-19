@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.12.2] - 2026-04-19
+### Fixed
+- 🚮-Ersatzpuzzle im Daily-Thread funktioniert jetzt — `post_puzzle`
+  erkennt bestehende Threads und erstellt keinen Sub-Thread mehr.
+
 ## [1.12.1] - 2026-04-19
 ### Added
 - `/daily` Slash-Command (Admin-only) löst manuell ein tägliches Puzzle

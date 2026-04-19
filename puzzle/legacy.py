@@ -1530,9 +1530,9 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
     if len(thread_name) > 100:
         thread_name = thread_name[:97] + '...'
 
-    # Ziel: Thread (Server) oder direkt (DM)
+    # Ziel: Thread (Server) oder direkt (DM / bestehender Thread)
     is_dm = isinstance(channel, discord.DMChannel)
-    if is_dm:
+    if is_dm or isinstance(channel, discord.Thread):
         target = channel
     else:
         target = await channel.create_thread(
