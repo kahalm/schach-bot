@@ -296,6 +296,23 @@ async def cmd_stats(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
+# --- Admin-Befehle ---
+
+@tree.command(name='daily', description='Tägliches Puzzle manuell auslösen (Admin)')
+@discord.app_commands.default_permissions(administrator=True)
+async def cmd_daily(interaction: discord.Interaction):
+    channel = bot.get_channel(CHANNEL_ID)
+    if not channel:
+        await interaction.response.send_message('Puzzle-Channel nicht gefunden.', ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    try:
+        await puzzle.post_puzzle(channel)
+        await interaction.followup.send(f'Daily Puzzle in <#{CHANNEL_ID}> gepostet.', ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f'Fehler: {e}', ephemeral=True)
+
+
 # --- Tägliche Tasks ---
 
 @tasks.loop(time=time(hour=PUZZLE_HOUR, minute=PUZZLE_MINUTE))
