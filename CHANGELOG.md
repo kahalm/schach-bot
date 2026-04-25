@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.32.0] - 2026-04-25
+### Fixed
+- **Sicherheit**: Path-Traversal-Schutz in `_local_path()` (library.py) —
+  manipulierte index.txt kann keine Dateien ausserhalb des Library-Ordners mehr lesen
+- **Sicherheit**: `/puzzle user:@X` erfordert jetzt Admin-Rechte wenn der Zieluser
+  nicht der Aufrufer selbst ist
+- **Sicherheit**: URL-Validierung in `/resourcen` und `/youtube` (nur http/https)
+- **Sicherheit**: Eintrags-Limit (100) fuer `/resourcen`, `/youtube` und `/wanted`
+- **Sicherheit**: `/daily` Fehler-Nachricht zeigt keine internen Details mehr
+
 ## [1.31.0] - 2026-04-25
 ### Added
 - Neues `/wanted`-Feature: Feature-Wünsche einreichen, abstimmen und verwalten

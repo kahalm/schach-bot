@@ -391,7 +391,8 @@ async def cmd_daily(interaction: discord.Interaction):
         await puzzle.post_puzzle(channel)
         await interaction.followup.send(f'Daily Puzzle in <#{CHANNEL_ID}> gepostet.', ephemeral=True)
     except Exception as e:
-        await interaction.followup.send(f'Fehler: {e}', ephemeral=True)
+        log.exception('Fehler bei /daily')
+        await interaction.followup.send('Fehler beim Posten des Daily Puzzles.', ephemeral=True)
 
 
 # --- Tägliche Tasks ---

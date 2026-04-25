@@ -27,6 +27,15 @@ CHANNEL_ID    = int(os.getenv('CHANNEL_ID', '0'))
 
 async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: int = 0,
                       id: str = '', user: discord.Member | None = None):
+    # Admin-Check: nur Admins duerfen Puzzles an andere User senden
+    if user is not None and user.id != interaction.user.id:
+        member = interaction.user
+        if not (isinstance(member, discord.Member)
+                and member.guild_permissions.administrator):
+            await interaction.response.send_message(
+                '⚠️ Nur Admins duerfen Puzzles an andere User senden.',
+                ephemeral=True)
+            return
     target_user = user or interaction.user
     log.info('/puzzle von %s: anzahl=%d buch=%d id=%s user=%s',
              interaction.user, anzahl, buch, id, target_user)

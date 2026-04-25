@@ -64,6 +64,8 @@ def _file_is_ignored(remote: str) -> bool:
     if not _LOCAL_BASE:
         return False
     local = _local_path(remote)
+    if not local:
+        return False
     base  = os.path.normpath(_LOCAL_BASE)
     folder = os.path.normpath(os.path.dirname(local))
     basename = os.path.basename(local)
@@ -91,10 +93,21 @@ def _is_excluded(entry: dict) -> bool:
     return all(_file_is_ignored(f) for f in files)
 
 
-def _local_path(remote: str) -> str:
-    """Übersetzt einen remote-Pfad aus index.txt in den lokalen Syncthing-Pfad."""
+def _local_path(remote: str) -> str | None:
+    """Übersetzt einen remote-Pfad aus index.txt in den lokalen Syncthing-Pfad.
+
+    Gibt ``None`` zurück wenn der resultierende Pfad außerhalb von
+    ``_LOCAL_BASE`` liegt (Path-Traversal-Schutz).
+    """
     suffix = _REMOTE_PREFIX_RE.sub('', remote)
-    return os.path.join(_LOCAL_BASE, suffix) if _LOCAL_BASE else remote
+    if not _LOCAL_BASE:
+        return remote
+    path = os.path.normpath(os.path.join(_LOCAL_BASE, suffix))
+    base = os.path.normpath(_LOCAL_BASE)
+    if not (path == base or path.startswith(base + os.sep)):
+        log.warning('Path-Traversal blockiert: %s', remote)
+        return None
+    return path
 
 # ---------------------------------------------------------------------------
 # Tag-Wörterbücher
@@ -273,6 +286,8 @@ _FILE_PRIO = {'pdf': 0, 'epub': 1, 'djvu': 2, 'pgn': 3}
 def _load_sidecar(remote_path: str) -> dict | None:
     """Prüft ob neben der Datei ein gleichnamiges .json liegt und liest es."""
     local = _local_path(remote_path)
+    if not local:
+        return None
     json_path = os.path.splitext(local)[0] + '.json'
     if not os.path.isfile(json_path):
         return None
@@ -536,7 +551,7 @@ def _collect_formats(entry: dict) -> dict[str, str]:
 
     for f in entry.get('files', []):
         local = _local_path(f)
-        if not os.path.isfile(local):
+        if not local or not os.path.isfile(local):
             continue
         raw = os.path.splitext(local)[1].lower().lstrip('.')
         canon = 'djvu' if raw == 'djv' else raw
@@ -672,7 +687,7 @@ class _BookSelect(discord.ui.Select):
             # Dateigröße der ersten vorhandenen Datei
             for f in e.get('files', []):
                 local = _local_path(f)
-                if os.path.isfile(local):
+                if local and os.path.isfile(local):
                     mb = os.path.getsize(local) / (1024 * 1024)
                     parts.append(f'{mb:.1f} MB')
                     break

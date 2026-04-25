@@ -13,6 +13,7 @@ from core.json_store import atomic_read, atomic_write
 log = logging.getLogger('schach-bot')
 
 WANTED_FILE = os.path.join(CONFIG_DIR, 'wanted.json')
+_MAX_ENTRIES = 100
 
 
 def _next_id(entries: list) -> int:
@@ -37,6 +38,11 @@ def setup(bot: commands.Bot):
             return
 
         entries = atomic_read(WANTED_FILE, default=list)
+        if len(entries) >= _MAX_ENTRIES:
+            await interaction.response.send_message(
+                f'⚠️ Maximum von {_MAX_ENTRIES} Eintraegen erreicht.',
+                ephemeral=True)
+            return
         new_id = _next_id(entries)
         entries.append({
             'id': new_id,

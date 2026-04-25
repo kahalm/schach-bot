@@ -13,6 +13,7 @@ from core.json_store import atomic_read, atomic_write
 log = logging.getLogger('schach-bot')
 
 RESOURCEN_FILE = os.path.join(CONFIG_DIR, 'resourcen.json')
+_MAX_ENTRIES = 100
 
 
 def setup(bot: commands.Bot):
@@ -29,12 +30,22 @@ def setup(bot: commands.Bot):
                             beschreibung: str = None):
         # Hinzufügen
         if url:
+            if not url.startswith(('http://', 'https://')):
+                await interaction.response.send_message(
+                    '⚠️ Bitte eine gueltige URL angeben (http:// oder https://).',
+                    ephemeral=True)
+                return
             if not beschreibung:
                 await interaction.response.send_message(
                     '⚠️ Bitte auch eine `beschreibung` angeben.',
                     ephemeral=True)
                 return
             ressourcen = atomic_read(RESOURCEN_FILE, default=list)
+            if len(ressourcen) >= _MAX_ENTRIES:
+                await interaction.response.send_message(
+                    f'⚠️ Maximum von {_MAX_ENTRIES} Eintraegen erreicht.',
+                    ephemeral=True)
+                return
             ressourcen.append({
                 'url': url,
                 'beschreibung': beschreibung,
