@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.30.0] - 2026-04-25
+### Changed
+- Refactor Phase 6, Schritt 9: Alle Caller auf direkte Sub-Modul-Imports umgestellt,
+  `puzzle/legacy.py` entfernt. `puzzle/__init__.py` re-exportiert jetzt direkt aus
+  den 8 Sub-Modulen (state, processing, rendering, selection, lichess, embed, posting,
+  commands). Phase 6 abgeschlossen.
+
 ## [1.29.0] - 2026-04-25
 ### Changed
 - Refactor Phase 6, Schritt 8: Slash-Commands in `puzzle/commands.py` extrahiert

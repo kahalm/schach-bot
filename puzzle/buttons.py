@@ -101,12 +101,12 @@ def fresh_view() -> 'PuzzleView':
 
 async def _handle_click(interaction: discord.Interaction, emoji: str):
     # Lazy-Import um Zirkular-Imports zu vermeiden
-    from puzzle import legacy as _legacy
+    from puzzle import state as _state
 
     msg_id   = interaction.message.id
     user_id  = interaction.user.id
-    line_id  = _legacy.get_puzzle_line_id(msg_id)
-    mode     = _legacy.get_puzzle_mode(msg_id) or 'normal'
+    line_id  = _state.get_puzzle_line_id(msg_id)
+    mode     = _state.get_puzzle_mode(msg_id) or 'normal'
 
     delta, removed = _apply_click(msg_id, emoji, user_id)
 
@@ -129,7 +129,8 @@ async def _run_side_effects(interaction: discord.Interaction,
                             line_id: str | None, mode: str,
                             emoji: str, delta: int, removed: str | None):
     """Side-Effects nach einem Button-Klick – läuft losgelöst vom Handler."""
-    from puzzle import legacy as _legacy
+    from puzzle import state as _state
+    from puzzle import posting as _posting
     from core import event_log, stats
 
     bot = interaction.client
@@ -159,10 +160,10 @@ async def _run_side_effects(interaction: discord.Interaction,
             try:
                 dm = await interaction.user.create_dm()
                 if delta > 0:
-                    await asyncio.to_thread(_legacy.ignore_puzzle, line_id)
+                    await asyncio.to_thread(_state.ignore_puzzle, line_id)
                     await dm.send(f'🚮 Puzzle ignoriert und wird nicht mehr erscheinen:\n`{line_id}`')
                 else:
-                    await asyncio.to_thread(_legacy.unignore_puzzle, line_id)
+                    await asyncio.to_thread(_state.unignore_puzzle, line_id)
                     await dm.send(f'♻️ Puzzle wieder aktiviert:\n`{line_id}`')
             except Exception as e:
                 log.warning('🚮-DM fehlgeschlagen: %s', e)
@@ -170,14 +171,14 @@ async def _run_side_effects(interaction: discord.Interaction,
             if delta > 0 and isinstance(interaction.channel, discord.Thread):
                 try:
                     await interaction.channel.send('🚮 Sorry für das schlechte Puzzle! Hier kommt ein neues:')
-                    await _legacy.post_puzzle(interaction.channel)
+                    await _posting.post_puzzle(interaction.channel)
                 except Exception as e:
                     log.warning('Ersatz-Puzzle fehlgeschlagen: %s', e)
 
         # Endless: nach ✅/❌ nächstes Puzzle senden (nur beim Hinzufügen)
-        if delta > 0 and emoji in ('✅', '❌') and _legacy.is_endless(user_id):
+        if delta > 0 and emoji in ('✅', '❌') and _state.is_endless(user_id):
             try:
-                await _legacy.post_next_endless(bot, user_id)
+                await _posting.post_next_endless(bot, user_id)
             except Exception as e:
                 log.warning('Endless-Next fehlgeschlagen: %s', e)
     except Exception:

@@ -802,7 +802,7 @@ def test_puzzle():
         if not cmd:
             return
 
-        import puzzle.legacy as leg
+        import puzzle as leg
 
         # Patch post_puzzle um IO zu vermeiden
         orig_post = leg.post_puzzle
@@ -852,7 +852,7 @@ def test_kurs():
         if not cmd:
             return
 
-        import puzzle.legacy as leg
+        import puzzle as leg
 
         # Patch load_all_lines
         orig_load = leg.load_all_lines
@@ -909,7 +909,7 @@ def test_train():
         if not cmd:
             return
 
-        import puzzle.legacy as leg
+        import puzzle as leg
 
         orig_get = leg._get_user_training
         orig_set = leg._set_user_training
@@ -989,7 +989,7 @@ def test_next():
         if not cmd:
             return
 
-        import puzzle.legacy as leg
+        import puzzle as leg
 
         orig_get = leg._get_user_training
         _training = {}
@@ -1018,7 +1018,7 @@ def test_endless():
         if not cmd:
             return
 
-        import puzzle.legacy as leg
+        import puzzle as leg
 
         orig_is = leg.is_endless
         orig_start = leg.start_endless
@@ -1180,7 +1180,7 @@ def test_ignore_kapitel():
         if not cmd:
             return
 
-        import puzzle.legacy as leg
+        import puzzle as leg
 
         orig_load_ign = leg._load_chapter_ignore_list
         orig_ignore = leg.ignore_chapter
@@ -1439,17 +1439,17 @@ def test_reindex():
             return
 
         import library as lib_mod
-        import puzzle.legacy as leg
+        import puzzle.selection as sel_mod
 
         orig_build = lib_mod.build_library_catalog
         orig_reload = lib_mod._reload_library
-        orig_clear = leg.clear_lines_cache
-        orig_load = leg.load_all_lines
+        orig_clear = sel_mod.clear_lines_cache
+        orig_load = sel_mod.load_all_lines
 
         lib_mod.build_library_catalog = lambda: (100, 50, 5, 3, 2)
         lib_mod._reload_library = lambda: None
-        leg.clear_lines_cache = lambda: None
-        leg.load_all_lines = lambda: [('a.pgn:1', None)] * 42
+        sel_mod.clear_lines_cache = lambda: None
+        sel_mod.load_all_lines = lambda: [('a.pgn:1', None)] * 42
 
         # LIBRARY_INDEX muss gesetzt sein damit der Bibliotheks-Teil laeuft
         orig_index = lib_mod.LIBRARY_INDEX
@@ -1466,8 +1466,8 @@ def test_reindex():
         finally:
             lib_mod.build_library_catalog = orig_build
             lib_mod._reload_library = orig_reload
-            leg.clear_lines_cache = orig_clear
-            leg.load_all_lines = orig_load
+            sel_mod.clear_lines_cache = orig_clear
+            sel_mod.load_all_lines = orig_load
             lib_mod.LIBRARY_INDEX = orig_index
     finally:
         teardown_temp_config(tmpdir)

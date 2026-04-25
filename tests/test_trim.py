@@ -29,7 +29,7 @@ for mod_name in (
 ):
     sys.modules.setdefault(mod_name, _mock.MagicMock())
 
-from puzzle.legacy import (
+from puzzle.processing import (
     _trim_to_training_position, _strip_pgn_annotations, _prelude_pgn,
     _flatten_null_move_variations,
 )

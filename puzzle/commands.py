@@ -12,11 +12,11 @@ import discord
 
 from core import stats
 
-# Funktionen werden über puzzle.legacy referenziert (nicht direkt importiert),
-# damit Test-Monkeypatches auf puzzle.legacy.X auch hier wirken.
-# Die zirkuläre Abhängigkeit ist sicher, weil alle Re-Exports in legacy.py
-# vor dem 'from puzzle.commands import ...' definiert sind.
-import puzzle.legacy as _leg
+# Funktionen werden ueber das puzzle-Paket referenziert (nicht direkt importiert),
+# damit Test-Monkeypatches auf puzzle.X auch hier wirken.
+# Die zirkulaere Abhaengigkeit ist sicher, weil alle Re-Exports in __init__.py
+# vor dem 'from .commands import ...' definiert sind.
+import puzzle as _pkg
 
 log = logging.getLogger('schach-bot')
 
@@ -48,12 +48,12 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
                     return
                 _lookup_id = id[:_blind_match.start()]
 
-            result = _leg.find_line_by_id(_lookup_id)
+            result = _pkg.find_line_by_id(_lookup_id)
             if not result:
                 await interaction.followup.send(f'⚠️ Puzzle `{id}` nicht gefunden.', ephemeral=True)
                 return
 
-            if not _leg._has_training_comment(result[1]):
+            if not _pkg._has_training_comment(result[1]):
                 await interaction.followup.send(
                     f'⚠️ `{id}` hat keinen Trainingskommentar.', ephemeral=True)
                 return
@@ -63,7 +63,7 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
                     await dm.send(f'**{interaction.user.display_name}** schickt dir ein Blind-Puzzle 🙈')
                 line_id = result[0]
                 orig = result[1]
-                split = _leg._split_for_blind(orig, _blind_moves)
+                split = _pkg._split_for_blind(orig, _blind_moves)
                 if split is None:
                     await interaction.followup.send(
                         f'⚠️ Puzzle `{line_id}` hat nicht genug Vorlauf-Züge für blind:{_blind_moves}.',
@@ -71,76 +71,76 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
                     return
                 blind_board, blind_san, puzzle_game = split
                 fname = line_id.split(':')[0]
-                meta  = _leg._load_books_config().get(fname, {})
+                meta  = _pkg._load_books_config().get(fname, {})
                 try:
-                    img = await asyncio.to_thread(_leg._render_board, blind_board)
+                    img = await asyncio.to_thread(_pkg._render_board, blind_board)
                 except Exception:
                     img = None
-                embed = _leg.build_puzzle_embed(
+                embed = _pkg.build_puzzle_embed(
                     puzzle_game, turn=blind_board.turn,
                     difficulty=meta.get('difficulty',''), rating=meta.get('rating', 0),
                     line_id=line_id, blind_moves=_blind_moves)
                 embed.title = f'🙈 Blind-Puzzle ({_blind_moves} Züge)'
-                blind_pgn = _leg._format_blind_moves(blind_board, blind_san)
+                blind_pgn = _pkg._format_blind_moves(blind_board, blind_san)
                 embed.add_field(name='🙈 Spiele in Gedanken',
                                 value=f'`{blind_pgn}`\n_Visualisiere die Stellung danach und löse das Puzzle._',
                                 inline=False)
                 if img:
                     file = discord.File(img, filename='board.png')
                     embed.set_image(url='attachment://board.png')
-                    msg = await _leg._resilient_send(dm, file=file, embed=embed)
+                    msg = await _pkg._resilient_send(dm, file=file, embed=embed)
                 else:
-                    msg = await _leg._resilient_send(dm, embed=embed)
-                _leg._register_puzzle_msg(msg.id, line_id, mode='blind')
+                    msg = await _pkg._resilient_send(dm, embed=embed)
+                _pkg._register_puzzle_msg(msg.id, line_id, mode='blind')
                 try:
                     from puzzle.buttons import fresh_view as _fresh_button_view
                     await msg.edit(view=_fresh_button_view())
                 except Exception:
                     pass
-                pgn_moves = _leg._solution_pgn(puzzle_game)
+                pgn_moves = _pkg._solution_pgn(puzzle_game)
                 if pgn_moves:
-                    await _leg._send_optional(dm, f'Lösung des Puzzles: ||`{pgn_moves}`||', label=f'Blind-Lösung {line_id}')
+                    await _pkg._send_optional(dm, f'Lösung des Puzzles: ||`{pgn_moves}`||', label=f'Blind-Lösung {line_id}')
                 dest = f'an {target_user.mention}' if user else 'dir'
                 await interaction.followup.send(f'🙈 Blind-Puzzle `{line_id}:blind:{_blind_moves}` {dest} per DM gesendet.', ephemeral=True)
                 return
 
             line_id, original_game = result
-            game = _leg._trim_to_training_position(original_game)
+            game = _pkg._trim_to_training_position(original_game)
             context = original_game if game is not original_game else None
 
-            books_config = _leg._load_books_config()
+            books_config = _pkg._load_books_config()
             fname = line_id.split(':')[0]
             book_meta = books_config.get(fname, {})
             diff = book_meta.get('difficulty', '')
             rating = book_meta.get('rating', 0)
 
             # Upload
-            reuse_study_id = _leg._get_user_study_id(target_uid)
-            urls = await _leg._upload_puzzles_async([(game, context)], reuse_study_id=reuse_study_id)
+            reuse_study_id = _pkg._get_user_study_id(target_uid)
+            urls = await _pkg._upload_puzzles_async([(game, context)], reuse_study_id=reuse_study_id)
             puzzle_url = urls[0] if urls else None
 
             try:
                 board = game.board()
                 turn = board.turn
-                img = await asyncio.to_thread(_leg._render_board, board)
+                img = await asyncio.to_thread(_pkg._render_board, board)
             except Exception:
                 turn, img = None, None
 
             if user:
                 await dm.send(f'**{interaction.user.display_name}** schickt dir ein Rätsel 🧩')
 
-            embed = _leg.build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating, line_id=line_id)
+            embed = _pkg.build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating, line_id=line_id)
             if img:
                 file = discord.File(img, filename='board.png')
                 embed.set_image(url='attachment://board.png')
                 msg = await dm.send(file=file, embed=embed)
             else:
                 msg = await dm.send(embed=embed)
-            _leg._register_puzzle_msg(msg.id, line_id)
+            _pkg._register_puzzle_msg(msg.id, line_id)
             from puzzle.buttons import fresh_view as _fresh_button_view
             await msg.edit(view=_fresh_button_view())
 
-            await _leg._send_puzzle_followups(dm, game, context, puzzle_url, line_id)
+            await _pkg._send_puzzle_followups(dm, game, context, puzzle_url, line_id)
 
             dest = f'an {target_user.mention}' if user else 'dir'
             await interaction.followup.send(
@@ -149,7 +149,7 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
 
         if user:
             await dm.send(f'**{interaction.user.display_name}** schickt dir ein Rätsel 🧩')
-        sent = await _leg.post_puzzle(dm, count=anzahl, book_idx=buch, user_id=target_uid)
+        sent = await _pkg.post_puzzle(dm, count=anzahl, book_idx=buch, user_id=target_uid)
         dest = f'an {target_user.mention}' if user else 'dir'
         if sent == anzahl:
             msg = f'✅ {sent} Puzzle(s) wurde(n) {dest} per DM gesendet.'
@@ -166,9 +166,9 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
 async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
     await interaction.response.defer(ephemeral=True)
     try:
-        all_lines = _leg.load_all_lines()
-        posted    = set(_leg.load_puzzle_state().get('posted', []))
-        books_config = _leg._load_books_config()
+        all_lines = _pkg.load_all_lines()
+        posted    = set(_pkg.load_puzzle_state().get('posted', []))
+        books_config = _pkg._load_books_config()
 
         # --- Detailansicht für ein einzelnes Buch ---
         if buch > 0:
@@ -179,7 +179,7 @@ async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
                     ephemeral=True)
                 return
             book_fn = sorted_books[buch - 1]
-            book_name = _leg._clean_book_name(book_fn)
+            book_name = _pkg._clean_book_name(book_fn)
             meta  = books_config.get(book_fn, {})
             diff  = meta.get('difficulty', '')
             rat   = meta.get('rating', 0)
@@ -199,7 +199,7 @@ async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
             user_done: set[str] = {lid_e for lid_e, n in _net.items() if n > 0}
 
             # Kapitel aufbauen: round-Prefix → (name, total, done)
-            chapter_ignored = _leg._load_chapter_ignore_list()
+            chapter_ignored = _pkg._load_chapter_ignore_list()
             chapters: dict[str, dict] = {}
             for lid, game in all_lines:
                 if lid.split(':')[0] != book_fn:
@@ -278,7 +278,7 @@ async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
 
         embed = discord.Embed(title='📚 Puzzle-Bücher', color=0x7fa650)
         for i, book in enumerate(sorted(total_per_book), 1):
-            name  = _leg._clean_book_name(book)
+            name  = _pkg._clean_book_name(book)
             total = total_per_book[book]
             done  = posted_per_book[book]
             meta  = books_config.get(book, {})
@@ -308,7 +308,7 @@ async def _cmd_train(interaction: discord.Interaction, buch: int = None):
 
     if buch is None:
         # Status anzeigen
-        training = _leg._get_user_training(user_id)
+        training = _pkg._get_user_training(user_id)
         if not training:
             await interaction.followup.send(
                 '📭 Kein Training aktiv. Wähle ein Buch mit `/train <nummer>` '
@@ -316,12 +316,12 @@ async def _cmd_train(interaction: discord.Interaction, buch: int = None):
             return
         book_filename = training['book']
         pos = training['position']
-        all_lines = _leg.load_all_lines()
+        all_lines = _pkg.load_all_lines()
         total = sum(1 for lid, _ in all_lines if lid.startswith(book_filename + ':'))
-        name = _leg._clean_book_name(book_filename)
-        books = _leg._list_pgn_files()
+        name = _pkg._clean_book_name(book_filename)
+        books = _pkg._list_pgn_files()
         kurs_nr = books.index(book_filename) + 1 if book_filename in books else 0
-        books_config = _leg._load_books_config()
+        books_config = _pkg._load_books_config()
         meta = books_config.get(book_filename, {})
         diff = meta.get('difficulty', '')
         rat = meta.get('rating', 0)
@@ -339,12 +339,12 @@ async def _cmd_train(interaction: discord.Interaction, buch: int = None):
         return
 
     if buch == 0:
-        _leg._clear_user_training(user_id)
+        _pkg._clear_user_training(user_id)
         await interaction.followup.send('🔓 Training beendet.', ephemeral=True)
         return
 
     # Buch validieren
-    books = _leg._list_pgn_files()
+    books = _pkg._list_pgn_files()
     if not books:
         await interaction.followup.send('⚠️ Kein books-Ordner.', ephemeral=True)
         return
@@ -355,19 +355,19 @@ async def _cmd_train(interaction: discord.Interaction, buch: int = None):
 
     book_filename = books[buch - 1]
     # Aktuelle Position beibehalten falls selbes Buch
-    training = _leg._get_user_training(user_id)
+    training = _pkg._get_user_training(user_id)
     if training and training.get('book') == book_filename:
         pos = training['position']
     else:
         pos = 0
 
-    _leg._set_user_training(user_id, book_filename, pos)
+    _pkg._set_user_training(user_id, book_filename, pos)
 
     # Info anzeigen
-    all_lines = _leg.load_all_lines()
+    all_lines = _pkg.load_all_lines()
     total = sum(1 for lid, _ in all_lines if lid.startswith(book_filename + ':'))
-    name = _leg._clean_book_name(book_filename)
-    books_config = _leg._load_books_config()
+    name = _pkg._clean_book_name(book_filename)
+    books_config = _pkg._load_books_config()
     meta = books_config.get(book_filename, {})
     diff = meta.get('difficulty', '')
     rat = meta.get('rating', 0)
@@ -388,7 +388,7 @@ async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
     user_id = interaction.user.id
     anzahl = max(1, min(anzahl, 20))
 
-    training = _leg._get_user_training(user_id)
+    training = _pkg._get_user_training(user_id)
     if not training:
         await interaction.followup.send(
             '⚠️ Kein Trainingsbuch gewählt. Nutze `/train <buch>` zuerst.',
@@ -398,11 +398,11 @@ async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
     book_filename = training['book']
     position = training.get('position', 0)
 
-    results = _leg.pick_sequential_lines(book_filename, position, anzahl)
+    results = _pkg.pick_sequential_lines(book_filename, position, anzahl)
     if not results:
-        name = _leg._clean_book_name(book_filename)
+        name = _pkg._clean_book_name(book_filename)
         # Position auf 0 zurücksetzen
-        _leg._set_user_training(user_id, book_filename, 0)
+        _pkg._set_user_training(user_id, book_filename, 0)
         await interaction.followup.send(
             f'✅ Alle Linien in **{name}** durchgearbeitet! '
             f'Nutze `/train` erneut zum Zurücksetzen oder wähle ein neues Buch.',
@@ -411,38 +411,38 @@ async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
 
     # Position updaten
     new_position = position + len(results)
-    _leg._set_user_training(user_id, book_filename, new_position)
+    _pkg._set_user_training(user_id, book_filename, new_position)
 
     # Puzzles aufbereiten (wie in post_puzzle)
-    books_config = _leg._load_books_config()
+    books_config = _pkg._load_books_config()
     meta = books_config.get(book_filename, {})
     diff = meta.get('difficulty', '')
     rating = meta.get('rating', 0)
 
     puzzles = []
     for line_id, original_game in results:
-        game = _leg._trim_to_training_position(original_game)
+        game = _pkg._trim_to_training_position(original_game)
         context = original_game if game is not original_game else None
         puzzles.append((game, context, diff, rating, line_id))
 
     # Upload (Studien-Reuse wie bei /puzzle)
-    reuse_study_id = _leg._get_user_study_id(user_id)
-    base_count, base_total = _leg._get_user_puzzle_count(user_id)
+    reuse_study_id = _pkg._get_user_study_id(user_id)
+    base_count, base_total = _pkg._get_user_puzzle_count(user_id)
 
     upload_pairs = [(g, c) for g, c, _, _, _ in puzzles]
-    urls = await _leg._upload_puzzles_async(upload_pairs, reuse_study_id=reuse_study_id)
+    urls = await _pkg._upload_puzzles_async(upload_pairs, reuse_study_id=reuse_study_id)
 
     # Studie-ID + Zähler speichern
     first_url = urls[0] if urls else None
-    sid = _leg._extract_study_id(first_url) if first_url else None
+    sid = _pkg._extract_study_id(first_url) if first_url else None
     if sid:
-        _leg._set_user_study_id(user_id, sid,
+        _pkg._set_user_study_id(user_id, sid,
                            base_count + len(puzzles),
                            base_total + len(puzzles))
 
     # DM senden
     dm = await interaction.user.create_dm()
-    all_book_lines = _leg.load_all_lines()
+    all_book_lines = _pkg.load_all_lines()
     total_in_book = sum(1 for lid, _ in all_book_lines
                         if lid.startswith(book_filename + ':'))
 
@@ -462,7 +462,7 @@ async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
                 color=0x7fa650)
             embed.set_footer(
                 text=f'📖 Training: {position + i + 1}/{total_in_book} · ID: {lid}')
-            pgn_moves = _leg._solution_pgn(game)
+            pgn_moves = _pkg._solution_pgn(game)
             if pgn_moves:
                 embed.add_field(name='Züge', value=f'`{pgn_moves}`', inline=False)
             msg = await dm.send(embed=embed)
@@ -475,11 +475,11 @@ async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
             try:
                 board = game.board()
                 turn = board.turn
-                img = await asyncio.to_thread(_leg._render_board, board)
+                img = await asyncio.to_thread(_pkg._render_board, board)
             except Exception:
                 turn, img = None, None
 
-            embed = _leg.build_puzzle_embed(game, turn=turn,
+            embed = _pkg.build_puzzle_embed(game, turn=turn,
                                        puzzle_num=puzzle_num,
                                        puzzle_total=puzzle_total,
                                        difficulty=d, rating=r,
@@ -493,15 +493,15 @@ async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
                 msg = await dm.send(file=file, embed=embed)
             else:
                 msg = await dm.send(embed=embed)
-            _leg._register_puzzle_msg(msg.id, lid)
+            _pkg._register_puzzle_msg(msg.id, lid)
             await msg.edit(view=_fresh_button_view())
 
             # PGN-Lösung, Prelude, Lichess-Link
-            await _leg._send_puzzle_followups(dm, game, context, puzzle_url, lid)
+            await _pkg._send_puzzle_followups(dm, game, context, puzzle_url, lid)
 
     if puzzle_count:
         stats.inc(user_id, 'puzzles', puzzle_count)
-    name = _leg._clean_book_name(book_filename)
+    name = _pkg._clean_book_name(book_filename)
     await interaction.followup.send(
         f'✅ {len(results)} Linie(n) aus **{name}** per DM gesendet '
         f'({new_position}/{total_in_book}).',
@@ -513,8 +513,8 @@ async def _cmd_endless(bot, interaction: discord.Interaction, buch: int = 0):
     log.info('/endless von %s: buch=%d', interaction.user, buch)
 
     # Toggle: wenn bereits aktiv → stoppen
-    if _leg.is_endless(user_id):
-        count = _leg.stop_endless(user_id)
+    if _pkg.is_endless(user_id):
+        count = _pkg.stop_endless(user_id)
         await interaction.response.send_message(
             f'⏹️ Endless-Modus beendet! **{count}** Puzzle(s) gelöst.',
             ephemeral=True)
@@ -523,7 +523,7 @@ async def _cmd_endless(bot, interaction: discord.Interaction, buch: int = 0):
     # Buch validieren
     book_filename = None
     if buch > 0:
-        books = _leg._list_pgn_files()
+        books = _pkg._list_pgn_files()
         if books:
             if 1 <= buch <= len(books):
                 book_filename = books[buch - 1]
@@ -533,14 +533,14 @@ async def _cmd_endless(bot, interaction: discord.Interaction, buch: int = 0):
                     ephemeral=True)
                 return
 
-    _leg.start_endless(user_id, book_filename)
+    _pkg.start_endless(user_id, book_filename)
     await interaction.response.defer(ephemeral=True)
 
     try:
-        await _leg.post_next_endless(bot, user_id)
+        await _pkg.post_next_endless(bot, user_id)
         book_info = ''
         if book_filename:
-            name = _leg._clean_book_name(book_filename)
+            name = _pkg._clean_book_name(book_filename)
             book_info = f' (Buch: **{name}**)'
         await interaction.followup.send(
             f'♾️ Endless-Modus gestartet{book_info}! '
@@ -549,7 +549,7 @@ async def _cmd_endless(bot, interaction: discord.Interaction, buch: int = 0):
             f'Nochmal `/endless` zum Stoppen.',
             ephemeral=True)
     except Exception as e:
-        _leg.stop_endless(user_id)
+        _pkg.stop_endless(user_id)
         await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
 
 
@@ -563,7 +563,7 @@ async def _cmd_ignore_kapitel(
 
     # Ohne Parameter → Liste aller ignorierten Kapitel
     if buch == 0 and kapitel == 0:
-        ignored = sorted(_leg._load_chapter_ignore_list())
+        ignored = sorted(_pkg._load_chapter_ignore_list())
         if not ignored:
             await interaction.followup.send(
                 'Keine Kapitel ignoriert.', ephemeral=True)
@@ -571,7 +571,7 @@ async def _cmd_ignore_kapitel(
         lines = ['**Ignorierte Kapitel:**']
         for entry in ignored:
             fname, _, prefix = entry.partition(':')
-            name = _leg._clean_book_name(fname)
+            name = _pkg._clean_book_name(fname)
             lines.append(f'• `{name}` — Kapitel {prefix}')
         await interaction.followup.send('\n'.join(lines), ephemeral=True)
         return
@@ -582,10 +582,10 @@ async def _cmd_ignore_kapitel(
         return
 
     # Buch auflösen
-    books = _leg._list_pgn_files()
+    books = _pkg._list_pgn_files()
     if not books:
         await interaction.followup.send(
-            f'⚠️ Books-Verzeichnis fehlt: `{_leg.BOOKS_DIR}`', ephemeral=True)
+            f'⚠️ Books-Verzeichnis fehlt: `{_pkg.BOOKS_DIR}`', ephemeral=True)
         return
     if not 1 <= buch <= len(books):
         await interaction.followup.send(
@@ -593,12 +593,12 @@ async def _cmd_ignore_kapitel(
             ephemeral=True)
         return
     book_filename = books[buch - 1]
-    book_name = _leg._clean_book_name(book_filename)
+    book_name = _pkg._clean_book_name(book_filename)
 
     # Chapter-Präfix im tatsächlichen Format finden
-    prefix = _leg._find_chapter_prefix(book_filename, kapitel)
+    prefix = _pkg._find_chapter_prefix(book_filename, kapitel)
     if prefix is None:
-        chapters = _leg._list_chapters(book_filename)
+        chapters = _pkg._list_chapters(book_filename)
         sample = ', '.join(sorted(chapters)[:10])
         more = f' (von {len(chapters)})' if len(chapters) > 10 else ''
         await interaction.followup.send(
@@ -608,17 +608,17 @@ async def _cmd_ignore_kapitel(
         return
 
     action_value = aktion.value if aktion else 'ignore'
-    chapter_count = _leg._list_chapters(book_filename).get(prefix, 0)
+    chapter_count = _pkg._list_chapters(book_filename).get(prefix, 0)
 
     if action_value == 'unignore':
-        _leg.unignore_chapter(book_filename, prefix)
+        _pkg.unignore_chapter(book_filename, prefix)
         log.info('Kapitel reaktiviert: %s:%s', book_filename, prefix)
         await interaction.followup.send(
             f'♻️ Kapitel **{prefix}** in **{book_name}** wieder aktiviert '
             f'({chapter_count} Linien).',
             ephemeral=True)
     else:
-        _leg.ignore_chapter(book_filename, prefix)
+        _pkg.ignore_chapter(book_filename, prefix)
         log.info('Kapitel ignoriert: %s:%s', book_filename, prefix)
         await interaction.followup.send(
             f'🚮 Kapitel **{prefix}** in **{book_name}** ignoriert '

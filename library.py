@@ -852,7 +852,7 @@ def setup(bot: discord.ext.commands.Bot):
     @tree.command(name='reindex', description='Bibliotheks-Katalog + Puzzle-Cache neu aufbauen (Admin)')
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_reindex(interaction: discord.Interaction):
-        from puzzle import legacy as _puzzle  # lazy: zirkuläre Imports vermeiden
+        from puzzle import selection as _puzzle_sel  # lazy: zirkulaere Imports vermeiden
         await interaction.response.defer(ephemeral=True)
 
         loop = asyncio.get_running_loop()
@@ -869,8 +869,8 @@ def setup(bot: discord.ext.commands.Bot):
             lib_msg = '📚 Bibliothek: übersprungen (`LIBRARY_INDEX` nicht in `.env`).'
 
         # Puzzle-Cache – PGNs neu parsen + filtern + auf Disk pickeln
-        _puzzle.clear_lines_cache()
-        puzzle_lines = await loop.run_in_executor(None, _puzzle.load_all_lines)
+        _puzzle_sel.clear_lines_cache()
+        puzzle_lines = await loop.run_in_executor(None, _puzzle_sel.load_all_lines)
         puzzle_msg = f'♟️ Puzzle-Cache: **{len(puzzle_lines)}** gültige Linien gepickelt.'
 
         await interaction.followup.send(

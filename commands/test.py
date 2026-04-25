@@ -11,11 +11,15 @@ import chess.pgn
 import discord
 
 from core.version import EMBED_COLOR
-from puzzle.legacy import (
-    find_line_by_id, _trim_to_training_position, build_puzzle_embed,
-    _render_board, _load_books_config, _strip_pgn_annotations, _prelude_pgn,
-    _flatten_null_move_variations, upload_to_lichess,
+from puzzle.selection import find_line_by_id
+from puzzle.processing import (
+    _trim_to_training_position, _strip_pgn_annotations, _prelude_pgn,
+    _flatten_null_move_variations,
 )
+from puzzle.embed import build_puzzle_embed
+from puzzle.rendering import _render_board
+from puzzle.state import _load_books_config
+from puzzle.lichess import upload_to_lichess
 
 log = logging.getLogger('schach-bot')
 
