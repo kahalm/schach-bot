@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.15.0] - 2026-04-25
+### Added
+- `/greeted` (Admin): zeigt alle User, die die Begrüßungs-DM erhalten haben,
+  mit aufgelösten Usernamen und IDs.
+
 ## [1.14.2] - 2026-04-25
 ### Changed
 - `/stats`: User-Fetches jetzt parallel via `asyncio.gather` statt sequentiell

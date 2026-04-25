@@ -207,6 +207,7 @@ def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str
             ('/daily', 'Tägliches Puzzle manuell auslösen.'),
             ('/stats', 'Nutzungsstatistiken aller User anzeigen.'),
             ('/announce <user>', 'Begrüßungsnachricht per DM an einen User senden.'),
+            ('/greeted', 'Alle User anzeigen, die die Begrüßungs-DM erhalten haben.'),
             ('/ignore_kapitel [buch] [kapitel] [aktion]',
              'Ein ganzes Kapitel ignorieren.\n'
              '`/ignore_kapitel buch:2 kapitel:3` — ignorieren\n'
@@ -268,6 +269,35 @@ async def cmd_version(interaction: discord.Interaction):
         f'♟️ **Schach-Bot** v{VERSION}\n'
         f'🔄 Letzter Restart: <t:{ts}:f> (<t:{ts}:R>)',
         ephemeral=True)
+
+
+@tree.command(name='greeted', description='Zeigt alle User, die die Begrüßungs-DM erhalten haben (Admin)')
+@discord.app_commands.default_permissions(administrator=True)
+async def cmd_greeted(interaction: discord.Interaction):
+    from core.json_store import atomic_read
+    import asyncio
+
+    data = atomic_read(DM_STATE_FILE, default=dict)
+    greeted = data.get('greeted', [])
+    if not greeted:
+        await interaction.response.send_message('Noch niemand begrüßt.', ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    async def _fetch(uid):
+        try:
+            u = await bot.fetch_user(int(uid))
+            return f'• **{u.display_name}** (`{uid}`)'
+        except Exception:
+            return f'• User `{uid}` (nicht auflösbar)'
+
+    lines = await asyncio.gather(*[_fetch(uid) for uid in greeted])
+    text = f'**Begrüßte User ({len(greeted)}):**\n' + '\n'.join(lines)
+    if len(text) > 4096:
+        text = text[:4093] + '...'
+    embed = discord.Embed(description=text, color=EMBED_COLOR)
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 @tree.command(name='announce', description='Begrüßungsnachricht an einen User senden (Admin)')
