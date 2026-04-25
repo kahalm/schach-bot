@@ -119,8 +119,18 @@ async def on_member_join(member: discord.Member):
 
 # --- Slash-Commands ---
 
+def _is_admin(interaction: discord.Interaction) -> bool:
+    """True wenn der User Server-Admin ist (oder im DM-Kontext)."""
+    member = interaction.user
+    return (
+        isinstance(member, discord.Member)
+        and member.guild_permissions.administrator
+    )
+
+
 @tree.command(name='help', description='Alle verfügbaren Befehle anzeigen')
 async def cmd_help(interaction: discord.Interaction):
+    is_admin = _is_admin(interaction)
     embed = discord.Embed(title='♟️ Bot-Befehle', color=0x4e9e4e)
     embed.add_field(
         name='/puzzle [anzahl] [buch]',
@@ -198,14 +208,15 @@ async def cmd_help(interaction: discord.Interaction):
               '`/youtube url:… beschreibung:…` — Neuen Link hinzufügen',
         inline=False,
     )
-    embed.add_field(
-        name='/ignore_kapitel [buch] [kapitel] [aktion]',
-        value='**(Admin)** Ein ganzes Kapitel ignorieren.\n'
-              '`/ignore_kapitel buch:2 kapitel:3` — ignoriert Kapitel 3 in Buch 2\n'
-              '`/ignore_kapitel buch:2 kapitel:3 aktion:unignore` — wieder aktivieren\n'
-              '`/ignore_kapitel` — alle ignorierten Kapitel anzeigen',
-        inline=False,
-    )
+    if is_admin:
+        embed.add_field(
+            name='/ignore_kapitel [buch] [kapitel] [aktion]',
+            value='Ein ganzes Kapitel ignorieren.\n'
+                  '`/ignore_kapitel buch:2 kapitel:3` — ignoriert Kapitel 3 in Buch 2\n'
+                  '`/ignore_kapitel buch:2 kapitel:3 aktion:unignore` — wieder aktivieren\n'
+                  '`/ignore_kapitel` — alle ignorierten Kapitel anzeigen',
+            inline=False,
+        )
     embed.add_field(
         name='/elo [wert]',
         value='Eigene Schach-Elo angeben oder anzeigen.\n'
@@ -213,11 +224,22 @@ async def cmd_help(interaction: discord.Interaction):
               '`/elo` — Zeigt deine aktuelle Elo + Historie',
         inline=False,
     )
-    embed.add_field(
-        name='/stats',
-        value='Nutzungsstatistiken aller User anzeigen.',
-        inline=False,
-    )
+    if is_admin:
+        embed.add_field(
+            name='/stats',
+            value='Nutzungsstatistiken aller User anzeigen.',
+            inline=False,
+        )
+        embed.add_field(
+            name='/daily',
+            value='Tägliches Puzzle manuell auslösen.',
+            inline=False,
+        )
+        embed.add_field(
+            name='/announce <user>',
+            value='Begrüßungsnachricht per DM an einen User senden.',
+            inline=False,
+        )
     embed.add_field(
         name='/version',
         value='Aktuelle Bot-Version anzeigen.',
@@ -261,7 +283,8 @@ async def cmd_announce(interaction: discord.Interaction, user: discord.User):
         await interaction.response.send_message(f'❌ Fehler: {e}', ephemeral=True)
 
 
-@tree.command(name='stats', description='Nutzungsstatistiken aller User anzeigen')
+@tree.command(name='stats', description='Nutzungsstatistiken aller User anzeigen (Admin)')
+@discord.app_commands.default_permissions(administrator=True)
 async def cmd_stats(interaction: discord.Interaction):
     all_stats = stats.get_all()
     if not all_stats:

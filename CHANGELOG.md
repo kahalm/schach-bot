@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.12.4] - 2026-04-25
+### Changed
+- `/stats` ist jetzt Admin-only.
+- `/help` zeigt Admin-Befehle (`/stats`, `/daily`, `/announce`,
+  `/ignore_kapitel`) nur wenn der anfragende User Admin ist.
+
 ## [1.12.3] - 2026-04-19
 ### Fixed
 - Terminal-Log-Level von WARNING auf ERROR angehoben — nur noch echte
