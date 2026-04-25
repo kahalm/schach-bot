@@ -1387,7 +1387,7 @@ def upload_many_to_lichess(
             r.raise_for_status()
             study_id = r.json().get('id', '')
             if not study_id:
-                return None
+                return []
 
             # Leeres Auto-Kapitel merken
             pgn_resp = _lichess_request(

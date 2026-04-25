@@ -71,12 +71,19 @@ blind.setup(bot)
 test.setup(bot)
 
 
+_ready_done = False
+
 @bot.event
 async def on_ready():
+    global _ready_done
+    if _ready_done:
+        log.info('Reconnect als %s (on_ready übersprungen)', bot.user)
+        return
+    _ready_done = True
     # Persistente Button-View für Puzzle-Reaktionen registrieren
     bot.add_view(puzzle.PuzzleView())
     await tree.sync()
-    log.info('Bot online als %s', bot.user)
+    log.info('Bot online als %s v%s', bot.user, VERSION)
     puzzle_task.start()
 
 
@@ -88,17 +95,20 @@ async def on_message(message: discord.Message):
         return
 
     # Erste DM → Bot stellt sich vor
-    try:
-        with open(DM_STATE_FILE) as f:
-            greeted: list = json.load(f).get('greeted', [])
-    except (FileNotFoundError, json.JSONDecodeError):
-        greeted = []
-
     user_id = message.author.id
-    if user_id not in greeted:
+
+    def _check_and_greet(data):
+        greeted = data.get('greeted', [])
+        if user_id in greeted:
+            return data  # bereits begrüßt
         greeted.append(user_id)
-        with open(DM_STATE_FILE, 'w') as f:
-            json.dump({'greeted': greeted}, f)
+        data['greeted'] = greeted
+        return data
+
+    from core.json_store import atomic_read, atomic_update
+    old = atomic_read(DM_STATE_FILE, default=dict)
+    if user_id not in old.get('greeted', []):
+        atomic_update(DM_STATE_FILE, _check_and_greet, default=dict)
         await message.channel.send(WELCOME_MESSAGE)
 
     await bot.process_commands(message)

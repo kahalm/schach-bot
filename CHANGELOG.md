@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.13.1] - 2026-04-25
+### Fixed
+- Race Condition in DM-Greeting (`bot.py`): manuelles `json.load/dump` durch
+  `atomic_update` aus `core/json_store` ersetzt.
+- `on_ready()` feuert nur noch einmalig: Guard-Flag verhindert doppelte
+  `PuzzleView`-Registrierung, `tree.sync()` und `puzzle_task.start()` bei
+  Discord-Reconnects.
+- `build_library_catalog()` Early-Return gibt jetzt 5-Tupel statt 4-Tupel
+  zurück (passte nicht zur Signatur).
+- `upload_many_to_lichess()` gibt `[]` statt `None` zurück wenn keine
+  Study-ID erstellt werden konnte (Signatur: `-> list[str]`).
+- Bot-Version wird jetzt im `on_ready`-Log angezeigt.
+
 ## [1.13.0] - 2026-04-25
 ### Added
 - `core/json_store.py`: Atomare JSON-Persistenz mit per-Datei-Locks und

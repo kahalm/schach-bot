@@ -286,7 +286,7 @@ def build_library_catalog() -> tuple[int, int, int, int, int]:
     """index.txt mit library.json abgleichen: alle Einträge neu aufbauen.
     Returns (dateien, bücher_gesamt, neu, aktualisiert, entfernt)."""
     if not LIBRARY_INDEX or not os.path.exists(LIBRARY_INDEX):
-        return (0, 0, 0, 0)
+        return (0, 0, 0, 0, 0)
 
     old_catalog = _load_library()
     old_by_id = {e['id']: e for e in old_catalog}
