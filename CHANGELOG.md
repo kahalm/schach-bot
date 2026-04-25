@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.31.0] - 2026-04-25
+### Added
+- Neues `/wanted`-Feature: Feature-Wünsche einreichen, abstimmen und verwalten
+  (`/wanted`, `/wanted_list`, `/wanted_vote`, `/wanted_delete`)
+- CLAUDE.md: Test-Regeln-Sektion und Command-Test-Referenzen ergänzt
+
 ## [1.30.0] - 2026-04-25
 ### Changed
 - Refactor Phase 6, Schritt 9: Alle Caller auf direkte Sub-Modul-Imports umgestellt,

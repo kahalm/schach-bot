@@ -61,7 +61,7 @@ tree = bot.tree
 # Module laden
 import puzzle
 import library
-from commands import reminder, resourcen, youtube, elo, release_notes, blind, test
+from commands import reminder, resourcen, youtube, elo, release_notes, blind, test, wanted
 
 puzzle.setup(bot)
 library.setup(bot)
@@ -72,6 +72,7 @@ elo.setup(bot)
 release_notes.setup(bot)
 blind.setup(bot)
 test.setup(bot)
+wanted.setup(bot)
 
 
 _ready_done = False
@@ -190,6 +191,11 @@ def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str
             ('/elo [wert]',
              'Eigene Schach-Elo angeben oder anzeigen.\n'
              '`/elo wert:1500` — Setzen · `/elo` — Anzeigen mit Historie'),
+            ('/wanted [beschreibung]',
+             'Feature-Wunsch einreichen oder Liste anzeigen.\n'
+             '`/wanted` — Auflisten · `/wanted beschreibung:…` — Einreichen'),
+            ('/wanted_list', 'Alle Feature-Wünsche anzeigen (nach Stimmen sortiert).'),
+            ('/wanted_vote <id>', 'Für einen Feature-Wunsch stimmen (Toggle +1/−1).'),
         ]
     if bereich == 'info':
         return 'ℹ️ Info', [
@@ -214,6 +220,7 @@ def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str
              '`/ignore_kapitel buch:2 kapitel:3 aktion:unignore` — reaktivieren\n'
              '`/ignore_kapitel` — alle ignorierten Kapitel anzeigen'),
             ('/test', 'Snapshot-Regressionstests ausführen.'),
+            ('/wanted_delete <id>', 'Feature-Wunsch löschen.'),
         ]
     return '', []
 
@@ -248,14 +255,14 @@ async def cmd_help(interaction: discord.Interaction, bereich: str = ''):
                         value='`/bibliothek` `/autor` `/tag`',
                         inline=False)
         embed.add_field(name='🌐 community',
-                        value='`/resourcen` `/youtube` `/elo`',
+                        value='`/resourcen` `/youtube` `/elo` `/wanted`',
                         inline=False)
         embed.add_field(name='ℹ️ info',
                         value='`/version` `/release-notes` `/help`',
                         inline=False)
         if is_admin:
             embed.add_field(name='🔧 admin',
-                            value='`/daily` `/stats` `/announce` `/ignore_kapitel` `/test`',
+                            value='`/daily` `/stats` `/announce` `/ignore_kapitel` `/test` `/wanted_delete`',
                             inline=False)
 
     embed.set_footer(text=f'Schach-Bot v{VERSION}')

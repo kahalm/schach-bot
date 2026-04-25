@@ -11,8 +11,9 @@ pip install -r requirements.txt
 # Run the bot
 python bot.py
 
-# Run trim-snapshot tests
-python tests/test_trim.py
+# Run tests
+python tests/test_trim.py       # Trim-snapshot regression tests
+python tests/test_commands.py    # Slash-command tests (all 27 commands)
 ```
 
 ## Configuration
@@ -37,7 +38,7 @@ Runtime state lives in `config/` (gitignored, auto-created).
 | `library.py` | Books library (/bibliothek, /tag, /autor, /reindex) |
 | `books/` | PGN files + `books.json` metadata |
 | `assets/` | Bot icons |
-| `tests/` | Trim-snapshot regression tests |
+| `tests/` | `test_trim.py` (Snapshot-Regression), `test_commands.py` (alle 27 Slash-Commands) |
 
 ### Key patterns
 
@@ -45,6 +46,15 @@ Runtime state lives in `config/` (gitignored, auto-created).
 - **Atomic JSON persistence** (`core/json_store.py`): Thread-safe read/write/update with per-file locks and `tempfile` → `os.replace`.
 - **In-memory caches**: Ignore lists, chapter ignores, books config, puzzle lines (with Pickle disk cache). Invalidated on write or via `/reindex`.
 - **Button reactions** (`puzzle/buttons.py`): `PuzzleView` with mutex-paired buttons. Clicks defer immediately, side-effects run as background tasks.
+
+## Test-Regeln (PFLICHT!)
+
+1. **Nach jeder Änderung** müssen ALLE Tests erfolgreich laufen:
+   ```bash
+   python tests/test_trim.py      # 171 Snapshot-Tests
+   python tests/test_commands.py   # 131 Command-Tests
+   ```
+2. **Test-First**: Für jedes neue Feature ZUERST einen Test schreiben, dann die Implementierung.
 
 ## Release-Regel (PFLICHT bei jedem Commit!)
 
