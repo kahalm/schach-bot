@@ -15,7 +15,7 @@ import json
 import os
 from datetime import time
 
-from core import stats
+from core import stats, dm_log
 from core.paths import CONFIG_DIR
 from core.version import VERSION, START_TIME
 
@@ -351,4 +351,5 @@ async def puzzle_task():
 
 # ---------------------------------------------------------------------------
 
+dm_log.install()
 bot.run(DISCORD_TOKEN)
