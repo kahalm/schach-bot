@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.23.0] - 2026-04-25
+### Changed
+- Refactor Phase 6, Schritt 2: PGN-Verarbeitung in `puzzle/processing.py` extrahiert
+  (10 Funktionen: `_trim_to_training_position`, `_strip_pgn_annotations`, `_flatten_null_move_variations`,
+  `_split_for_blind`, `_format_blind_moves`, `_prelude_pgn`, `_has_training_comment`,
+  `_solution_pgn`, `_clean_book_name`, `_clean_pgn_for_lichess`). `legacy.py` re-exportiert.
+
 ## [1.22.0] - 2026-04-25
 ### Changed
 - Refactor Phase 6, Schritt 1: Board-Rendering in `puzzle/rendering.py` extrahiert
