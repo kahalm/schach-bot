@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.28.0] - 2026-04-25
+### Changed
+- Refactor Phase 6, Schritt 7: Discord-Posting in `puzzle/posting.py` extrahiert
+  (`post_puzzle`, `post_blind_puzzle`, `post_next_endless`, `_resilient_send`,
+  `_send_optional`, `_upload_puzzles_async`, `_send_puzzle_followups`). `legacy.py` re-exportiert.
+
 ## [1.27.0] - 2026-04-25
 ### Changed
 - Refactor Phase 6, Schritt 6: Lichess-API in `puzzle/lichess.py` extrahiert
