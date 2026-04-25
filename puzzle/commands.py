@@ -175,8 +175,8 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
 async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
     await interaction.response.defer(ephemeral=True)
     try:
-        all_lines = _pkg.load_all_lines()
-        posted    = set(_pkg.load_puzzle_state().get('posted', []))
+        all_lines = await asyncio.to_thread(_pkg.load_all_lines)
+        posted    = set((await asyncio.to_thread(_pkg.load_puzzle_state)).get('posted', []))
         books_config = _pkg._load_books_config()
 
         # --- Detailansicht für ein einzelnes Buch ---
@@ -198,7 +198,7 @@ async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
             from core import event_log as _elog
             uid = interaction.user.id
             _net: dict[str, int] = {}
-            for entry in _elog.read_all():
+            for entry in await asyncio.to_thread(_elog.read_all):
                 if entry.get('user') != uid:
                     continue
                 if entry.get('emoji') not in ('✅', '❌'):
@@ -325,7 +325,7 @@ async def _cmd_train(interaction: discord.Interaction, buch: int = None):
             return
         book_filename = training['book']
         pos = training['position']
-        all_lines = _pkg.load_all_lines()
+        all_lines = await asyncio.to_thread(_pkg.load_all_lines)
         total = sum(1 for lid, _ in all_lines if lid.startswith(book_filename + ':'))
         name = _pkg._clean_book_name(book_filename)
         books = _pkg._list_pgn_files()
@@ -373,7 +373,7 @@ async def _cmd_train(interaction: discord.Interaction, buch: int = None):
     _pkg._set_user_training(user_id, book_filename, pos)
 
     # Info anzeigen
-    all_lines = _pkg.load_all_lines()
+    all_lines = await asyncio.to_thread(_pkg.load_all_lines)
     total = sum(1 for lid, _ in all_lines if lid.startswith(book_filename + ':'))
     name = _pkg._clean_book_name(book_filename)
     books_config = _pkg._load_books_config()
@@ -407,7 +407,7 @@ async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
     book_filename = training['book']
     position = training.get('position', 0)
 
-    results = _pkg.pick_sequential_lines(book_filename, position, anzahl)
+    results = await asyncio.to_thread(_pkg.pick_sequential_lines, book_filename, position, anzahl)
     if not results:
         name = _pkg._clean_book_name(book_filename)
         # Position auf 0 zurücksetzen
@@ -451,7 +451,7 @@ async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
 
     # DM senden
     dm = await interaction.user.create_dm()
-    all_book_lines = _pkg.load_all_lines()
+    all_book_lines = await asyncio.to_thread(_pkg.load_all_lines)
     total_in_book = sum(1 for lid, _ in all_book_lines
                         if lid.startswith(book_filename + ':'))
 

@@ -9,6 +9,7 @@ except (OSError, ImportError):
 from core import log_setup
 log = log_setup.setup()
 
+import asyncio
 import discord
 from discord.ext import tasks, commands
 import os
@@ -110,9 +111,9 @@ async def on_message(message: discord.Message):
         return data
 
     from core.json_store import atomic_read, atomic_update
-    old = atomic_read(DM_STATE_FILE, default=dict)
+    old = await asyncio.to_thread(atomic_read, DM_STATE_FILE, dict)
     if user_id not in old.get('greeted', []):
-        atomic_update(DM_STATE_FILE, _check_and_greet, default=dict)
+        await asyncio.to_thread(atomic_update, DM_STATE_FILE, _check_and_greet, dict)
         await message.channel.send(WELCOME_MESSAGE)
 
     await bot.process_commands(message)
@@ -282,9 +283,8 @@ async def cmd_version(interaction: discord.Interaction):
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_greeted(interaction: discord.Interaction):
     from core.json_store import atomic_read
-    import asyncio
 
-    data = atomic_read(DM_STATE_FILE, default=dict)
+    data = await asyncio.to_thread(atomic_read, DM_STATE_FILE, dict)
     greeted = data.get('greeted', [])
     if not greeted:
         await interaction.response.send_message('Noch niemand begrüßt.', ephemeral=True)
@@ -329,7 +329,7 @@ async def cmd_announce(interaction: discord.Interaction, user: discord.User):
 @tree.command(name='stats', description='Nutzungsstatistiken aller User anzeigen (Admin)')
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_stats(interaction: discord.Interaction):
-    all_stats = stats.get_all()
+    all_stats = await asyncio.to_thread(stats.get_all)
     if not all_stats:
         await interaction.response.send_message('Noch keine Statistiken vorhanden.', ephemeral=True)
         return
@@ -337,7 +337,6 @@ async def cmd_stats(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
 
     # User-Infos parallel fetchen statt sequentiell
-    import asyncio
     uids = list(all_stats.keys())
 
     async def _fetch_name(uid):

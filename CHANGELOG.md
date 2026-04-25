@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.34.0] - 2026-04-25
+### Fixed
+- **Blocking I/O**: `on_message` DM-Handling nutzt jetzt `asyncio.to_thread`
+  fuer JSON-Dateizugriffe (blockiert nicht mehr den Event-Loop bei jeder DM)
+- **Blocking I/O**: `/kurs` — `load_all_lines()`, `load_puzzle_state()` und
+  `read_all()` laufen jetzt in Threads
+- **Blocking I/O**: `/train` und `/next` — schwere File-I/O-Aufrufe
+  (`load_all_lines`, `pick_sequential_lines`) in Threads ausgelagert
+- **Blocking I/O**: `/greeted` und `/stats` — JSON-Reads in Threads
+
 ## [1.33.0] - 2026-04-25
 ### Fixed
 - **Race Conditions**: `_set_user_study_id`, `_set_user_training`, `_clear_user_training`
