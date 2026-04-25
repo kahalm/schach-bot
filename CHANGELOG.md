@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.29.0] - 2026-04-25
+### Changed
+- Refactor Phase 6, Schritt 8: Slash-Commands in `puzzle/commands.py` extrahiert
+  (`_cmd_puzzle`, `_cmd_buecher`, `_cmd_train`, `_cmd_next`, `_cmd_endless`,
+  `_cmd_ignore_kapitel`, `setup`). `legacy.py` ist jetzt ein reiner Re-Export-Shim (~70 Zeilen).
+
 ## [1.28.0] - 2026-04-25
 ### Changed
 - Refactor Phase 6, Schritt 7: Discord-Posting in `puzzle/posting.py` extrahiert
