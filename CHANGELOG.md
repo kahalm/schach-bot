@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.26.0] - 2026-04-25
+### Changed
+- Refactor Phase 6, Schritt 5: Puzzle-Auswahl/Caching in `puzzle/selection.py` extrahiert
+  (`load_all_lines`, `clear_lines_cache`, `pick_random_lines`, `find_line_by_id`,
+  `_find_chapter_prefix`, `_list_chapters`, `_list_pgn_files`, etc.). `legacy.py` re-exportiert.
+
 ## [1.25.0] - 2026-04-25
 ### Changed
 - Refactor Phase 6, Schritt 4: Zustand/Persistenz in `puzzle/state.py` extrahiert
