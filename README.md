@@ -1,123 +1,147 @@
-# ♟️ Chess Bot for Discord
+# ♟️ Schach-Bot für Discord
 
-A Discord bot with two daily chess features:
-
-1. **Daily game** — posts a chapter from a [Lichess study](https://lichess.org/study) with board image and annotations
-2. **Daily puzzle** — picks a random position from local PGN books, uploads it to Lichess as an interactive gamebook study, and posts a Discord thread with board image and link
+Ein Discord-Bot für tägliche Schach-Puzzles aus Chessable-PGN-Büchern.
 
 ## Features
 
-- Daily chapter post from a Lichess study (board image + embed)
-- Daily puzzle from local PGN files (Chessable / piratechess format)
-  - Trims the game to the `[%tqu]` training position automatically
-  - Creates a new Lichess study with two chapters:
-    - **Chapter 1** — Gamebook starting at the training position (interactive quiz)
-    - **Chapter 2** — Complete original game for context
-  - Posts a Discord thread with the board image and a clickable Lichess link
-- No chapter is posted twice (progress tracked in `state.json` / `puzzle_state.json`)
-- Board images rendered with the Lichess cburnett piece set
-- Rotating log file (`bot.log`, max 1 MB, 5 backups)
+- **Tägliches Puzzle** — wählt zufällig eine Position aus lokalen PGN-Büchern, lädt sie als interaktives Lichess-Gamebook hoch, postet einen Discord-Thread mit Bretbild und Link
+- **Gamebook-Modus** — Kapitel 1: interaktives Quiz ab Trainingsposition; Kapitel 2: vollständiges Originalspiel
+- `[%tqu]`-Filterung — nur Positionen mit Trainingsannotation werden als Puzzle genutzt
+- Board-Rendering mit dem Lichess cburnett-Figurensatz (Pillow, kein Cairo nötig)
+- Kein Puzzle wird zweimal gepostet (Fortschritt in `config/puzzle_state.json`)
+- Rotating Log (`bot.log`, max 1 MB, 5 Backups)
+- Alle ausgehenden DMs werden per User in `config/dm_log.json` mitgeschrieben
 
-## Slash Commands
+## Slash-Befehle
 
-| Command | Description |
-|---------|-------------|
-| `/partie` | Post the next chapter from the Lichess study immediately |
-| `/studie` | Show study info: total chapters and which comes next |
-| `/puzzle [anzahl] [buch]` | Post random puzzle(s) via DM (1–20, optional book filter) |
-| `/kurs` | Show all puzzle books with progress |
-| `/train [buch]` | Select a book for sequential training (`/train 0` to stop) |
-| `/next [anzahl]` | Send next line(s) from the training book via DM |
-| `/endless [buch]` | Toggle endless puzzle mode — after each ✅/❌ the next puzzle is sent automatically |
-| `/reminder [hours] [puzzle_count] [buch]` | Set up recurring puzzle DMs at a custom interval (1–168h). `hours:0` to stop |
-| `/bibliothek <suche>` | Search the chess book library (title, author, tags) |
-| `/autor <autor>` | Show all books by an author |
-| `/tag <tag>` | Filter books by tag (e.g. Taktik, Endspiel) |
-| `/resourcen [url] [beschreibung]` | Show or add online learning resources |
-| `/youtube [url] [beschreibung]` | Show or add YouTube channels/videos |
-| `/elo [wert]` | Set or show your own chess Elo (with history + timestamps) |
-| `/stats` | Show usage statistics for all users |
-| `/version` | Show the current bot version (major.minor.bugfix) |
-| `/help` | Show all available commands |
-| `/reindex` | Rebuild library catalog (admins only) |
-| `/ignore_kapitel [buch] [kapitel] [aktion]` | Ignore an entire chapter so its puzzles are skipped (admins only) |
-| `/reset` | Reset the chapter counter to 1 (admins only) |
+### Puzzles
+| Befehl | Beschreibung |
+|--------|-------------|
+| `/puzzle [anzahl] [buch]` | Zufälliges Puzzle(s) per DM (1–20, optional Buchfilter) |
+| `/blind [moves] [anzahl] [buch]` | Blind-Puzzle: X Halbzüge vor der Trainingsposition |
+| `/endless [buch]` | Endlos-Modus: nach jeder ✅/❌ kommt sofort das nächste Puzzle |
+| `/kurs` | Alle Puzzle-Bücher mit Fortschritt anzeigen |
+| `/train [buch]` | Buch für sequentielles Training wählen (`/train 0` zum Stoppen) |
+| `/next [anzahl]` | Nächste Linie(n) aus dem Trainingsbuch per DM senden |
+| `/reminder [hours] [puzzle_count] [buch]` | Wiederkehrende Puzzle-DMs (`hours:0` zum Stoppen) |
 
-## Requirements
+### Bibliothek
+| Befehl | Beschreibung |
+|--------|-------------|
+| `/bibliothek <suche>` | Schachbuch-Bibliothek durchsuchen |
+| `/autor <autor>` | Alle Bücher eines Autors |
+| `/tag <tag>` | Bücher nach Tag filtern |
 
-- Python 3.10 or newer
-- A Discord bot token ([guide](https://discord.com/developers/applications))
-- A public or unlisted Lichess study for the daily game
-- A Lichess OAuth token with `study:write` scope for puzzle upload
+### Sonstiges
+| Befehl | Beschreibung |
+|--------|-------------|
+| `/resourcen [url] [beschreibung]` | Lernressourcen anzeigen oder hinzufügen |
+| `/youtube [url] [beschreibung]` | YouTube-Links anzeigen oder hinzufügen |
+| `/elo [wert]` | Eigene Elo angeben oder anzeigen |
+| `/version` | Bot-Version und Uptime |
+| `/release-notes [version] [anzahl]` | Changelog anzeigen |
+| `/help` | Alle Befehle anzeigen |
+
+### Admin-only
+| Befehl | Beschreibung |
+|--------|-------------|
+| `/daily` | Tägliches Puzzle manuell auslösen |
+| `/stats` | Nutzungsstatistiken aller User |
+| `/announce <user>` | Begrüßungsnachricht per DM an einen User senden |
+| `/ignore_kapitel [buch] [kapitel] [aktion]` | Kapitel aus dem Puzzle-Pool ausschließen |
+| `/test` | Snapshot-Regressionstests ausführen |
+
+## Projektstruktur
+
+```
+schach-bot/
+├── bot.py                  # Einstiegspunkt, Events, /help, /version, /stats, Daily-Task
+├── puzzle/
+│   ├── legacy.py           # Puzzle-Logik (Trim, Render, Upload, Post, Slash-Commands)
+│   ├── buttons.py          # Button-View (✅ ❌ 👍 👎 🚮)
+│   └── __init__.py
+├── commands/
+│   ├── blind.py            # /blind
+│   ├── elo.py              # /elo
+│   ├── reminder.py         # /reminder
+│   ├── release_notes.py    # /release-notes
+│   ├── resourcen.py        # /resourcen
+│   ├── test.py             # /test (Snapshot-Tests)
+│   └── youtube.py          # /youtube
+├── core/
+│   ├── dm_log.py           # DM-Logging (config/dm_log.json)
+│   ├── log_setup.py        # Rotating Log + stderr-Filter
+│   ├── paths.py            # CONFIG_DIR-Konstante
+│   ├── stats.py            # User-Statistiken
+│   └── version.py          # VERSION, START_TIME
+├── library.py              # /bibliothek, /autor, /tag
+├── books/                  # PGN-Dateien + books.json (Metadaten)
+├── assets/                 # Figur-Icons (cburnett)
+├── tests/                  # test_trim.py, trim_snapshots.json
+├── requirements.txt
+├── .env.example
+├── CHANGELOG.md
+└── config/                 # Runtime-State (gitignored, auto-erstellt)
+    ├── puzzle_state.json
+    ├── reminder.json
+    ├── dm_log.json
+    └── ...
+```
 
 ## Installation
 
-You only need **two files** from this repository: `bot.py` and `requirements.txt`. Everything else is created automatically at runtime.
-
-**1. Download the two files**
-
-Either clone the full repository:
+**1. Repository klonen**
 ```bash
 git clone https://github.com/kahalm/schach-bot.git
 cd schach-bot
 ```
-Or download just the two files directly:
-```bash
-curl -O https://raw.githubusercontent.com/kahalm/schach-bot/main/bot.py
-curl -O https://raw.githubusercontent.com/kahalm/schach-bot/main/requirements.txt
-```
 
-**2. Install dependencies**
+**2. Abhängigkeiten installieren**
 
-On Linux, install the required system libraries first:
+Linux (System-Bibliotheken):
 ```bash
 sudo apt install python3-venv libcairo2-dev pkg-config python3-dev -y
 ```
 
-Then create a virtual environment and install the Python packages:
+Python-Pakete:
 ```bash
 python3 -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-> Activate the venv before each `python bot.py` call, or run `venv/bin/python bot.py` directly.
-
-**3. Create a `.env` file**
-
-Create a file named `.env` in the same folder as `bot.py` and fill in your values:
+**3. `.env` anlegen**
 ```env
 DISCORD_TOKEN=your_discord_bot_token
-LICHESS_STUDY_ID=ndPgby4a
 CHANNEL_ID=123456789012345678
-POST_HOUR=8
-POST_MINUTE=0
-LICHESS_TOKEN=your_lichess_token
-BOOKS_DIR=books
 PUZZLE_HOUR=9
 PUZZLE_MINUTE=0
+LICHESS_TOKEN=your_lichess_token   # OAuth-Token mit study:write
 ```
-See the [Configuration](#configuration) table for details on each variable.
 
-**4. Add PGN books** *(for the puzzle feature)*
+**4. PGN-Bücher hinzufügen**
 
-Create a `books/` folder and place one or more `.pgn` files inside. The bot expects Chessable/piratechess-style PGN with `[%tqu]` training annotations. Each annotated position becomes a puzzle candidate.
+Chessable-PGN-Dateien in `books/` legen. Die Datei `books/books.json` steuert Metadaten und ob ein Buch im Daily-Pool ist (`random: true/false`).
 
-**5. Run the bot**
+**5. Bot starten**
 ```bash
-python bot.py          # inside the activated venv
-# or without activating:
-venv/bin/python bot.py
+python bot.py
 ```
 
-## Running as a systemd Service (Linux)
+## Konfiguration (`.env`)
 
-To keep the bot running permanently and restart it automatically after a reboot or crash:
+| Variable | Pflicht | Beschreibung |
+|----------|---------|-------------|
+| `DISCORD_TOKEN` | Ja | Token aus dem [Discord Developer Portal](https://discord.com/developers/applications) |
+| `CHANNEL_ID` | Ja | Discord-Channel für tägliche Posts |
+| `PUZZLE_HOUR` | Nein | Stunde des täglichen Puzzles (UTC, Standard: 9) |
+| `PUZZLE_MINUTE` | Nein | Minute des täglichen Puzzles (Standard: 0) |
+| `LICHESS_TOKEN` | Ja* | OAuth-Token mit `study:write` für Puzzle-Upload |
+| `BOOKS_DIR` | Nein | Ordner mit PGN-Dateien (Standard: `books`) |
 
-**1. Create the service file**
-```bash
-sudo nano /etc/systemd/system/schach-bot.service
-```
+*Ohne `LICHESS_TOKEN` kein interaktives Lichess-Gamebook.
+
+## Als systemd-Service (Linux)
 
 ```ini
 [Unit]
@@ -134,112 +158,30 @@ User=youruser
 WantedBy=multi-user.target
 ```
 
-Replace `/path/to/schach-bot` and `youruser` with your actual path and username.
-
-**2. Enable and start**
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now schach-bot
 ```
 
-**3. Useful commands**
-```bash
-sudo systemctl status schach-bot   # check if running
-sudo systemctl restart schach-bot  # restart after config changes
-journalctl -u schach-bot -f        # live log output
-```
-
-> The bot also writes its own rotating log to `bot.log` in the working directory.
-
-## Configuration
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `DISCORD_TOKEN` | Yes | Token from the [Discord Developer Portal](https://discord.com/developers/applications) |
-| `LICHESS_STUDY_ID` | Yes | Study ID from `lichess.org/study/`**ID** |
-| `CHANNEL_ID` | Yes | Discord channel for daily posts (right-click → Copy ID) |
-| `POST_HOUR` | Yes | Hour of the daily game post (UTC, 0–23) |
-| `POST_MINUTE` | Yes | Minute of the daily game post (0–59) |
-| `LICHESS_TOKEN` | Yes* | OAuth token with `study:write` scope — required for puzzle upload. Create at [lichess.org/account/oauth/token](https://lichess.org/account/oauth/token) |
-| `BOOKS_DIR` | No | Folder with PGN files (default: `books`) |
-| `PUZZLE_HOUR` | No | Hour of the daily puzzle post (UTC, default: `9`) |
-| `PUZZLE_MINUTE` | No | Minute of the daily puzzle post (default: `0`) |
-
-*Without `LICHESS_TOKEN` the puzzle falls back to a simple game import (no interactive quiz).
-
-## Puzzle PGN Format
-
-The bot reads `.pgn` files where training positions are marked with a `[%tqu]` comment:
-
-```pgn
-[White "Anastasia's Mate"]
-[FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"]
-
-1. d4 d5 ... 26. Rb4 Qd8 {[%tqu "En","find the move","","","c2h7","",10]}
-27. Qxh7+ Kxh7 28. Rh4# *
-```
-
-The bot locates the first `[%tqu]` annotation in each game, sets the FEN of that position as the gamebook starting point, and uploads all subsequent moves as the interactive solution.
-
-## Adding the Bot to a Discord Server
-
-1. [Discord Developer Portal](https://discord.com/developers/applications) → your app
-2. **Bot → Privileged Gateway Intents** → enable **Message Content Intent** (required for DM greeting)
-3. **OAuth2 → URL Generator** → Scopes: `bot` + `applications.commands`
-4. Bot Permissions (select all of the following):
-
-| Permission | Required for |
-|------------|-------------|
-| `Send Messages` | Posting daily game and puzzle |
-| `Embed Links` | Rich embeds with board image and Lichess link |
-| `Attach Files` | Board image upload |
-| `Create Public Threads` | Daily puzzle thread (current) |
-| `Create Private Threads` | Planned: personal training threads |
-| `Send Messages in Threads` | Posting inside threads |
-| `Manage Threads` | Archiving / closing threads |
-| `Send TTS Messages` | — |
-
-> **Note on DMs:** Sending direct messages to users requires no extra bot permission, but users must have *"Allow direct messages from server members"* enabled in their Discord privacy settings.
-
-5. Open the generated URL and select your server
-
-## Roadmap
-
-Planned extensions:
-
-- **Public training threads** — one thread per puzzle where all server members can discuss moves and post solutions
-- **Private training threads** — per-user threads visible only to the bot and that user, for personalised training feedback without spoiling the solution for others
-- **Direct messages (DMs)** — send a daily puzzle or a personalised hint directly to subscribed users; users can opt in/out via slash command
-
-## Testing the Puzzle Feature
-
-Without starting the full bot:
+## Tests
 
 ```bash
-python tests/test_puzzle.py
+python tests/test_trim.py
 ```
 
-This picks a random line, uploads it to Lichess, and prints the study URL and a validation summary.
+Prüft Trim-Snapshots für alle PGN-Bücher. Snapshots in `tests/trim_snapshots.json` — nie automatisch aktualisieren, immer manuell prüfen.
 
-## Project Structure
+## Bot-Berechtigungen (Discord)
 
-```
-schach-bot/
-├── bot.py              # All bot logic
-├── reminder.py         # /reminder command (recurring puzzle DMs)
-├── elo.py              # /elo command (user-reported chess Elo with history)
-├── resourcen.py        # /resourcen command (online learning resources)
-├── youtube.py          # /youtube command (YouTube channels/videos)
-├── tests/              # Standalone test scripts (test_puzzle, test_upload, test_study_create)
-├── requirements.txt    # Python dependencies
-├── .env.example        # Configuration template
-├── .env                # Your configuration (not committed)
-├── books/              # PGN files for puzzles (not committed)
-├── config/             # Runtime state & JSON configs (auto-created, gitignored)
-│   ├── puzzle_state.json
-│   ├── user_stats.json
-│   ├── elo.json
-│   ├── reminder.json
-│   └── ...
-└── bot.log             # Rotating log file (auto-created)
-```
+Scopes: `bot` + `applications.commands`
+
+| Berechtigung | Wofür |
+|-------------|-------|
+| Send Messages | Tägliches Puzzle, Thread-Posts |
+| Embed Links | Board-Embeds |
+| Attach Files | Brett-Bild |
+| Create Public Threads | Daily-Puzzle-Thread |
+| Send Messages in Threads | Posts im Thread |
+| Manage Threads | Thread-Archivierung |
+
+> DMs: Nutzer müssen „Direktnachrichten von Servermitgliedern erlauben" aktiviert haben.
