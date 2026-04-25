@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.27.0] - 2026-04-25
+### Changed
+- Refactor Phase 6, Schritt 6: Lichess-API in `puzzle/lichess.py` extrahiert
+  (`upload_to_lichess`, `upload_many_to_lichess`, `_lichess_request`, Rate-Limiting,
+  `_extract_study_id`, `_export_pgn_for_lichess`). `legacy.py` re-exportiert.
+
 ## [1.26.0] - 2026-04-25
 ### Changed
 - Refactor Phase 6, Schritt 5: Puzzle-Auswahl/Caching in `puzzle/selection.py` extrahiert

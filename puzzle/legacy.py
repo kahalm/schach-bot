@@ -1,30 +1,24 @@
 """Puzzle-Funktionen: Board-Rendering, Lichess-Upload, PGN-Laden, Slash-Commands."""
 
 import asyncio
-import io
 from core import stats
 import logging
 import os
 import random
 import re
 import time as _time_mod
-from collections import OrderedDict, defaultdict
-from datetime import time, date as _date, datetime as _datetime
+from collections import defaultdict
+from datetime import date as _date
 
 import chess
 import chess.pgn
 import discord
-import requests
 
 log = logging.getLogger('schach-bot')
 
-from core.json_store import atomic_read, atomic_write, atomic_update
 from core.version import EMBED_COLOR
 from puzzle.buttons import fresh_view as _fresh_button_view
 
-# Lichess-/Discord-Limits für Truncation
-_LICHESS_STUDY_NAME_MAX = 100
-_LICHESS_CHAPTER_NAME_MAX = 70
 _DISCORD_THREAD_NAME_MAX = 100
 
 # --- Zustand/Persistenz (ausgelagert nach puzzle.state) ---
@@ -46,18 +40,6 @@ from puzzle.state import (  # noqa: F401
     _get_user_training, _set_user_training, _clear_user_training,
 )
 from core.paths import CONFIG_DIR
-
-
-def _extract_study_id(url: str) -> str | None:
-    """Extrahiert die Studien-ID aus einer Lichess-URL."""
-    if not url:
-        return None
-    parts = url.rstrip('/').split('/')
-    if 'study' in parts:
-        sidx = parts.index('study')
-        sid = parts[sidx + 1] if sidx + 1 < len(parts) else ''
-        return sid or None
-    return None
 
 
 async def _upload_puzzles_async(
@@ -84,15 +66,6 @@ from puzzle.processing import (  # noqa: F401
     _trim_to_training_position, _split_for_blind, _format_blind_moves,
     _flatten_null_move_variations, _strip_pgn_annotations, _clean_pgn_for_lichess,
 )
-
-
-def _export_pgn_for_lichess(game: chess.pgn.Game, headers=True,
-                             variations=True, comments=True) -> str:
-    """Exportiert ein Game als PGN und bereinigt es für Lichess."""
-    exp = chess.pgn.StringExporter(
-        headers=headers, variations=variations, comments=comments)
-    return _clean_pgn_for_lichess(game.accept(exp))
-
 
 
 async def _send_puzzle_followups(target, game: chess.pgn.Game,
@@ -189,9 +162,6 @@ async def post_next_endless(bot, user_id: int):
     stats.inc(user_id, 'puzzles', 1)
 
 
-# --- Config (verbleibend in legacy, wird spaeter in lichess/commands verschoben) ---
-LICHESS_API_TIMEOUT = 15
-LICHESS_TOKEN     = os.getenv('LICHESS_TOKEN', '')
 PUZZLE_HOUR       = int(os.getenv('PUZZLE_HOUR', '9'))
 PUZZLE_MINUTE     = int(os.getenv('PUZZLE_MINUTE', '0'))
 CHANNEL_ID        = int(os.getenv('CHANNEL_ID', '0'))
@@ -210,321 +180,15 @@ from puzzle.selection import (  # noqa: F401
 )
 
 
-_LICHESS_COOLDOWN_SECS = 3600  # 1 Stunde
-
-
-class LichessRateLimitError(Exception):
-    pass
-
-
-def _lichess_cooldown_until() -> float:
-    """Liest den gespeicherten Cooldown-Zeitstempel (Unix-Zeit). 0 = kein Cooldown."""
-    try:
-        data = atomic_read(LICHESS_COOLDOWN_FILE)
-        return float(data.get('until', 0))
-    except (ValueError, TypeError, AttributeError):
-        return 0.0
-
-
-def _lichess_rate_limited() -> bool:
-    """True wenn Lichess gerade im Rate-Limit-Cooldown ist."""
-    return _time_mod.time() < _lichess_cooldown_until()
-
-
-def _lichess_set_cooldown(retry_after: int | None = None):
-    """Setzt den Cooldown-Zeitstempel und schreibt ihn auf Disk.
-
-    retry_after – Sekunden aus dem Retry-After-Header (None = 1h Fallback).
-    """
-    secs  = retry_after if retry_after and retry_after > 0 else _LICHESS_COOLDOWN_SECS
-    until = _time_mod.time() + secs
-    atomic_write(LICHESS_COOLDOWN_FILE, {'until': until})
-    log.warning('Lichess 429 – Cooldown bis %s gesetzt (%ds).',
-                _datetime.fromtimestamp(until).strftime('%H:%M'), secs)
-
-
-def _lichess_request(method: str, url: str, **kwargs):
-    """Lichess-API-Request. Bei 429 wird ein persistenter Cooldown gesetzt."""
-    resp = requests.request(method, url, **kwargs)
-    if resp.status_code == 429:
-        try:
-            retry_after = int(resp.headers.get('Retry-After', 0))
-        except (ValueError, TypeError):
-            retry_after = 0
-        _lichess_set_cooldown(retry_after or None)
-        raise LichessRateLimitError()
-    return resp
-
-
-def upload_to_lichess(game: chess.pgn.Game,
-                      context_game: chess.pgn.Game | None = None,
-                      reuse_study_id: str | None = None,
-                      _depth: int = 0) -> str | None:
-    """Neue Lichess-Studie anlegen, PGN importieren und Kapitel-URL zurückgeben.
-
-    game         – gekürztes Spiel ab Trainingsposition (Gamebook-Kapitel 1)
-    context_game – vollständiges Originalspiel als Kapitel 2 (optional,
-                   nur sinnvoll wenn Trainingsposition nicht am Anfang liegt)
-    Gibt None zurück wenn Lichess im Cooldown ist.
-    """
-    if _lichess_rate_limited():
-        remaining = int(_lichess_cooldown_until() - _time_mod.time())
-        log.info('Lichess-Upload übersprungen (Cooldown noch %ds).', remaining)
-        return None
-    try:
-        # Gamebook: nur Züge + Varianten, keine Kommentare (stören im Gamebook-Modus)
-        pgn_text = _export_pgn_for_lichess(game, comments=False)
-    except Exception as e:
-        log.error('PGN-Export fehlgeschlagen: %s', e)
-        return None
-
-    h = dict(game.headers)
-    line_name  = h.get('White', h.get('Event', 'Puzzle'))
-    event_name = h.get('Event', 'Puzzle')
-    # Orientierung: Seite am Zug = Seite des Studenten im Gamebook
-    orientation = 'black' if game.board().turn == chess.BLACK else 'white'
-    today      = _date.today().strftime('%d.%m.%Y')
-    study_name = f'{event_name} – {today}'
-    if len(study_name) > _LICHESS_STUDY_NAME_MAX:
-        study_name = study_name[:_LICHESS_STUDY_NAME_MAX - 3] + '...'
-
-    # Kontext-PGN vorbereiten (2. Kapitel: vollständiges Originalspiel)
-    context_pgn = None
-    context_name = None
-    if context_game is not None:
-        try:
-            context_pgn = _export_pgn_for_lichess(context_game)
-            ch = dict(context_game.headers)
-            ctx_title = ch.get('White', ch.get('Event', 'Partie'))
-            if len(ctx_title) > _LICHESS_CHAPTER_NAME_MAX:
-                ctx_title = ctx_title[:_LICHESS_CHAPTER_NAME_MAX - 3] + '...'
-            context_name = f'Partie: {ctx_title}'
-        except Exception as e:
-            log.warning('Kontext-PGN-Export fehlgeschlagen: %s', e)
-            context_pgn = None
-
-    auth_headers = {}
-    if LICHESS_TOKEN:
-        auth_headers['Authorization'] = f'Bearer {LICHESS_TOKEN}'
-
-    # Kapitel in Studie importieren (benötigt LICHESS_TOKEN mit study:write)
-    if LICHESS_TOKEN:
-        try:
-            # Bestehende Studie nutzen oder neue anlegen
-            if reuse_study_id or PUZZLE_STUDY_ID:
-                study_id = reuse_study_id or PUZZLE_STUDY_ID
-                default_chapter_id = ''
-            else:
-                r = _lichess_request(
-                    'POST', 'https://lichess.org/api/study',
-                    data={
-                        'name':       study_name,
-                        'visibility': 'unlisted',
-                        'computer':   'everyone',
-                        'explorer':   'everyone',
-                        'cloneable':  'everyone',
-                        'shareable':  'everyone',
-                        'chat':       'everyone',
-                    },
-                    headers=auth_headers,
-                    timeout=LICHESS_API_TIMEOUT,
-                )
-                r.raise_for_status()
-                study_id = r.json().get('id', '')
-                # Leeres Auto-Kapitel merken – ID aus ChapterURL extrahieren
-                pgn_resp = _lichess_request(
-                    'GET', f'https://lichess.org/api/study/{study_id}.pgn',
-                    headers=auth_headers,
-                    timeout=LICHESS_API_TIMEOUT,
-                )
-                default_game = chess.pgn.read_game(io.StringIO(pgn_resp.text))
-                if default_game:
-                    chapter_url_hdr = default_game.headers.get('ChapterURL', '')
-                    default_chapter_id = chapter_url_hdr.rstrip('/').split('/')[-1]
-                    log.info('Leeres Auto-Kapitel: %s', default_chapter_id)
-                else:
-                    default_chapter_id = ''
-
-            if study_id:
-                # Kapitel 1: Gamebook ab Trainingsposition
-                r2 = _lichess_request(
-                    'POST', f'https://lichess.org/api/study/{study_id}/import-pgn',
-                    data={'pgn': pgn_text, 'name': line_name, 'mode': 'gamebook',
-                          'orientation': orientation},
-                    headers=auth_headers,
-                    timeout=LICHESS_API_TIMEOUT,
-                )
-                r2.raise_for_status()
-                chapters = r2.json().get('chapters', [])
-                chapter_id = chapters[-1].get('id', '') if chapters else ''
-                log.info('Gamebook-Kapitel importiert: %s (chapter_id=%s)', line_name, chapter_id)
-
-                # Studie voll → neue anlegen und nochmal versuchen (max 1× Rekursion)
-                if not chapter_id and reuse_study_id and _depth < 1:
-                    log.info('Studie %s voll – lege neue an.', reuse_study_id)
-                    return upload_to_lichess(game, context_game=context_game,
-                                            reuse_study_id=None, _depth=_depth + 1)
-
-                # Kapitel 2: vollständiges Originalspiel (nur wenn vorhanden)
-                if context_pgn:
-                    r3 = _lichess_request(
-                        'POST', f'https://lichess.org/api/study/{study_id}/import-pgn',
-                        data={'pgn': context_pgn, 'name': context_name, 'mode': 'normal'},
-                        headers=auth_headers,
-                        timeout=LICHESS_API_TIMEOUT,
-                    )
-                    if r3.status_code == 200:
-                        log.info('Kontext-Kapitel importiert: %s', context_name)
-                    else:
-                        log.warning('Kontext-Kapitel Import HTTP %s', r3.status_code)
-
-                # Leeres Auto-Kapitel löschen
-                if default_chapter_id:
-                    rd = _lichess_request(
-                        'DELETE', f'https://lichess.org/api/study/{study_id}/{default_chapter_id}',
-                        headers=auth_headers,
-                        timeout=LICHESS_API_TIMEOUT,
-                    )
-                    log.info('Auto-Kapitel geloescht: HTTP %s', rd.status_code)
-
-                if chapter_id:
-                    return f'https://lichess.org/study/{study_id}/{chapter_id}'
-                return f'https://lichess.org/study/{study_id}'
-        except LichessRateLimitError:
-            return None  # Cooldown bereits geloggt
-        except Exception as e:
-            log.error('Lichess-Study-Upload fehlgeschlagen: %s', e)
-            # Fallback auf standalone Import
-
-    # Fallback: einfacher Spielimport ohne Account (nur wenn kein Cooldown)
-    if _lichess_rate_limited():
-        return None
-    try:
-        resp = _lichess_request(
-            'POST', 'https://lichess.org/api/import',
-            data={'pgn': pgn_text},
-            headers=auth_headers,
-            timeout=LICHESS_API_TIMEOUT,
-        )
-        resp.raise_for_status()
-        return resp.json().get('url')
-    except Exception as e:
-        log.error('Lichess-Upload fehlgeschlagen: %s', e)
-        return None
-
-def upload_many_to_lichess(
-    puzzles: list[tuple[chess.pgn.Game, chess.pgn.Game | None]],
-    reuse_study_id: str | None = None,
-) -> list[str]:
-    """Mehrere Puzzles als Gamebook-Kapitel in eine gemeinsame Lichess-Studie laden.
-    Gibt eine Liste von Kapitel-URLs zurück (eine pro Puzzle)."""
-    if _lichess_rate_limited():
-        remaining = int(_lichess_cooldown_until() - _time_mod.time())
-        log.info('Lichess-Multi-Upload übersprungen (Cooldown noch %ds).', remaining)
-        return []
-    if not puzzles:
-        return []
-    if len(puzzles) == 1:
-        u = upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1], reuse_study_id=reuse_study_id)
-        return [u] if u else []
-    if not LICHESS_TOKEN:
-        u = upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1], reuse_study_id=reuse_study_id)
-        return [u] if u else []
-
-    auth_headers = {'Authorization': f'Bearer {LICHESS_TOKEN}'}
-
-    try:
-        if reuse_study_id:
-            study_id = reuse_study_id
-            default_chapter_id = ''
-        else:
-            today      = _date.today().strftime('%d.%m.%Y')
-            study_name = f'Puzzles – {today}'
-            r = _lichess_request(
-                'POST', 'https://lichess.org/api/study',
-                data={'name': study_name, 'visibility': 'unlisted', 'computer': 'everyone',
-                      'explorer': 'everyone', 'cloneable': 'everyone',
-                      'shareable': 'everyone', 'chat': 'everyone'},
-                headers=auth_headers, timeout=LICHESS_API_TIMEOUT,
-            )
-            r.raise_for_status()
-            study_id = r.json().get('id', '')
-            if not study_id:
-                return []
-
-            # Leeres Auto-Kapitel merken
-            pgn_resp = _lichess_request(
-                'GET', f'https://lichess.org/api/study/{study_id}.pgn',
-                headers=auth_headers, timeout=LICHESS_API_TIMEOUT,
-            )
-            default_chapter_id = ''
-            if pgn_resp.status_code == 200:
-                dg = chess.pgn.read_game(io.StringIO(pgn_resp.text))
-                if dg:
-                    default_chapter_id = dg.headers.get('ChapterURL', '').rstrip('/').split('/')[-1]
-
-        # Kapitel importieren
-        chapter_urls: list[str] = []
-        for game, context in puzzles:
-            try:
-                pgn  = _export_pgn_for_lichess(game)
-                h    = dict(game.headers)
-                name = h.get('White', h.get('Event', 'Puzzle'))[:_LICHESS_CHAPTER_NAME_MAX]
-                ori  = 'black' if game.board().turn == chess.BLACK else 'white'
-                r_ch = _lichess_request(
-                    'POST', f'https://lichess.org/api/study/{study_id}/import-pgn',
-                    data={'pgn': pgn, 'name': name, 'mode': 'gamebook',
-                          'orientation': ori},
-                    headers=auth_headers, timeout=LICHESS_API_TIMEOUT,
-                )
-                r_ch.raise_for_status()
-                chs = r_ch.json().get('chapters', [])
-                ch_id = chs[-1].get('id', '') if chs else ''
-                log.info('Gamebook-Kapitel importiert: %s (chapter_id=%s)', name, ch_id)
-
-                # Studie voll → Rest in neue Studie
-                if not ch_id and reuse_study_id:
-                    remaining = puzzles[puzzles.index((game, context)):]
-                    log.info('Studie %s voll – lege neue an fuer %d verbleibende Kapitel.',
-                             reuse_study_id, len(remaining))
-                    return chapter_urls + upload_many_to_lichess(remaining, reuse_study_id=None)
-
-                if ch_id:
-                    chapter_urls.append(f'https://lichess.org/study/{study_id}/{ch_id}')
-                else:
-                    chapter_urls.append(f'https://lichess.org/study/{study_id}')
-
-                if context is not None:
-                    ctx_pgn = _export_pgn_for_lichess(context)
-                    ch      = dict(context.headers)
-                    ctx_name = f'Partie: {ch.get("White", "Partie")[:64]}'
-                    _lichess_request(
-                        'POST', f'https://lichess.org/api/study/{study_id}/import-pgn',
-                        data={'pgn': ctx_pgn, 'name': ctx_name, 'mode': 'normal'},
-                        headers=auth_headers, timeout=LICHESS_API_TIMEOUT,
-                    )
-                    log.info('Kontext-Kapitel importiert: %s', ctx_name)
-            except LichessRateLimitError:
-                raise  # nach oben weitergeben → Studie wird nicht halb gefüllt
-            except Exception as e:
-                log.warning('Kapitel-Import übersprungen: %s', e)
-                chapter_urls.append('')  # Platzhalter damit Index stimmt
-            _time_mod.sleep(1)  # kurze Pause zwischen Kapiteln gegen Rate Limit
-
-        # Auto-Kapitel löschen
-        if default_chapter_id:
-            _lichess_request(
-                'DELETE', f'https://lichess.org/api/study/{study_id}/{default_chapter_id}',
-                headers=auth_headers, timeout=LICHESS_API_TIMEOUT,
-            )
-
-        return chapter_urls
-    except LichessRateLimitError:
-        return []  # Cooldown bereits geloggt
-    except Exception as e:
-        log.error('Multi-Upload fehlgeschlagen: %s', e)
-        return []
-
+# --- Lichess-API (ausgelagert nach puzzle.lichess) ---
+from puzzle.lichess import (  # noqa: F401
+    _LICHESS_STUDY_NAME_MAX, _LICHESS_CHAPTER_NAME_MAX,
+    LICHESS_API_TIMEOUT, LICHESS_TOKEN,
+    _extract_study_id, _export_pgn_for_lichess,
+    _LICHESS_COOLDOWN_SECS, LichessRateLimitError,
+    _lichess_cooldown_until, _lichess_rate_limited, _lichess_set_cooldown,
+    _lichess_request, upload_to_lichess, upload_many_to_lichess,
+)
 
 # --- Embed-Bau (ausgelagert nach puzzle.embed) ---
 from puzzle.embed import build_puzzle_embed  # noqa: F401
