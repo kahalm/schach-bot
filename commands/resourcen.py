@@ -1,6 +1,5 @@
 """Ressourcen-Sammlung: Online-Lernressourcen teilen und auflisten."""
 
-import json
 import logging
 import os
 from datetime import date
@@ -9,23 +8,11 @@ import discord
 from discord.ext import commands
 
 from core.paths import CONFIG_DIR
+from core.json_store import atomic_read, atomic_write
 
 log = logging.getLogger('schach-bot')
 
 RESOURCEN_FILE = os.path.join(CONFIG_DIR, 'resourcen.json')
-
-
-def _load() -> list[dict]:
-    try:
-        with open(RESOURCEN_FILE, encoding='utf-8') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
-
-
-def _save(data: list[dict]):
-    with open(RESOURCEN_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
 
 
 def setup(bot: commands.Bot):
@@ -47,20 +34,20 @@ def setup(bot: commands.Bot):
                     '⚠️ Bitte auch eine `beschreibung` angeben.',
                     ephemeral=True)
                 return
-            ressourcen = _load()
+            ressourcen = atomic_read(RESOURCEN_FILE, default=list)
             ressourcen.append({
                 'url': url,
                 'beschreibung': beschreibung,
                 'user': interaction.user.display_name,
                 'datum': str(date.today()),
             })
-            _save(ressourcen)
+            atomic_write(RESOURCEN_FILE, ressourcen)
             await interaction.response.send_message(
                 f'✅ Ressource gespeichert: **{beschreibung}**\n{url}')
             return
 
         # Auflisten
-        ressourcen = _load()
+        ressourcen = atomic_read(RESOURCEN_FILE, default=list)
         if not ressourcen:
             await interaction.response.send_message(
                 'Noch keine Ressourcen vorhanden. '

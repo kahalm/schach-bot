@@ -1,6 +1,5 @@
 """YouTube-Sammlung: Schach-YouTube-Kanäle und -Videos teilen und auflisten."""
 
-import json
 import logging
 import os
 from datetime import date
@@ -9,23 +8,11 @@ import discord
 from discord.ext import commands
 
 from core.paths import CONFIG_DIR
+from core.json_store import atomic_read, atomic_write
 
 log = logging.getLogger('schach-bot')
 
 YOUTUBE_FILE = os.path.join(CONFIG_DIR, 'youtube.json')
-
-
-def _load() -> list[dict]:
-    try:
-        with open(YOUTUBE_FILE, encoding='utf-8') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
-
-
-def _save(data: list[dict]):
-    with open(YOUTUBE_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
 
 
 def setup(bot: commands.Bot):
@@ -47,20 +34,20 @@ def setup(bot: commands.Bot):
                     '⚠️ Bitte auch eine `beschreibung` angeben.',
                     ephemeral=True)
                 return
-            videos = _load()
+            videos = atomic_read(YOUTUBE_FILE, default=list)
             videos.append({
                 'url': url,
                 'beschreibung': beschreibung,
                 'user': interaction.user.display_name,
                 'datum': str(date.today()),
             })
-            _save(videos)
+            atomic_write(YOUTUBE_FILE, videos)
             await interaction.response.send_message(
                 f'✅ YouTube-Link gespeichert: **{beschreibung}**\n{url}')
             return
 
         # Auflisten
-        videos = _load()
+        videos = atomic_read(YOUTUBE_FILE, default=list)
         if not videos:
             await interaction.response.send_message(
                 'Noch keine YouTube-Links vorhanden. '

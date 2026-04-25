@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.13.3] - 2026-04-25
+### Changed
+- `commands/elo.py`, `commands/resourcen.py`, `commands/youtube.py`: manuelle
+  `json.load/dump` durch `core.json_store` (`atomic_read`/`atomic_write`/
+  `atomic_update`) ersetzt — einheitliche, thread-sichere JSON-Persistenz.
+- `bot.py`: ungenutztes `import json` entfernt (DM-Greeting nutzt jetzt
+  `json_store`).
+
 ## [1.13.2] - 2026-04-25
 ### Fixed
 - `DISCORD_TOKEN`-Validierung: fehlendes Token bricht jetzt sofort mit

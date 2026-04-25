@@ -1,6 +1,5 @@
 """ELO-Modul: User können ihre eigene Schach-Elo angeben (mit Historie)."""
 
-import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -8,47 +7,38 @@ from datetime import datetime, timezone
 import discord
 
 from core.paths import CONFIG_DIR
+from core.json_store import atomic_read, atomic_update
 
 log = logging.getLogger('schach-bot')
 
 ELO_FILE = os.path.join(CONFIG_DIR, 'elo.json')
 
 
-def _load() -> dict:
-    try:
-        with open(ELO_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-
-def _save(data: dict):
-    with open(ELO_FILE, 'w') as f:
-        json.dump(data, f, indent=2)
-
-
 def get_current(user_id: int) -> int | None:
     """Letzte ELO eines Users (oder None)."""
-    history = _load().get(str(user_id), [])
+    history = atomic_read(ELO_FILE, default=dict).get(str(user_id), [])
     return history[-1]['elo'] if history else None
 
 
 def get_history(user_id: int) -> list[dict]:
     """Vollständige ELO-Historie eines Users."""
-    return _load().get(str(user_id), [])
+    return atomic_read(ELO_FILE, default=dict).get(str(user_id), [])
 
 
 def add(user_id: int, elo: int):
     """Neuen ELO-Eintrag mit aktuellem Zeitstempel hinzufügen."""
-    data = _load()
     uid = str(user_id)
-    if uid not in data:
-        data[uid] = []
-    data[uid].append({
-        'elo': elo,
-        'ts': datetime.now(timezone.utc).isoformat(),
-    })
-    _save(data)
+
+    def _append_elo(data):
+        if uid not in data:
+            data[uid] = []
+        data[uid].append({
+            'elo': elo,
+            'ts': datetime.now(timezone.utc).isoformat(),
+        })
+        return data
+
+    atomic_update(ELO_FILE, _append_elo, default=dict)
 
 
 def setup(bot):

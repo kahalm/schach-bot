@@ -11,7 +11,6 @@ log = log_setup.setup()
 
 import discord
 from discord.ext import tasks, commands
-import json
 import os
 from datetime import time
 
