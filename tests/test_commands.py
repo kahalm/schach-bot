@@ -1232,6 +1232,248 @@ def test_ignore_kapitel():
     print()
 
 
+def test_test_cmd():
+    """Smoke-Tests fuer /test Command."""
+    print('[/test]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('test')
+        check('cmd_test gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        import commands.test as test_mod
+
+        orig_load = test_mod._load_snapshots
+        orig_find = test_mod._find_game
+
+        # Minimaler Snapshot
+        fake_snap = {
+            'filename': 'book1_firstkey.pgn',
+            'round': '001.001',
+            'trimmed': False,
+            'fen': 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+            'side': 'w',
+            'first_move_uci': 'e2e4',
+        }
+        test_mod._load_snapshots = lambda: [fake_snap]
+
+        # _find_game muss ein Game-Objekt zurueckgeben
+        import chess.pgn
+        import io as _io
+
+        def fake_find_game(filename, round_id):
+            pgn = _io.StringIO('1. e4 e5 *')
+            return chess.pgn.read_game(pgn)
+
+        test_mod._find_game = fake_find_game
+
+        # _trim_to_training_position muss importierbar sein
+        try:
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, kurs=0, puzzle=0, lichess=0))
+            check('defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
+            check('followup gesendet', len(ia.followup.calls) > 0)
+        finally:
+            test_mod._load_snapshots = orig_load
+            test_mod._find_game = orig_find
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_bibliothek():
+    """Smoke-Tests fuer /bibliothek Command."""
+    print('[/bibliothek]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('bibliothek')
+        check('cmd_bibliothek gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        import library as lib_mod
+
+        orig_pag = lib_mod.LibraryPaginationView
+        lib_mod.LibraryPaginationView = lambda pages, query: FakeView()
+
+        orig_search = lib_mod._search_library
+        lib_mod._search_library = lambda q, limit=25: [
+            {
+                'id': 'test--testbook',
+                'title': 'Testbook',
+                'author': 'TestAutor',
+                'year': 2020,
+                'tags': ['Taktik'],
+                'file_type': 'pdf',
+                'files': [],
+            },
+        ]
+
+        try:
+            ia = make_interaction()
+            run_async(cmd(ia, suche='test'))
+            check('defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
+            check('followup gesendet', len(ia.followup.calls) > 0)
+            embed = ia.followup.calls[0].get('embed')
+            check('Ergebnis → Embed mit Feld',
+                  embed is not None and len(embed.fields) > 0)
+        finally:
+            lib_mod._search_library = orig_search
+            lib_mod.LibraryPaginationView = orig_pag
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_tag():
+    """Smoke-Tests fuer /tag Command."""
+    print('[/tag]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('tag')
+        check('cmd_tag gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        import library as lib_mod
+
+        # LibraryPaginationView ist ein MagicMock → ersetzen
+        orig_pag = lib_mod.LibraryPaginationView
+        lib_mod.LibraryPaginationView = lambda pages, query: FakeView()
+
+        orig_ensure = lib_mod._ensure_library
+        lib_mod._ensure_library = lambda: [
+            {
+                'id': 'test--taktikbook',
+                'title': 'Taktik Buch',
+                'author': 'Autor',
+                'year': 2021,
+                'tags': ['Taktik'],
+                'file_type': 'pdf',
+                'files': [],
+            },
+        ]
+
+        try:
+            ia = make_interaction()
+            run_async(cmd(ia, tag='Taktik'))
+            check('defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
+            check('followup gesendet', len(ia.followup.calls) > 0)
+            embed = ia.followup.calls[0].get('embed')
+            check('Tag-Ergebnis → Embed',
+                  embed is not None and len(embed.fields) > 0)
+
+            # Test: Tag nicht gefunden
+            ia = make_interaction()
+            run_async(cmd(ia, tag='Nonexistent'))
+            content = (ia.followup.calls[0].get('content') or '').lower()
+            check('Tag nicht gefunden', 'keine bücher' in content or 'keine b' in content)
+        finally:
+            lib_mod._ensure_library = orig_ensure
+            lib_mod.LibraryPaginationView = orig_pag
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_autor():
+    """Smoke-Tests fuer /autor Command."""
+    print('[/autor]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('autor')
+        check('cmd_autor gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        import library as lib_mod
+
+        orig_pag = lib_mod.LibraryPaginationView
+        lib_mod.LibraryPaginationView = lambda pages, query: FakeView()
+
+        orig_ensure = lib_mod._ensure_library
+        lib_mod._ensure_library = lambda: [
+            {
+                'id': 'kasparov--mygreat',
+                'title': 'My Great Predecessors',
+                'author': 'Kasparov',
+                'year': 2003,
+                'tags': [],
+                'file_type': 'pdf',
+                'files': [],
+            },
+        ]
+
+        try:
+            ia = make_interaction()
+            run_async(cmd(ia, autor='Kasparov'))
+            check('defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
+            check('followup gesendet', len(ia.followup.calls) > 0)
+            embed = ia.followup.calls[0].get('embed')
+            check('Autor-Ergebnis → Embed',
+                  embed is not None and len(embed.fields) > 0)
+
+            # Test: Autor nicht gefunden
+            ia = make_interaction()
+            run_async(cmd(ia, autor='Unbekannt'))
+            content = (ia.followup.calls[0].get('content') or '').lower()
+            check('Autor nicht gefunden',
+                  'keine bücher' in content or 'keine b' in content)
+        finally:
+            lib_mod._ensure_library = orig_ensure
+            lib_mod.LibraryPaginationView = orig_pag
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_reindex():
+    """Smoke-Tests fuer /reindex Command."""
+    print('[/reindex]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('reindex')
+        check('cmd_reindex gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        import library as lib_mod
+        import puzzle.legacy as leg
+
+        orig_build = lib_mod.build_library_catalog
+        orig_reload = lib_mod._reload_library
+        orig_clear = leg.clear_lines_cache
+        orig_load = leg.load_all_lines
+
+        lib_mod.build_library_catalog = lambda: (100, 50, 5, 3, 2)
+        lib_mod._reload_library = lambda: None
+        leg.clear_lines_cache = lambda: None
+        leg.load_all_lines = lambda: [('a.pgn:1', None)] * 42
+
+        # LIBRARY_INDEX muss gesetzt sein damit der Bibliotheks-Teil laeuft
+        orig_index = lib_mod.LIBRARY_INDEX
+        lib_mod.LIBRARY_INDEX = '/fake/index.txt'
+
+        try:
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia))
+            check('defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
+            check('followup gesendet', len(ia.followup.calls) > 0)
+            content = ia.followup.calls[0].get('content') or ''
+            check('Reindex-Ergebnis enthaelt Zahlen',
+                  '50' in content and '42' in content)
+        finally:
+            lib_mod.build_library_catalog = orig_build
+            lib_mod._reload_library = orig_reload
+            leg.clear_lines_cache = orig_clear
+            leg.load_all_lines = orig_load
+            lib_mod.LIBRARY_INDEX = orig_index
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_wanted():
     """Tests fuer /wanted, /wanted_list, /wanted_vote, /wanted_delete."""
     print('[/wanted]')
@@ -1380,6 +1622,11 @@ def main():
     test_blind()
     test_daily()
     test_ignore_kapitel()
+    test_test_cmd()
+    test_bibliothek()
+    test_tag()
+    test_autor()
+    test_reindex()
     test_reminder()
     test_announce()
     test_greeted()

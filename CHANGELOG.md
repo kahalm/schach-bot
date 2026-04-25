@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.21.0] - 2026-04-25
+### Added
+- Command-Tests fuer `/test`, `/bibliothek`, `/tag`, `/autor`, `/reindex`
+  (21 neue Checks, gesamt 131). Alle 27 Slash-Commands haben jetzt
+  mindestens einen Smoke-Test.
+
 ## [1.20.0] - 2026-04-25
 ### Added
 - Puzzle-Command Smoke-Tests: `/puzzle`, `/kurs`, `/train`, `/next`, `/endless`,
