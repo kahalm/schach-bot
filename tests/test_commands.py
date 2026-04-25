@@ -612,6 +612,134 @@ def test_youtube():
     print()
 
 
+def test_wanted():
+    """Tests fuer /wanted, /wanted_list, /wanted_vote, /wanted_delete."""
+    print('[/wanted]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd_wanted = _captured_commands.get('wanted')
+        cmd_wanted_list = _captured_commands.get('wanted_list')
+        cmd_wanted_vote = _captured_commands.get('wanted_vote')
+        cmd_wanted_delete = _captured_commands.get('wanted_delete')
+
+        check('cmd_wanted gefunden', cmd_wanted is not None)
+        check('cmd_wanted_list gefunden', cmd_wanted_list is not None)
+        check('cmd_wanted_vote gefunden', cmd_wanted_vote is not None)
+        check('cmd_wanted_delete gefunden', cmd_wanted_delete is not None)
+        if not all([cmd_wanted, cmd_wanted_list, cmd_wanted_vote, cmd_wanted_delete]):
+            return
+
+        # Test: wanted ohne Beschreibung → zeigt leere Liste
+        ia = make_interaction()
+        run_async(cmd_wanted(ia, beschreibung=None))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('wanted leer → Hinweis',
+              'keine feature' in content or 'keine feature-wünsche' in content
+              or 'keine feature-w' in content)
+
+        # Test: wanted_list leer
+        ia = make_interaction()
+        run_async(cmd_wanted_list(ia))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('wanted_list leer → Hinweis',
+              'keine feature' in content or 'keine feature-w' in content)
+
+        # Test: Feature einreichen
+        ia = make_interaction()
+        run_async(cmd_wanted(ia, beschreibung='Dark Mode'))
+        content = ia.response.calls[0].get('content') or ''
+        check('wanted einreichen → Bestaetigung',
+              'Dark Mode' in content and '#1' in content)
+
+        # Test: Zweites Feature einreichen
+        ia = make_interaction(user=FakeMember(uid=99999, name='User2'))
+        run_async(cmd_wanted(ia, beschreibung='Mobile App'))
+        content = ia.response.calls[0].get('content') or ''
+        check('wanted zweites Feature → #2',
+              'Mobile App' in content and '#2' in content)
+
+        # Test: wanted_list zeigt Eintraege
+        ia = make_interaction()
+        run_async(cmd_wanted_list(ia))
+        call = ia.response.calls[0]
+        embed = call.get('embed')
+        check('wanted_list → Embed', embed is not None)
+        check('wanted_list → hat Beschreibung',
+              embed is not None and 'Dark Mode' in (embed.description or ''))
+
+        # Test: wanted_vote +1
+        ia = make_interaction(user=FakeMember(uid=99999, name='User2'))
+        run_async(cmd_wanted_vote(ia, id=1))
+        content = (ia.response.calls[0].get('content') or '')
+        check('wanted_vote +1', '+1' in content or '✅' in content)
+
+        # Test: wanted_vote Toggle (zuruecknehmen)
+        ia = make_interaction(user=FakeMember(uid=99999, name='User2'))
+        run_async(cmd_wanted_vote(ia, id=1))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('wanted_vote Toggle → zurueckgenommen',
+              'zurück' in content or 'zuruck' in content or '↩' in content)
+
+        # Test: wanted_vote nicht gefunden
+        ia = make_interaction()
+        run_async(cmd_wanted_vote(ia, id=999))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('wanted_vote nicht gefunden', 'nicht gefunden' in content)
+
+        # Test: wanted_delete
+        ia = make_interaction(admin=True)
+        run_async(cmd_wanted_delete(ia, id=1))
+        content = ia.response.calls[0].get('content') or ''
+        check('wanted_delete → Bestaetigung', '#1' in content)
+
+        # Test: wanted_delete nicht gefunden
+        ia = make_interaction(admin=True)
+        run_async(cmd_wanted_delete(ia, id=999))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('wanted_delete nicht gefunden', 'nicht gefunden' in content)
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_release_notes():
+    """Tests fuer /release-notes Command."""
+    print('[/release-notes]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('release-notes')
+        check('cmd_release_notes gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        # Test: Standard (letzte 3 Versionen)
+        ia = make_interaction()
+        run_async(cmd(ia, version=None, anzahl=3))
+        call = ia.response.calls[0]
+        embed = call.get('embed')
+        check('Standard → Embed', embed is not None)
+        check('Standard → hat Felder', embed is not None and len(embed.fields) > 0)
+        check('Standard → max 3 Felder', embed is not None and len(embed.fields) <= 3)
+
+        # Test: bestimmte Version
+        ia = make_interaction()
+        run_async(cmd(ia, version='1.0.0', anzahl=3))
+        call = ia.response.calls[0]
+        embed = call.get('embed')
+        check('Version 1.0.0 → Embed', embed is not None)
+        check('Version 1.0.0 → 1 Feld',
+              embed is not None and len(embed.fields) == 1)
+
+        # Test: nicht existierende Version
+        ia = make_interaction()
+        run_async(cmd(ia, version='99.99.99', anzahl=3))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('Version nicht gefunden', 'nicht im changelog' in content)
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
 # ===================================================================
 # MAIN
 # ===================================================================
@@ -624,6 +752,8 @@ def main():
     test_elo()
     test_resourcen()
     test_youtube()
+    test_wanted()
+    test_release_notes()
 
     print(f'---\n{total - failed}/{total} checks passed.')
     if failed:
