@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.24.0] - 2026-04-25
+### Changed
+- Refactor Phase 6, Schritt 3: `build_puzzle_embed` in `puzzle/embed.py` extrahiert.
+  `legacy.py` re-exportiert.
+
 ## [1.23.0] - 2026-04-25
 ### Changed
 - Refactor Phase 6, Schritt 2: PGN-Verarbeitung in `puzzle/processing.py` extrahiert
