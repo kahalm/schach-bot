@@ -4,6 +4,38 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.13.0] - 2026-04-25
+### Added
+- `core/json_store.py`: Atomare JSON-Persistenz mit per-Datei-Locks und
+  `tempfile` → `os.replace`. Eliminiert Race Conditions bei gleichzeitigem
+  Load-Modify-Save in `stats.py`, `dm_log.py`, `reminder.py` und allen
+  JSON-Dateien in `puzzle/legacy.py`.
+- Helper-Funktionen für duplizierte Patterns: `_extract_study_id()`,
+  `_upload_puzzles_async()`, `_solution_pgn()`, `_send_puzzle_followups()`.
+- In-Memory-Caches für `_load_ignore_list()`, `_load_chapter_ignore_list()`
+  und `_load_books_config()` mit Write-Invalidierung.
+- `LICHESS_API_TIMEOUT`-Modulkonstante (vorher 7× hardcoded `15`/`10`).
+- Font-Fallbacks für Linux (DejaVu, Liberation) und macOS (Helvetica).
+
+### Changed
+- `_puzzle_msg_ids` und `_clicks` sind jetzt `OrderedDict` mit Cap 500 —
+  älteste Einträge werden bei Überlauf automatisch entfernt (Memory Leak Fix).
+- `_endless_sessions` haben jetzt `last_active`-Timestamp; Sessions >2h
+  Inaktivität werden automatisch aufgeräumt (Memory Leak Fix).
+- DM-Log (`core/dm_log.py`) entfernt Einträge älter als 30 Tage pro User
+  bei jedem Append (Memory Leak Fix).
+- `setup()` in `puzzle/legacy.py` von ~650 auf ~60 Zeilen reduziert: 6
+  Command-Handler als top-level `async def` extrahiert.
+- `puzzle/__init__.py`: Wildcard-Import `from .legacy import *` durch
+  explizite Importliste ersetzt.
+- `upload_to_lichess()`: Rekursionstiefe bei voller Studie auf max. 1
+  begrenzt (verhindert Endlosrekursion).
+- `CLAUDE.md`: Architektur-Sektion aktualisiert (aktuelles Modul-Layout
+  statt veralteter "single file bot.py"-Beschreibung).
+
+### Fixed
+- `.gitignore`: Typo `scrennshots/` korrigiert.
+
 ## [1.12.7] - 2026-04-25
 ### Changed
 - `/help` hat jetzt einen optionalen `bereich`-Parameter (`puzzle`,

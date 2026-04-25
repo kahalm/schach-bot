@@ -22,6 +22,7 @@ Arbeit in einen Background-Task (mit ``asyncio.to_thread`` für sync I/O).
 
 import asyncio
 import logging
+from collections import OrderedDict
 
 import discord
 from discord import ui
@@ -41,7 +42,9 @@ _BUTTONS: list[tuple[str, discord.ButtonStyle, int]] = [
 _MUTEX_PAIRS = {'✅': '❌', '❌': '✅', '👍': '👎', '👎': '👍'}
 
 # msg_id → emoji → set[user_id]
-_clicks: dict[int, dict[str, set[int]]] = {}
+# OrderedDict mit Cap, damit der Speicher nicht unbegrenzt wächst.
+_CLICKS_CAP = 500
+_clicks: OrderedDict[int, dict[str, set[int]]] = OrderedDict()
 
 
 def _count(msg_id: int, emoji: str) -> int:
@@ -58,6 +61,9 @@ def _apply_click(msg_id: int, emoji: str, user_id: int
       die Gegenstimme entzogen wurde, sonst ``None``
     """
     by_emoji = _clicks.setdefault(msg_id, {})
+    # Eviction: älteste Einträge entfernen bei Überlauf
+    while len(_clicks) > _CLICKS_CAP:
+        _clicks.popitem(last=False)
 
     # Mutex: hat der User die Gegenstimme bereits abgegeben? → entfernen
     removed: str | None = None
@@ -175,7 +181,8 @@ async def _run_side_effects(interaction: discord.Interaction,
             except Exception as e:
                 log.warning('Endless-Next fehlgeschlagen: %s', e)
     except Exception:
-        log.exception('Side-effect crash nach Button-Klick')
+        log.exception('Side-effect crash nach Button-Klick (user=%s, emoji=%s, line_id=%s)',
+                      user_id, emoji, line_id)
 
 
 def _make_callback(emoji: str):

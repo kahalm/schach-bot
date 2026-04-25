@@ -11,7 +11,7 @@ import random
 import re
 import tempfile
 import time as _time_mod
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from datetime import time, date as _date, datetime as _datetime
 
 import chess
@@ -24,21 +24,38 @@ from reportlab.graphics import renderPM
 
 log = logging.getLogger('schach-bot')
 
+from core.json_store import atomic_read, atomic_write, atomic_update
 from puzzle.buttons import fresh_view as _fresh_button_view
 
 # Puzzle-Nachrichten-IDs für Reaction-Tracking (in-memory, reicht da Reactions
 # typischerweise kurz nach dem Posten kommen).
 # Wert: dict {'line_id': str, 'mode': 'normal'|'blind'}
-_puzzle_msg_ids: dict[int, dict] = {}
+# OrderedDict mit Cap, damit der Speicher nicht unbegrenzt wächst.
+_PUZZLE_MSG_CAP = 500
+_puzzle_msg_ids: OrderedDict[int, dict] = OrderedDict()
 from core.paths import CONFIG_DIR
 IGNORE_FILE = os.path.join(CONFIG_DIR, 'puzzle_ignore.json')
 CHAPTER_IGNORE_FILE = os.path.join(CONFIG_DIR, 'chapter_ignore.json')
 
 # Endless-Modus: aktive Sessions (in-memory)
-_endless_sessions: dict[int, dict] = {}   # user_id → {'book': str|None, 'count': int}
+# Jede Session hat 'last_active' — nach 2h Inaktivität wird automatisch aufgeräumt.
+_endless_sessions: dict[int, dict] = {}   # user_id → {'book': str|None, 'count': int, 'last_active': float}
+_ENDLESS_TIMEOUT_SECS = 7200  # 2 Stunden
+
+def _evict_stale_endless():
+    """Entfernt Endless-Sessions, die seit >2h inaktiv sind."""
+    now = _time_mod.time()
+    stale = [uid for uid, s in _endless_sessions.items()
+             if now - s.get('last_active', 0) > _ENDLESS_TIMEOUT_SECS]
+    for uid in stale:
+        _endless_sessions.pop(uid, None)
+    if stale:
+        log.info('Endless: %d inaktive Session(s) aufgeräumt.', len(stale))
 
 def _register_puzzle_msg(msg_id: int, line_id: str, mode: str = 'normal'):
     _puzzle_msg_ids[msg_id] = {'line_id': line_id, 'mode': mode}
+    while len(_puzzle_msg_ids) > _PUZZLE_MSG_CAP:
+        _puzzle_msg_ids.popitem(last=False)
 
 def is_puzzle_message(msg_id: int) -> bool:
     return msg_id in _puzzle_msg_ids
@@ -52,39 +69,47 @@ def get_puzzle_mode(msg_id: int) -> str | None:
     entry = _puzzle_msg_ids.get(msg_id)
     return entry['mode'] if entry else None
 
-def _load_ignore_list() -> set[str]:
-    try:
-        with open(IGNORE_FILE) as f:
-            return set(json.load(f))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return set()
+_ignore_cache: set[str] | None = None
 
-def _save_ignore_list(ignored: set[str]):
-    with open(IGNORE_FILE, 'w') as f:
-        json.dump(sorted(ignored), f, indent=2)
+def _load_ignore_list() -> set[str]:
+    global _ignore_cache
+    if _ignore_cache is None:
+        _ignore_cache = set(atomic_read(IGNORE_FILE, default=list))
+    return _ignore_cache
+
+def _invalidate_ignore_cache():
+    global _ignore_cache
+    _ignore_cache = None
 
 def ignore_puzzle(line_id: str):
-    ignored = _load_ignore_list()
-    ignored.add(line_id)
-    _save_ignore_list(ignored)
+    def _add(data):
+        s = set(data)
+        s.add(line_id)
+        return sorted(s)
+    atomic_update(IGNORE_FILE, _add, default=list)
+    _invalidate_ignore_cache()
 
 def unignore_puzzle(line_id: str):
-    ignored = _load_ignore_list()
-    ignored.discard(line_id)
-    _save_ignore_list(ignored)
+    def _remove(data):
+        s = set(data)
+        s.discard(line_id)
+        return sorted(s)
+    atomic_update(IGNORE_FILE, _remove, default=list)
+    _invalidate_ignore_cache()
 
+
+_chapter_ignore_cache: set[str] | None = None
 
 def _load_chapter_ignore_list() -> set[str]:
     """Lädt ignorierte Kapitel als Set von '<filename>:<chapter_prefix>'."""
-    try:
-        with open(CHAPTER_IGNORE_FILE) as f:
-            return set(json.load(f))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return set()
+    global _chapter_ignore_cache
+    if _chapter_ignore_cache is None:
+        _chapter_ignore_cache = set(atomic_read(CHAPTER_IGNORE_FILE, default=list))
+    return _chapter_ignore_cache
 
-def _save_chapter_ignore_list(ignored: set[str]):
-    with open(CHAPTER_IGNORE_FILE, 'w') as f:
-        json.dump(sorted(ignored), f, indent=2)
+def _invalidate_chapter_ignore_cache():
+    global _chapter_ignore_cache
+    _chapter_ignore_cache = None
 
 def _is_chapter_ignored(line_id: str, chapter_ignored: set[str]) -> bool:
     """Prüft, ob die line_id zu einem ignorierten Kapitel gehört.
@@ -122,14 +147,22 @@ def _list_chapters(book_filename: str) -> dict[str, int]:
     return counts
 
 def ignore_chapter(book_filename: str, chapter_prefix: str):
-    ignored = _load_chapter_ignore_list()
-    ignored.add(f'{book_filename}:{chapter_prefix}')
-    _save_chapter_ignore_list(ignored)
+    entry = f'{book_filename}:{chapter_prefix}'
+    def _add(data):
+        s = set(data)
+        s.add(entry)
+        return sorted(s)
+    atomic_update(CHAPTER_IGNORE_FILE, _add, default=list)
+    _invalidate_chapter_ignore_cache()
 
 def unignore_chapter(book_filename: str, chapter_prefix: str):
-    ignored = _load_chapter_ignore_list()
-    ignored.discard(f'{book_filename}:{chapter_prefix}')
-    _save_chapter_ignore_list(ignored)
+    entry = f'{book_filename}:{chapter_prefix}'
+    def _remove(data):
+        s = set(data)
+        s.discard(entry)
+        return sorted(s)
+    atomic_update(CHAPTER_IGNORE_FILE, _remove, default=list)
+    _invalidate_chapter_ignore_cache()
 
 def get_chapter_from_line_id(line_id: str) -> tuple[str, str] | None:
     """Extrahiert (book_filename, chapter_prefix) aus einer line_id, oder None."""
@@ -144,7 +177,9 @@ def get_chapter_from_line_id(line_id: str) -> tuple[str, str] | None:
 # --- Endless-Modus ---
 
 def start_endless(user_id: int, book_filename: str | None = None):
-    _endless_sessions[user_id] = {'book': book_filename, 'count': 0}
+    _evict_stale_endless()
+    _endless_sessions[user_id] = {'book': book_filename, 'count': 0,
+                                  'last_active': _time_mod.time()}
 
 def stop_endless(user_id: int) -> int:
     """Session beenden, gibt Anzahl gelöster Puzzles zurück."""
@@ -152,7 +187,60 @@ def stop_endless(user_id: int) -> int:
     return session['count'] if session else 0
 
 def is_endless(user_id: int) -> bool:
+    _evict_stale_endless()
     return user_id in _endless_sessions
+
+
+def _extract_study_id(url: str) -> str | None:
+    """Extrahiert die Studien-ID aus einer Lichess-URL."""
+    if not url:
+        return None
+    parts = url.rstrip('/').split('/')
+    if 'study' in parts:
+        sidx = parts.index('study')
+        sid = parts[sidx + 1] if sidx + 1 < len(parts) else ''
+        return sid or None
+    return None
+
+
+async def _upload_puzzles_async(
+    pairs: list[tuple[chess.pgn.Game, chess.pgn.Game | None]],
+    reuse_study_id: str | None = None,
+) -> list[str]:
+    """Upload-Pairs asynchron in einem Thread-Executor hochladen."""
+    loop = asyncio.get_running_loop()
+    if len(pairs) == 1:
+        u = await loop.run_in_executor(
+            None, lambda: upload_to_lichess(
+                pairs[0][0], context_game=pairs[0][1],
+                reuse_study_id=reuse_study_id))
+        return [u] if u else []
+    else:
+        return await loop.run_in_executor(
+            None, lambda: upload_many_to_lichess(
+                pairs, reuse_study_id=reuse_study_id))
+
+
+def _solution_pgn(game: chess.pgn.Game) -> str:
+    """Exportiert die Lösung als bereinigten PGN-String (ohne Header, mit Varianten+Kommentaren)."""
+    exporter = chess.pgn.StringExporter(headers=False, variations=True, comments=True)
+    return _strip_pgn_annotations(game.accept(exporter))
+
+
+async def _send_puzzle_followups(target, game: chess.pgn.Game,
+                                 context: chess.pgn.Game | None,
+                                 puzzle_url: str | None,
+                                 line_id: str):
+    """Lösung, Prelude und Lichess-Link als optionale Follow-ups senden."""
+    pgn_moves = _solution_pgn(game)
+    if pgn_moves:
+        await _send_optional(target, f'Lösung: ||`{pgn_moves}`||', label=f'Lösung {line_id}')
+    if context:
+        prelude = _prelude_pgn(context, game)
+        if prelude:
+            await _send_optional(target, f'Ganze Partie: ||`{prelude}`||', label=f'Partie {line_id}')
+    if puzzle_url:
+        await _send_optional(target, f'[Klickbares Rätsel]({puzzle_url})', label=f'Lichess-Link {line_id}')
 
 
 async def post_next_endless(bot, user_id: int):
@@ -170,7 +258,7 @@ async def post_next_endless(bot, user_id: int):
             dm = await user.create_dm()
             await dm.send('⚠️ Keine weiteren Puzzles verfügbar. Endless-Modus beendet.')
         except Exception as e:
-            log.warning('Endless-Ende-DM fehlgeschlagen: %s', e)
+            log.warning('Endless-Ende-DM fehlgeschlagen (user=%s): %s', user_id, e)
         _endless_sessions.pop(user_id, None)
         return
 
@@ -186,29 +274,24 @@ async def post_next_endless(bot, user_id: int):
 
     # Upload
     reuse_study_id = _get_user_study_id(user_id)
-    loop = asyncio.get_running_loop()
-    puzzle_url = await loop.run_in_executor(
-        None, lambda: upload_to_lichess(game, context_game=context,
-                                         reuse_study_id=reuse_study_id))
+    urls = await _upload_puzzles_async([(game, context)], reuse_study_id=reuse_study_id)
+    puzzle_url = urls[0] if urls else None
 
     # Studie-ID speichern
-    if puzzle_url:
-        parts = puzzle_url.rstrip('/').split('/')
-        if 'study' in parts:
-            sidx = parts.index('study')
-            sid = parts[sidx + 1] if sidx + 1 < len(parts) else ''
-            if sid:
-                base_count, base_total = _get_user_puzzle_count(user_id)
-                _set_user_study_id(user_id, sid, base_count + 1, base_total + 1)
+    sid = _extract_study_id(puzzle_url)
+    if sid:
+        base_count, base_total = _get_user_puzzle_count(user_id)
+        _set_user_study_id(user_id, sid, base_count + 1, base_total + 1)
 
     session['count'] += 1
+    session['last_active'] = _time_mod.time()
 
     # DM senden
     try:
         user = await bot.fetch_user(user_id)
         dm = await user.create_dm()
     except Exception as e:
-        log.warning('Endless-DM fehlgeschlagen: %s', e)
+        log.warning('Endless-DM fehlgeschlagen (user=%s): %s', user_id, e)
         return
 
     try:
@@ -231,23 +314,15 @@ async def post_next_endless(bot, user_id: int):
     _register_puzzle_msg(msg.id, line_id)
     await msg.edit(view=_fresh_button_view())
 
-    # Lösung als Spoiler
-    exporter = chess.pgn.StringExporter(headers=False, variations=True, comments=True)
-    pgn_moves = _strip_pgn_annotations(game.accept(exporter))
-    if pgn_moves:
-        await dm.send(f'Lösung: ||`{pgn_moves}`||')
-    if context:
-        prelude = _prelude_pgn(context, game)
-        if prelude:
-            await dm.send(f'Ganze Partie: ||`{prelude}`||')
-    if puzzle_url:
-        await dm.send(f'[Klickbares Rätsel]({puzzle_url})')
+    # Lösung, Prelude, Lichess-Link
+    await _send_puzzle_followups(dm, game, context, puzzle_url, line_id)
 
     stats.inc(user_id, 'puzzles', 1)
 
 
 # --- Config (aus Umgebung) ---
 
+LICHESS_API_TIMEOUT = 15  # Sekunden für Lichess-API-Requests
 LICHESS_TOKEN     = os.getenv('LICHESS_TOKEN', '')
 BOOKS_DIR         = os.getenv('BOOKS_DIR', 'books')
 PUZZLE_STUDY_ID   = os.getenv('PUZZLE_STUDY_ID', '')
@@ -319,14 +394,25 @@ def _svg_to_pil(svg_bytes: bytes, size: int) -> Image.Image:
 def _get_piece(code: str, size: int) -> Image.Image:
     if code not in _piece_cache:
         url  = f'https://lichess1.org/assets/piece/cburnett/{code}.svg'
-        resp = requests.get(url, timeout=10)
+        resp = requests.get(url, timeout=LICHESS_API_TIMEOUT)
         resp.raise_for_status()
         _piece_cache[code] = _svg_to_pil(resp.content, size)
         log.info('Figur geladen: %s', code)
     return _piece_cache[code]
 
 def _label_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    for p in ['C:/Windows/Fonts/arialbd.ttf', 'C:/Windows/Fonts/arial.ttf']:
+    _FONT_PATHS = [
+        # Windows
+        'C:/Windows/Fonts/arialbd.ttf',
+        'C:/Windows/Fonts/arial.ttf',
+        # Linux (DejaVu, Liberation)
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+        # macOS
+        '/System/Library/Fonts/Helvetica.ttc',
+        '/Library/Fonts/Arial.ttf',
+    ]
+    for p in _FONT_PATHS:
         try:
             return ImageFont.truetype(p, size)
         except Exception:
@@ -383,26 +469,17 @@ def _render_board(board: chess.Board) -> io.BytesIO:
 # ---------------------------------------------------------------------------
 
 def load_puzzle_state() -> dict:
-    if os.path.exists(PUZZLE_STATE_FILE):
-        with open(PUZZLE_STATE_FILE) as f:
-            return json.load(f)
-    return {'posted': []}
+    return atomic_read(PUZZLE_STATE_FILE, default=lambda: {'posted': []})
 
 
 def save_puzzle_state(state: dict):
-    with open(PUZZLE_STATE_FILE, 'w') as f:
-        json.dump(state, f, indent=2)
+    atomic_write(PUZZLE_STATE_FILE, state)
 
 def _load_user_studies() -> dict:
-    try:
-        with open(USER_STUDIES_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+    return atomic_read(USER_STUDIES_FILE)
 
 def _save_user_studies(data: dict):
-    with open(USER_STUDIES_FILE, 'w') as f:
-        json.dump(data, f, indent=2)
+    atomic_write(USER_STUDIES_FILE, data)
 
 def _get_user_study_id(user_id: int) -> str | None:
     entry = _load_user_studies().get(str(user_id))
@@ -439,14 +516,24 @@ def _set_user_study_id(user_id: int, study_id: str, count: int, total: int):
     _save_user_studies(data)
     log.info('User-Studie gespeichert: user=%s study_id=%s count=%d total=%d', user_id, study_id, count, total)
 
+_books_config_cache: dict | None = None
+
 def _load_books_config() -> dict:
     """Lädt books.json mit Metadaten (z.B. difficulty) pro PGN-Datei."""
+    global _books_config_cache
+    if _books_config_cache is not None:
+        return _books_config_cache
     p = os.path.join(BOOKS_DIR, 'books.json')
     try:
         with open(p, encoding='utf-8') as f:
-            return json.load(f)
+            _books_config_cache = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+        _books_config_cache = {}
+    return _books_config_cache
+
+def _invalidate_books_config_cache():
+    global _books_config_cache
+    _books_config_cache = None
 
 def _get_user_training(user_id: int) -> dict | None:
     """Gibt {'book': ..., 'position': ...} oder None zurück."""
@@ -535,6 +622,9 @@ def clear_lines_cache() -> None:
     global _lines_cache, _lines_cache_fp
     _lines_cache = None
     _lines_cache_fp = None
+    _invalidate_books_config_cache()
+    _invalidate_ignore_cache()
+    _invalidate_chapter_ignore_cache()
     try:
         os.remove(PUZZLE_CACHE_FILE)
     except FileNotFoundError:
@@ -1063,9 +1153,9 @@ class LichessRateLimitError(Exception):
 def _lichess_cooldown_until() -> float:
     """Liest den gespeicherten Cooldown-Zeitstempel (Unix-Zeit). 0 = kein Cooldown."""
     try:
-        with open(LICHESS_COOLDOWN_FILE) as f:
-            return float(json.load(f).get('until', 0))
-    except (FileNotFoundError, ValueError, KeyError):
+        data = atomic_read(LICHESS_COOLDOWN_FILE)
+        return float(data.get('until', 0))
+    except (ValueError, TypeError, AttributeError):
         return 0.0
 
 
@@ -1081,8 +1171,7 @@ def _lichess_set_cooldown(retry_after: int | None = None):
     """
     secs  = retry_after if retry_after and retry_after > 0 else _LICHESS_COOLDOWN_SECS
     until = _time_mod.time() + secs
-    with open(LICHESS_COOLDOWN_FILE, 'w') as f:
-        json.dump({'until': until}, f)
+    atomic_write(LICHESS_COOLDOWN_FILE, {'until': until})
     log.warning('Lichess 429 – Cooldown bis %s gesetzt (%ds).',
                 _datetime.fromtimestamp(until).strftime('%H:%M'), secs)
 
@@ -1102,7 +1191,8 @@ def _lichess_request(method: str, url: str, **kwargs):
 
 def upload_to_lichess(game: chess.pgn.Game,
                       context_game: chess.pgn.Game | None = None,
-                      reuse_study_id: str | None = None) -> str | None:
+                      reuse_study_id: str | None = None,
+                      _depth: int = 0) -> str | None:
     """Neue Lichess-Studie anlegen, PGN importieren und Kapitel-URL zurückgeben.
 
     game         – gekürztes Spiel ab Trainingsposition (Gamebook-Kapitel 1)
@@ -1174,7 +1264,7 @@ def upload_to_lichess(game: chess.pgn.Game,
                         'chat':       'everyone',
                     },
                     headers=auth_headers,
-                    timeout=15,
+                    timeout=LICHESS_API_TIMEOUT,
                 )
                 r.raise_for_status()
                 study_id = r.json().get('id', '')
@@ -1182,7 +1272,7 @@ def upload_to_lichess(game: chess.pgn.Game,
                 pgn_resp = _lichess_request(
                     'GET', f'https://lichess.org/api/study/{study_id}.pgn',
                     headers=auth_headers,
-                    timeout=10,
+                    timeout=LICHESS_API_TIMEOUT,
                 )
                 default_game = chess.pgn.read_game(io.StringIO(pgn_resp.text))
                 if default_game:
@@ -1199,17 +1289,18 @@ def upload_to_lichess(game: chess.pgn.Game,
                     data={'pgn': pgn_text, 'name': line_name, 'mode': 'gamebook',
                           'orientation': orientation},
                     headers=auth_headers,
-                    timeout=15,
+                    timeout=LICHESS_API_TIMEOUT,
                 )
                 r2.raise_for_status()
                 chapters = r2.json().get('chapters', [])
                 chapter_id = chapters[-1].get('id', '') if chapters else ''
                 log.info('Gamebook-Kapitel importiert: %s (chapter_id=%s)', line_name, chapter_id)
 
-                # Studie voll → neue anlegen und nochmal versuchen
-                if not chapter_id and reuse_study_id:
+                # Studie voll → neue anlegen und nochmal versuchen (max 1× Rekursion)
+                if not chapter_id and reuse_study_id and _depth < 1:
                     log.info('Studie %s voll – lege neue an.', reuse_study_id)
-                    return upload_to_lichess(game, context_game=context_game, reuse_study_id=None)
+                    return upload_to_lichess(game, context_game=context_game,
+                                            reuse_study_id=None, _depth=_depth + 1)
 
                 # Kapitel 2: vollständiges Originalspiel (nur wenn vorhanden)
                 if context_pgn:
@@ -1217,7 +1308,7 @@ def upload_to_lichess(game: chess.pgn.Game,
                         'POST', f'https://lichess.org/api/study/{study_id}/import-pgn',
                         data={'pgn': context_pgn, 'name': context_name, 'mode': 'normal'},
                         headers=auth_headers,
-                        timeout=15,
+                        timeout=LICHESS_API_TIMEOUT,
                     )
                     if r3.status_code == 200:
                         log.info('Kontext-Kapitel importiert: %s', context_name)
@@ -1229,7 +1320,7 @@ def upload_to_lichess(game: chess.pgn.Game,
                     rd = _lichess_request(
                         'DELETE', f'https://lichess.org/api/study/{study_id}/{default_chapter_id}',
                         headers=auth_headers,
-                        timeout=10,
+                        timeout=LICHESS_API_TIMEOUT,
                     )
                     log.info('Auto-Kapitel geloescht: HTTP %s', rd.status_code)
 
@@ -1250,7 +1341,7 @@ def upload_to_lichess(game: chess.pgn.Game,
             'POST', 'https://lichess.org/api/import',
             data={'pgn': pgn_text},
             headers=auth_headers,
-            timeout=15,
+            timeout=LICHESS_API_TIMEOUT,
         )
         resp.raise_for_status()
         return resp.json().get('url')
@@ -1291,7 +1382,7 @@ def upload_many_to_lichess(
                 data={'name': study_name, 'visibility': 'unlisted', 'computer': 'everyone',
                       'explorer': 'everyone', 'cloneable': 'everyone',
                       'shareable': 'everyone', 'chat': 'everyone'},
-                headers=auth_headers, timeout=15,
+                headers=auth_headers, timeout=LICHESS_API_TIMEOUT,
             )
             r.raise_for_status()
             study_id = r.json().get('id', '')
@@ -1301,7 +1392,7 @@ def upload_many_to_lichess(
             # Leeres Auto-Kapitel merken
             pgn_resp = _lichess_request(
                 'GET', f'https://lichess.org/api/study/{study_id}.pgn',
-                headers=auth_headers, timeout=10,
+                headers=auth_headers, timeout=LICHESS_API_TIMEOUT,
             )
             default_chapter_id = ''
             if pgn_resp.status_code == 200:
@@ -1322,7 +1413,7 @@ def upload_many_to_lichess(
                     'POST', f'https://lichess.org/api/study/{study_id}/import-pgn',
                     data={'pgn': pgn, 'name': name, 'mode': 'gamebook',
                           'orientation': ori},
-                    headers=auth_headers, timeout=15,
+                    headers=auth_headers, timeout=LICHESS_API_TIMEOUT,
                 )
                 r_ch.raise_for_status()
                 chs = r_ch.json().get('chapters', [])
@@ -1349,7 +1440,7 @@ def upload_many_to_lichess(
                     _lichess_request(
                         'POST', f'https://lichess.org/api/study/{study_id}/import-pgn',
                         data={'pgn': ctx_pgn, 'name': ctx_name, 'mode': 'normal'},
-                        headers=auth_headers, timeout=15,
+                        headers=auth_headers, timeout=LICHESS_API_TIMEOUT,
                     )
                     log.info('Kontext-Kapitel importiert: %s', ctx_name)
             except LichessRateLimitError:
@@ -1363,7 +1454,7 @@ def upload_many_to_lichess(
         if default_chapter_id:
             _lichess_request(
                 'DELETE', f'https://lichess.org/api/study/{study_id}/{default_chapter_id}',
-                headers=auth_headers, timeout=10,
+                headers=auth_headers, timeout=LICHESS_API_TIMEOUT,
             )
 
         return chapter_urls
@@ -1500,27 +1591,13 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
 
     # Upload in Thread damit der Event Loop nicht blockiert
     upload_pairs = [(g, c) for g, c, _, _, _ in puzzles]
-    loop = asyncio.get_running_loop()
-    if len(upload_pairs) == 1:
-        u = await loop.run_in_executor(
-            None, lambda: upload_to_lichess(upload_pairs[0][0], context_game=upload_pairs[0][1],
-                                            reuse_study_id=reuse_study_id)
-        )
-        urls = [u] if u else []
-    else:
-        urls = await loop.run_in_executor(
-            None, lambda: upload_many_to_lichess(upload_pairs, reuse_study_id=reuse_study_id)
-        )
+    urls = await _upload_puzzles_async(upload_pairs, reuse_study_id=reuse_study_id)
 
     # Studie-ID für diesen User+Tag speichern
     first_url = urls[0] if urls else None
-    if first_url and user_id:
-        parts = first_url.rstrip('/').split('/')
-        if 'study' in parts:
-            sidx = parts.index('study')
-            sid  = parts[sidx + 1] if sidx + 1 < len(parts) else ''
-            if sid:
-                _set_user_study_id(user_id, sid, base_count + len(puzzles), base_total + len(puzzles))
+    sid = _extract_study_id(first_url) if first_url and user_id else None
+    if sid:
+        _set_user_study_id(user_id, sid, base_count + len(puzzles), base_total + len(puzzles))
 
     # Thread-Name vom ersten Puzzle
     h = dict(puzzles[0][0].headers)
@@ -1586,17 +1663,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         except Exception as e:
             log.warning('Button-View-Edit fehlgeschlagen (%s): %s', lid, e)
 
-        exporter = chess.pgn.StringExporter(
-            headers=False, variations=True, comments=True)
-        pgn_moves = _strip_pgn_annotations(game.accept(exporter))
-        if pgn_moves:
-            await _send_optional(target, f'Lösung: ||`{pgn_moves}`||', label=f'Lösung {lid}')
-        if context:
-            prelude = _prelude_pgn(context, game)
-            if prelude:
-                await _send_optional(target, f'Ganze Partie: ||`{prelude}`||', label=f'Partie {lid}')
-        if puzzle_url:
-            await _send_optional(target, f'[Klickbares Rätsel]({puzzle_url})', label=f'Lichess-Link {lid}')
+        await _send_puzzle_followups(target, game, context, puzzle_url, lid)
 
     log.info('post_puzzle: %d/%d Puzzle(s) gepostet', posted_ok, len(puzzles))
     if user_id and posted_ok:
@@ -1721,9 +1788,7 @@ async def post_blind_puzzle(channel,
         except Exception as e:
             log.warning('Blind-Button-View-Edit fehlgeschlagen (%s): %s', line_id, e)
 
-        exporter = chess.pgn.StringExporter(
-            headers=False, variations=True, comments=True)
-        pgn_moves = _strip_pgn_annotations(puzzle_game.accept(exporter))
+        pgn_moves = _solution_pgn(puzzle_game)
         if pgn_moves:
             await _send_optional(target, f'Lösung des Puzzles: ||`{pgn_moves}`||',
                                  label=f'Blind-Lösung {line_id}')
@@ -1735,6 +1800,599 @@ async def post_blind_puzzle(channel,
 # ---------------------------------------------------------------------------
 # Slash-Commands registrieren
 # ---------------------------------------------------------------------------
+
+async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: int = 0,
+                      id: str = '', user: discord.Member | None = None):
+    target_user = user or interaction.user
+    log.info('/puzzle von %s: anzahl=%d buch=%d id=%s user=%s',
+             interaction.user, anzahl, buch, id, target_user)
+    await interaction.response.defer(ephemeral=True)
+    try:
+        dm = await target_user.create_dm()
+        target_uid = target_user.id
+
+        if id:
+            # Blind-Referenz: "lid:blind:N" → post_blind_puzzle
+            _blind_moves = 0
+            _lookup_id = id
+            _blind_match = re.search(r':blind:(\d+)$', id, re.IGNORECASE)
+            if _blind_match:
+                _blind_moves = int(_blind_match.group(1))
+                _lookup_id = id[:_blind_match.start()]
+
+            result = find_line_by_id(_lookup_id)
+            if not result:
+                await interaction.followup.send(f'⚠️ Puzzle `{id}` nicht gefunden.', ephemeral=True)
+                return
+
+            if not _has_training_comment(result[1]):
+                await interaction.followup.send(
+                    f'⚠️ `{id}` hat keinen Trainingskommentar.', ephemeral=True)
+                return
+
+            if _blind_moves:
+                if user:
+                    await dm.send(f'**{interaction.user.display_name}** schickt dir ein Blind-Puzzle 🙈')
+                line_id = result[0]
+                orig = result[1]
+                split = _split_for_blind(orig, _blind_moves)
+                if split is None:
+                    await interaction.followup.send(
+                        f'⚠️ Puzzle `{line_id}` hat nicht genug Vorlauf-Züge für blind:{_blind_moves}.',
+                        ephemeral=True)
+                    return
+                blind_board, blind_san, puzzle_game = split
+                fname = line_id.split(':')[0]
+                meta  = _load_books_config().get(fname, {})
+                try:
+                    img = await asyncio.to_thread(_render_board, blind_board)
+                except Exception:
+                    img = None
+                embed = build_puzzle_embed(
+                    puzzle_game, turn=blind_board.turn,
+                    difficulty=meta.get('difficulty',''), rating=meta.get('rating', 0),
+                    line_id=line_id, blind_moves=_blind_moves)
+                embed.title = f'🙈 Blind-Puzzle ({_blind_moves} Züge)'
+                blind_pgn = _format_blind_moves(blind_board, blind_san)
+                embed.add_field(name='🙈 Spiele in Gedanken',
+                                value=f'`{blind_pgn}`\n_Visualisiere die Stellung danach und löse das Puzzle._',
+                                inline=False)
+                if img:
+                    file = discord.File(img, filename='board.png')
+                    embed.set_image(url='attachment://board.png')
+                    msg = await _resilient_send(dm, file=file, embed=embed)
+                else:
+                    msg = await _resilient_send(dm, embed=embed)
+                _register_puzzle_msg(msg.id, line_id, mode='blind')
+                try:
+                    await msg.edit(view=_fresh_button_view())
+                except Exception:
+                    pass
+                pgn_moves = _solution_pgn(puzzle_game)
+                if pgn_moves:
+                    await _send_optional(dm, f'Lösung des Puzzles: ||`{pgn_moves}`||', label=f'Blind-Lösung {line_id}')
+                dest = f'an {target_user.mention}' if user else 'dir'
+                await interaction.followup.send(f'🙈 Blind-Puzzle `{line_id}:blind:{_blind_moves}` {dest} per DM gesendet.', ephemeral=True)
+                return
+
+            line_id, original_game = result
+            game = _trim_to_training_position(original_game)
+            context = original_game if game is not original_game else None
+
+            books_config = _load_books_config()
+            fname = line_id.split(':')[0]
+            book_meta = books_config.get(fname, {})
+            diff = book_meta.get('difficulty', '')
+            rating = book_meta.get('rating', 0)
+
+            # Upload
+            reuse_study_id = _get_user_study_id(target_uid)
+            urls = await _upload_puzzles_async([(game, context)], reuse_study_id=reuse_study_id)
+            puzzle_url = urls[0] if urls else None
+
+            try:
+                board = game.board()
+                turn = board.turn
+                img = await asyncio.to_thread(_render_board, board)
+            except Exception:
+                turn, img = None, None
+
+            if user:
+                await dm.send(f'**{interaction.user.display_name}** schickt dir ein Rätsel 🧩')
+
+            embed = build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating, line_id=line_id)
+            if img:
+                file = discord.File(img, filename='board.png')
+                embed.set_image(url='attachment://board.png')
+                msg = await dm.send(file=file, embed=embed)
+            else:
+                msg = await dm.send(embed=embed)
+            _register_puzzle_msg(msg.id, line_id)
+            await msg.edit(view=_fresh_button_view())
+
+            await _send_puzzle_followups(dm, game, context, puzzle_url, line_id)
+
+            dest = f'an {target_user.mention}' if user else 'dir'
+            await interaction.followup.send(
+                f'✅ Puzzle `{line_id}` {dest} per DM gesendet.', ephemeral=True)
+            return
+
+        if user:
+            await dm.send(f'**{interaction.user.display_name}** schickt dir ein Rätsel 🧩')
+        sent = await post_puzzle(dm, count=anzahl, book_idx=buch, user_id=target_uid)
+        dest = f'an {target_user.mention}' if user else 'dir'
+        if sent == anzahl:
+            msg = f'✅ {sent} Puzzle(s) wurde(n) {dest} per DM gesendet.'
+        elif sent > 0:
+            msg = f'⚠️ Nur {sent}/{anzahl} Puzzle(s) konnten {dest} gesendet werden – Details im Bot-Log.'
+        else:
+            msg = '❌ Es konnte kein Puzzle gesendet werden – Details im Bot-Log.'
+        await interaction.followup.send(msg, ephemeral=True)
+    except Exception as e:
+        log.exception('/puzzle fehlgeschlagen: %s', e)
+        await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
+
+
+async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
+    await interaction.response.defer(ephemeral=True)
+    try:
+        all_lines = load_all_lines()
+        posted    = set(load_puzzle_state().get('posted', []))
+        books_config = _load_books_config()
+
+        # --- Detailansicht für ein einzelnes Buch ---
+        if buch > 0:
+            sorted_books = sorted(set(lid.split(':')[0] for lid, _ in all_lines))
+            if buch > len(sorted_books):
+                await interaction.followup.send(
+                    f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die Liste.',
+                    ephemeral=True)
+                return
+            book_fn = sorted_books[buch - 1]
+            book_name = book_fn.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+            meta  = books_config.get(book_fn, {})
+            diff  = meta.get('difficulty', '')
+            rat   = meta.get('rating', 0)
+            stars = '★' * rat + '☆' * (10 - rat) if rat else ''
+
+            # Persönlich abgehakte Puzzles (✅ oder ❌, netto >0)
+            from core import event_log as _elog
+            uid = interaction.user.id
+            _net: dict[str, int] = {}
+            for entry in _elog.read_all():
+                if entry.get('user') != uid:
+                    continue
+                if entry.get('emoji') not in ('✅', '❌'):
+                    continue
+                lid_e = entry.get('line_id') or ''
+                _net[lid_e] = _net.get(lid_e, 0) + entry.get('delta', 0)
+            user_done: set[str] = {lid_e for lid_e, n in _net.items() if n > 0}
+
+            # Kapitel aufbauen: round-Prefix → (name, total, done)
+            chapter_ignored = _load_chapter_ignore_list()
+            chapters: dict[str, dict] = {}
+            for lid, game in all_lines:
+                if lid.split(':')[0] != book_fn:
+                    continue
+                round_hdr = lid.split(':')[1] if ':' in lid else ''
+                prefix = round_hdr.split('.')[0] if '.' in round_hdr else round_hdr
+                if prefix not in chapters:
+                    h = dict(game.headers)
+                    chap_name = h.get('Black', '') or h.get('Event', '')
+                    ignored_key = f'{book_fn}:{prefix}'
+                    chapters[prefix] = {
+                        'name': chap_name,
+                        'total': 0,
+                        'posted': 0,
+                        'ignored': ignored_key in chapter_ignored,
+                    }
+                chapters[prefix]['total'] += 1
+                if lid in user_done:
+                    chapters[prefix]['posted'] += 1
+
+            total_book  = sum(c['total']  for c in chapters.values())
+            posted_book = sum(c['posted'] for c in chapters.values())
+
+            flags = []
+            if meta.get('random', True):  flags.append('🎲 Im Zufalls-/Daily-Pool')
+            if meta.get('blind'):          flags.append('🙈 Blind-Modus')
+
+            desc_parts = [f'**{posted_book}/{total_book}** von dir bewertet (✅/❌)']
+            if diff:
+                desc_parts.append(f'{diff}  {stars}' if stars else diff)
+            desc_parts.extend(flags)
+
+            embed = discord.Embed(
+                title=f'📖 {book_name}',
+                description='\n'.join(desc_parts),
+                color=0x7fa650,
+            )
+
+            sorted_chapters = sorted(chapters.items())
+            # Bis zu 25 Felder (Discord-Limit)
+            for prefix, info in sorted_chapters[:25]:
+                chap_num = int(prefix) if prefix.isdigit() else prefix
+                done  = info['posted']
+                total = info['total']
+                is_ign = info['ignored']
+                bar   = '█' * round(done / total * 8) + '░' * (8 - round(done / total * 8)) if total else '░' * 8
+                label = f'Kap. {chap_num}: {info["name"]}' if info['name'] else f'Kapitel {chap_num}'
+                if len(label) > 250:
+                    label = label[:247] + '...'
+                name_field = f'~~{label}~~ 🚫' if is_ign else label
+                embed.add_field(
+                    name=name_field,
+                    value=f'`{bar}` {done}/{total}' + (' *(ignoriert)*' if is_ign else ''),
+                    inline=False,
+                )
+            if len(sorted_chapters) > 25:
+                embed.set_footer(text=f'… {len(sorted_chapters) - 25} weitere Kapitel nicht angezeigt')
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        # --- Übersichtsliste aller Bücher ---
+        total_per_book:  dict[str, int] = defaultdict(int)
+        posted_per_book: dict[str, int] = defaultdict(int)
+        for lid, _ in all_lines:
+            book = lid.split(':')[0]
+            total_per_book[book] += 1
+            if lid in posted:
+                posted_per_book[book] += 1
+
+        if not total_per_book:
+            await interaction.followup.send(
+                '⚠️ Keine Bücher gefunden. Bitte .pgn-Dateien in den `books/`-Ordner legen.',
+                ephemeral=True,
+            )
+            return
+
+        embed = discord.Embed(title='📚 Puzzle-Bücher', color=0x7fa650)
+        for i, book in enumerate(sorted(total_per_book), 1):
+            name  = book.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+            total = total_per_book[book]
+            done  = posted_per_book[book]
+            meta  = books_config.get(book, {})
+            diff  = meta.get('difficulty', '')
+            rat   = meta.get('rating', 0)
+            stars = '★' * rat + '☆' * (10 - rat) if rat else ''
+            info  = f'{done}/{total} gepostet'
+            if diff:
+                info += f'\n{diff}  {stars}' if stars else f'\n{diff}'
+            if meta.get('random', True):
+                info += '\n🎲 Im Zufalls-/Daily-Pool'
+            if meta.get('blind'):
+                info += '\n🙈 Blind-Modus verfügbar'
+            embed.add_field(name=f'{i}: {name}', value=info, inline=False)
+
+        total_all = sum(total_per_book.values())
+        done_all  = sum(posted_per_book.values())
+        embed.set_footer(text=f'Gesamt: {done_all}/{total_all} Linien gepostet')
+        await interaction.followup.send(embed=embed, ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
+
+
+async def _cmd_train(interaction: discord.Interaction, buch: int = None):
+    await interaction.response.defer(ephemeral=True)
+    user_id = interaction.user.id
+
+    if buch is None:
+        # Status anzeigen
+        training = _get_user_training(user_id)
+        if not training:
+            await interaction.followup.send(
+                '📭 Kein Training aktiv. Wähle ein Buch mit `/train <nummer>` '
+                '(Nummern aus `/kurs`).', ephemeral=True)
+            return
+        book_filename = training['book']
+        pos = training['position']
+        all_lines = load_all_lines()
+        total = sum(1 for lid, _ in all_lines if lid.startswith(book_filename + ':'))
+        name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+        books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
+        kurs_nr = books.index(book_filename) + 1 if book_filename in books else 0
+        books_config = _load_books_config()
+        meta = books_config.get(book_filename, {})
+        diff = meta.get('difficulty', '')
+        rat = meta.get('rating', 0)
+        stars = ('★' * rat + '☆' * (10 - rat)) if rat else ''
+        pct = f' ({pos * 100 // total}%)' if total else ''
+
+        embed = discord.Embed(title=f'📖 Training: {name} ({kurs_nr})', color=0x7fa650)
+        embed.add_field(name='Fortschritt', value=f'{pos}/{total} Linien{pct}', inline=True)
+        if diff:
+            embed.add_field(name='Schwierigkeit',
+                            value=f'{diff}  {stars}' if stars else diff, inline=True)
+        embed.add_field(name='Nächster Schritt',
+                        value='`/next` `/next 5` `/next 10`', inline=False)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        return
+
+    if buch == 0:
+        _clear_user_training(user_id)
+        await interaction.followup.send('🔓 Training beendet.', ephemeral=True)
+        return
+
+    # Buch validieren
+    if not os.path.isdir(BOOKS_DIR):
+        await interaction.followup.send('⚠️ Kein books-Ordner.', ephemeral=True)
+        return
+    books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
+    if buch < 1 or buch > len(books):
+        await interaction.followup.send(
+            f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die Liste.', ephemeral=True)
+        return
+
+    book_filename = books[buch - 1]
+    # Aktuelle Position beibehalten falls selbes Buch
+    training = _get_user_training(user_id)
+    if training and training.get('book') == book_filename:
+        pos = training['position']
+    else:
+        pos = 0
+
+    _set_user_training(user_id, book_filename, pos)
+
+    # Info anzeigen
+    all_lines = load_all_lines()
+    total = sum(1 for lid, _ in all_lines if lid.startswith(book_filename + ':'))
+    name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+    books_config = _load_books_config()
+    meta = books_config.get(book_filename, {})
+    diff = meta.get('difficulty', '')
+    rat = meta.get('rating', 0)
+    stars = ('★' * rat + '☆' * (10 - rat)) if rat else ''
+
+    embed = discord.Embed(title=f'📖 Training: {name} ({buch})', color=0x7fa650)
+    embed.add_field(name='Fortschritt', value=f'{pos}/{total} Linien', inline=True)
+    if diff:
+        embed.add_field(name='Schwierigkeit',
+                        value=f'{diff}  {stars}' if stars else diff, inline=True)
+    embed.add_field(name='Nächster Schritt',
+                    value='`/next` `/next 5` `/next 10`', inline=False)
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
+    await interaction.response.defer(ephemeral=True)
+    user_id = interaction.user.id
+    anzahl = max(1, min(anzahl, 20))
+
+    training = _get_user_training(user_id)
+    if not training:
+        await interaction.followup.send(
+            '⚠️ Kein Trainingsbuch gewählt. Nutze `/train <buch>` zuerst.',
+            ephemeral=True)
+        return
+
+    book_filename = training['book']
+    position = training.get('position', 0)
+
+    results = pick_sequential_lines(book_filename, position, anzahl)
+    if not results:
+        name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+        # Position auf 0 zurücksetzen
+        _set_user_training(user_id, book_filename, 0)
+        await interaction.followup.send(
+            f'✅ Alle Linien in **{name}** durchgearbeitet! '
+            f'Nutze `/train` erneut zum Zurücksetzen oder wähle ein neues Buch.',
+            ephemeral=True)
+        return
+
+    # Position updaten
+    new_position = position + len(results)
+    _set_user_training(user_id, book_filename, new_position)
+
+    # Puzzles aufbereiten (wie in post_puzzle)
+    books_config = _load_books_config()
+    meta = books_config.get(book_filename, {})
+    diff = meta.get('difficulty', '')
+    rating = meta.get('rating', 0)
+
+    puzzles = []
+    for line_id, original_game in results:
+        game = _trim_to_training_position(original_game)
+        context = original_game if game is not original_game else None
+        puzzles.append((game, context, diff, rating, line_id))
+
+    # Upload (Studien-Reuse wie bei /puzzle)
+    reuse_study_id = _get_user_study_id(user_id)
+    base_count, base_total = _get_user_puzzle_count(user_id)
+
+    upload_pairs = [(g, c) for g, c, _, _, _ in puzzles]
+    urls = await _upload_puzzles_async(upload_pairs, reuse_study_id=reuse_study_id)
+
+    # Studie-ID + Zähler speichern
+    first_url = urls[0] if urls else None
+    sid = _extract_study_id(first_url) if first_url else None
+    if sid:
+        _set_user_study_id(user_id, sid,
+                           base_count + len(puzzles),
+                           base_total + len(puzzles))
+
+    # DM senden
+    dm = await interaction.user.create_dm()
+    all_book_lines = load_all_lines()
+    total_in_book = sum(1 for lid, _ in all_book_lines
+                        if lid.startswith(book_filename + ':'))
+
+    puzzle_count = 0
+    for i, (game, context, d, r, lid) in enumerate(puzzles):
+        puzzle_url = urls[i] if i < len(urls) else None
+        is_chapter = context is None  # kein [%tqu] → Kapitel
+
+        if is_chapter:
+            # Kapitel: Züge offen anzeigen, keine Puzzle-Buttons
+            h = dict(game.headers)
+            chapter_name = h.get('White', h.get('Event', 'Kapitel'))
+            embed = discord.Embed(
+                title=f'📖 Kapitel: {chapter_name}',
+                color=0x7fa650)
+            embed.set_footer(
+                text=f'📖 Training: {position + i + 1}/{total_in_book} · ID: {lid}')
+            pgn_moves = _solution_pgn(game)
+            if pgn_moves:
+                embed.add_field(name='Züge', value=f'`{pgn_moves}`', inline=False)
+            msg = await dm.send(embed=embed)
+            if puzzle_url:
+                await dm.send(f'[Auf Lichess ansehen]({puzzle_url})')
+        else:
+            puzzle_count += 1
+            puzzle_num = base_count + puzzle_count
+            puzzle_total = base_total + puzzle_count
+            try:
+                board = game.board()
+                turn = board.turn
+                img = await asyncio.to_thread(_render_board, board)
+            except Exception:
+                turn, img = None, None
+
+            embed = build_puzzle_embed(game, turn=turn,
+                                       puzzle_num=puzzle_num,
+                                       puzzle_total=puzzle_total,
+                                       difficulty=d, rating=r,
+                                       line_id=lid)
+            embed.set_footer(
+                text=f'📖 Training: {position + i + 1}/{total_in_book} · ID: {lid}')
+
+            if img:
+                file = discord.File(img, filename='board.png')
+                embed.set_image(url='attachment://board.png')
+                msg = await dm.send(file=file, embed=embed)
+            else:
+                msg = await dm.send(embed=embed)
+            _register_puzzle_msg(msg.id, lid)
+            await msg.edit(view=_fresh_button_view())
+
+            # PGN-Lösung, Prelude, Lichess-Link
+            await _send_puzzle_followups(dm, game, context, puzzle_url, lid)
+
+    if puzzle_count:
+        stats.inc(user_id, 'puzzles', puzzle_count)
+    name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+    await interaction.followup.send(
+        f'✅ {len(results)} Linie(n) aus **{name}** per DM gesendet '
+        f'({new_position}/{total_in_book}).',
+        ephemeral=True)
+
+
+async def _cmd_endless(bot, interaction: discord.Interaction, buch: int = 0):
+    user_id = interaction.user.id
+    log.info('/endless von %s: buch=%d', interaction.user, buch)
+
+    # Toggle: wenn bereits aktiv → stoppen
+    if is_endless(user_id):
+        count = stop_endless(user_id)
+        await interaction.response.send_message(
+            f'⏹️ Endless-Modus beendet! **{count}** Puzzle(s) gelöst.',
+            ephemeral=True)
+        return
+
+    # Buch validieren
+    book_filename = None
+    if buch > 0:
+        if os.path.isdir(BOOKS_DIR):
+            books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
+            if 1 <= buch <= len(books):
+                book_filename = books[buch - 1]
+            else:
+                await interaction.response.send_message(
+                    f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die verfügbaren Bücher.',
+                    ephemeral=True)
+                return
+
+    start_endless(user_id, book_filename)
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        await post_next_endless(bot, user_id)
+        book_info = ''
+        if book_filename:
+            name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+            book_info = f' (Buch: **{name}**)'
+        await interaction.followup.send(
+            f'♾️ Endless-Modus gestartet{book_info}! '
+            f'Erstes Puzzle per DM gesendet.\n'
+            f'Nach jeder ✅/❌ kommt sofort das nächste. '
+            f'Nochmal `/endless` zum Stoppen.',
+            ephemeral=True)
+    except Exception as e:
+        stop_endless(user_id)
+        await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
+
+
+async def _cmd_ignore_kapitel(
+    interaction: discord.Interaction,
+    buch: int = 0,
+    kapitel: int = 0,
+    aktion: discord.app_commands.Choice[str] = None,
+):
+    await interaction.response.defer(ephemeral=True)
+
+    # Ohne Parameter → Liste aller ignorierten Kapitel
+    if buch == 0 and kapitel == 0:
+        ignored = sorted(_load_chapter_ignore_list())
+        if not ignored:
+            await interaction.followup.send(
+                'Keine Kapitel ignoriert.', ephemeral=True)
+            return
+        lines = ['**Ignorierte Kapitel:**']
+        for entry in ignored:
+            fname, _, prefix = entry.partition(':')
+            name = fname.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+            lines.append(f'• `{name}` — Kapitel {prefix}')
+        await interaction.followup.send('\n'.join(lines), ephemeral=True)
+        return
+
+    if buch == 0 or kapitel == 0:
+        await interaction.followup.send(
+            '⚠️ Bitte sowohl `buch` als auch `kapitel` angeben.', ephemeral=True)
+        return
+
+    # Buch auflösen
+    if not os.path.isdir(BOOKS_DIR):
+        await interaction.followup.send(
+            f'⚠️ Books-Verzeichnis fehlt: `{BOOKS_DIR}`', ephemeral=True)
+        return
+    books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
+    if not 1 <= buch <= len(books):
+        await interaction.followup.send(
+            f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die verfügbaren Bücher.',
+            ephemeral=True)
+        return
+    book_filename = books[buch - 1]
+    book_name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+
+    # Chapter-Präfix im tatsächlichen Format finden
+    prefix = _find_chapter_prefix(book_filename, kapitel)
+    if prefix is None:
+        chapters = _list_chapters(book_filename)
+        sample = ', '.join(sorted(chapters)[:10])
+        more = f' (von {len(chapters)})' if len(chapters) > 10 else ''
+        await interaction.followup.send(
+            f'⚠️ Kapitel {kapitel} in **{book_name}** nicht gefunden.\n'
+            f'Verfügbare Kapitel{more}: `{sample}`',
+            ephemeral=True)
+        return
+
+    action_value = aktion.value if aktion else 'ignore'
+    chapter_count = _list_chapters(book_filename).get(prefix, 0)
+
+    if action_value == 'unignore':
+        unignore_chapter(book_filename, prefix)
+        log.info('Kapitel reaktiviert: %s:%s', book_filename, prefix)
+        await interaction.followup.send(
+            f'♻️ Kapitel **{prefix}** in **{book_name}** wieder aktiviert '
+            f'({chapter_count} Linien).',
+            ephemeral=True)
+    else:
+        ignore_chapter(book_filename, prefix)
+        log.info('Kapitel ignoriert: %s:%s', book_filename, prefix)
+        await interaction.followup.send(
+            f'🚮 Kapitel **{prefix}** in **{book_name}** ignoriert '
+            f'({chapter_count} Linien werden nicht mehr gepostet).',
+            ephemeral=True)
+
 
 def setup(bot: discord.ext.commands.Bot):
     """Registriert alle Puzzle-Commands auf dem Bot."""
@@ -1749,578 +2407,35 @@ def setup(bot: discord.ext.commands.Bot):
     )
     async def cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: int = 0,
                          id: str = '', user: discord.Member | None = None):
-        target_user = user or interaction.user
-        log.info('/puzzle von %s: anzahl=%d buch=%d id=%s user=%s',
-                 interaction.user, anzahl, buch, id, target_user)
-        await interaction.response.defer(ephemeral=True)
-        try:
-            dm = await target_user.create_dm()
-            target_uid = target_user.id
-
-            if id:
-                # Blind-Referenz: "lid:blind:N" → post_blind_puzzle
-                _blind_moves = 0
-                _lookup_id = id
-                _blind_match = re.search(r':blind:(\d+)$', id, re.IGNORECASE)
-                if _blind_match:
-                    _blind_moves = int(_blind_match.group(1))
-                    _lookup_id = id[:_blind_match.start()]
-
-                result = find_line_by_id(_lookup_id)
-                if not result:
-                    await interaction.followup.send(f'⚠️ Puzzle `{id}` nicht gefunden.', ephemeral=True)
-                    return
-
-                if not _has_training_comment(result[1]):
-                    await interaction.followup.send(
-                        f'⚠️ `{id}` hat keinen Trainingskommentar.', ephemeral=True)
-                    return
-
-                if _blind_moves:
-                    if user:
-                        await dm.send(f'**{interaction.user.display_name}** schickt dir ein Blind-Puzzle 🙈')
-                    line_id = result[0]
-                    # post_blind_puzzle erwartet einen Channel und sucht selbst
-                    # eine passende Linie – wir nutzen find_line_by_id-Ergebnis
-                    # direkt via pick_random_blind_lines-Bypass:
-                    orig = result[1]
-                    split = _split_for_blind(orig, _blind_moves)
-                    if split is None:
-                        await interaction.followup.send(
-                            f'⚠️ Puzzle `{line_id}` hat nicht genug Vorlauf-Züge für blind:{_blind_moves}.',
-                            ephemeral=True)
-                        return
-                    blind_board, blind_san, puzzle_game = split
-                    fname = line_id.split(':')[0]
-                    meta  = _load_books_config().get(fname, {})
-                    try:
-                        img = await asyncio.to_thread(_render_board, blind_board)
-                    except Exception:
-                        img = None
-                    embed = build_puzzle_embed(
-                        puzzle_game, turn=blind_board.turn,
-                        difficulty=meta.get('difficulty',''), rating=meta.get('rating', 0),
-                        line_id=line_id, blind_moves=_blind_moves)
-                    embed.title = f'🙈 Blind-Puzzle ({_blind_moves} Züge)'
-                    blind_pgn = _format_blind_moves(blind_board, blind_san)
-                    embed.add_field(name='🙈 Spiele in Gedanken',
-                                    value=f'`{blind_pgn}`\n_Visualisiere die Stellung danach und löse das Puzzle._',
-                                    inline=False)
-                    if img:
-                        file = discord.File(img, filename='board.png')
-                        embed.set_image(url='attachment://board.png')
-                        msg = await _resilient_send(dm, file=file, embed=embed)
-                    else:
-                        msg = await _resilient_send(dm, embed=embed)
-                    _register_puzzle_msg(msg.id, line_id, mode='blind')
-                    try:
-                        await msg.edit(view=_fresh_button_view())
-                    except Exception:
-                        pass
-                    exporter = chess.pgn.StringExporter(headers=False, variations=True, comments=True)
-                    pgn_moves = _strip_pgn_annotations(puzzle_game.accept(exporter))
-                    if pgn_moves:
-                        await _send_optional(dm, f'Lösung des Puzzles: ||`{pgn_moves}`||', label=f'Blind-Lösung {line_id}')
-                    dest = f'an {target_user.mention}' if user else 'dir'
-                    await interaction.followup.send(f'🙈 Blind-Puzzle `{line_id}:blind:{_blind_moves}` {dest} per DM gesendet.', ephemeral=True)
-                    return
-
-                line_id, original_game = result
-                game = _trim_to_training_position(original_game)
-                context = original_game if game is not original_game else None
-
-                books_config = _load_books_config()
-                fname = line_id.split(':')[0]
-                book_meta = books_config.get(fname, {})
-                diff = book_meta.get('difficulty', '')
-                rating = book_meta.get('rating', 0)
-
-                # Upload
-                reuse_study_id = _get_user_study_id(target_uid)
-                loop = asyncio.get_running_loop()
-                puzzle_url = await loop.run_in_executor(
-                    None, lambda: upload_to_lichess(game, context_game=context,
-                                                     reuse_study_id=reuse_study_id))
-
-                try:
-                    board = game.board()
-                    turn = board.turn
-                    img = await asyncio.to_thread(_render_board, board)
-                except Exception:
-                    turn, img = None, None
-
-                if user:
-                    await dm.send(f'**{interaction.user.display_name}** schickt dir ein Rätsel 🧩')
-
-                embed = build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating, line_id=line_id)
-                if img:
-                    file = discord.File(img, filename='board.png')
-                    embed.set_image(url='attachment://board.png')
-                    msg = await dm.send(file=file, embed=embed)
-                else:
-                    msg = await dm.send(embed=embed)
-                _register_puzzle_msg(msg.id, line_id)
-                await msg.edit(view=_fresh_button_view())
-
-                exporter = chess.pgn.StringExporter(headers=False, variations=True, comments=True)
-                pgn_moves = _strip_pgn_annotations(game.accept(exporter))
-                if pgn_moves:
-                    await dm.send(f'Lösung: ||`{pgn_moves}`||')
-                if context:
-                    prelude = _prelude_pgn(context, game)
-                    if prelude:
-                        await dm.send(f'Ganze Partie: ||`{prelude}`||')
-                if puzzle_url:
-                    await dm.send(f'[Klickbares Rätsel]({puzzle_url})')
-
-                dest = f'an {target_user.mention}' if user else 'dir'
-                await interaction.followup.send(
-                    f'✅ Puzzle `{line_id}` {dest} per DM gesendet.', ephemeral=True)
-                return
-
-            if user:
-                await dm.send(f'**{interaction.user.display_name}** schickt dir ein Rätsel 🧩')
-            sent = await post_puzzle(dm, count=anzahl, book_idx=buch, user_id=target_uid)
-            dest = f'an {target_user.mention}' if user else 'dir'
-            if sent == anzahl:
-                msg = f'✅ {sent} Puzzle(s) wurde(n) {dest} per DM gesendet.'
-            elif sent > 0:
-                msg = f'⚠️ Nur {sent}/{anzahl} Puzzle(s) konnten {dest} gesendet werden – Details im Bot-Log.'
-            else:
-                msg = '❌ Es konnte kein Puzzle gesendet werden – Details im Bot-Log.'
-            await interaction.followup.send(msg, ephemeral=True)
-        except Exception as e:
-            log.exception('/puzzle fehlgeschlagen: %s', e)
-            await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
-
+        await _cmd_puzzle(interaction, anzahl, buch, id, user)
 
     @tree.command(name='kurs', description='Puzzle-Bücher anzeigen; optional Details zu einem Buch')
     @discord.app_commands.describe(
         buch='Buchnummer aus /kurs für Detailansicht mit allen Kapiteln',
     )
     async def cmd_buecher(interaction: discord.Interaction, buch: int = 0):
-        await interaction.response.defer(ephemeral=True)
-        try:
-            all_lines = load_all_lines()
-            posted    = set(load_puzzle_state().get('posted', []))
-            books_config = _load_books_config()
-
-            # --- Detailansicht für ein einzelnes Buch ---
-            if buch > 0:
-                sorted_books = sorted(set(lid.split(':')[0] for lid, _ in all_lines))
-                if buch > len(sorted_books):
-                    await interaction.followup.send(
-                        f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die Liste.',
-                        ephemeral=True)
-                    return
-                book_fn = sorted_books[buch - 1]
-                book_name = book_fn.removesuffix('_firstkey.pgn').removesuffix('.pgn')
-                meta  = books_config.get(book_fn, {})
-                diff  = meta.get('difficulty', '')
-                rat   = meta.get('rating', 0)
-                stars = '★' * rat + '☆' * (10 - rat) if rat else ''
-
-                # Persönlich abgehakte Puzzles (✅ oder ❌, netto >0)
-                from core import event_log as _elog
-                uid = interaction.user.id
-                _net: dict[str, int] = {}
-                for entry in _elog.read_all():
-                    if entry.get('user') != uid:
-                        continue
-                    if entry.get('emoji') not in ('✅', '❌'):
-                        continue
-                    lid_e = entry.get('line_id') or ''
-                    _net[lid_e] = _net.get(lid_e, 0) + entry.get('delta', 0)
-                user_done: set[str] = {lid_e for lid_e, n in _net.items() if n > 0}
-
-                # Kapitel aufbauen: round-Prefix → (name, total, done)
-                chapter_ignored = _load_chapter_ignore_list()
-                chapters: dict[str, dict] = {}
-                for lid, game in all_lines:
-                    if lid.split(':')[0] != book_fn:
-                        continue
-                    round_hdr = lid.split(':')[1] if ':' in lid else ''
-                    prefix = round_hdr.split('.')[0] if '.' in round_hdr else round_hdr
-                    if prefix not in chapters:
-                        h = dict(game.headers)
-                        chap_name = h.get('Black', '') or h.get('Event', '')
-                        ignored_key = f'{book_fn}:{prefix}'
-                        chapters[prefix] = {
-                            'name': chap_name,
-                            'total': 0,
-                            'posted': 0,
-                            'ignored': ignored_key in chapter_ignored,
-                        }
-                    chapters[prefix]['total'] += 1
-                    if lid in user_done:
-                        chapters[prefix]['posted'] += 1
-
-                total_book  = sum(c['total']  for c in chapters.values())
-                posted_book = sum(c['posted'] for c in chapters.values())
-
-                flags = []
-                if meta.get('random', True):  flags.append('🎲 Im Zufalls-/Daily-Pool')
-                if meta.get('blind'):          flags.append('🙈 Blind-Modus')
-
-                desc_parts = [f'**{posted_book}/{total_book}** von dir bewertet (✅/❌)']
-                if diff:
-                    desc_parts.append(f'{diff}  {stars}' if stars else diff)
-                desc_parts.extend(flags)
-
-                embed = discord.Embed(
-                    title=f'📖 {book_name}',
-                    description='\n'.join(desc_parts),
-                    color=0x7fa650,
-                )
-
-                sorted_chapters = sorted(chapters.items())
-                # Bis zu 25 Felder (Discord-Limit)
-                for prefix, info in sorted_chapters[:25]:
-                    chap_num = int(prefix) if prefix.isdigit() else prefix
-                    done  = info['posted']
-                    total = info['total']
-                    is_ign = info['ignored']
-                    bar   = '█' * round(done / total * 8) + '░' * (8 - round(done / total * 8)) if total else '░' * 8
-                    label = f'Kap. {chap_num}: {info["name"]}' if info['name'] else f'Kapitel {chap_num}'
-                    if len(label) > 250:
-                        label = label[:247] + '...'
-                    name_field = f'~~{label}~~ 🚫' if is_ign else label
-                    embed.add_field(
-                        name=name_field,
-                        value=f'`{bar}` {done}/{total}' + (' *(ignoriert)*' if is_ign else ''),
-                        inline=False,
-                    )
-                if len(sorted_chapters) > 25:
-                    embed.set_footer(text=f'… {len(sorted_chapters) - 25} weitere Kapitel nicht angezeigt')
-                await interaction.followup.send(embed=embed, ephemeral=True)
-                return
-
-            # --- Übersichtsliste aller Bücher ---
-            total_per_book:  dict[str, int] = defaultdict(int)
-            posted_per_book: dict[str, int] = defaultdict(int)
-            for lid, _ in all_lines:
-                book = lid.split(':')[0]
-                total_per_book[book] += 1
-                if lid in posted:
-                    posted_per_book[book] += 1
-
-            if not total_per_book:
-                await interaction.followup.send(
-                    '⚠️ Keine Bücher gefunden. Bitte .pgn-Dateien in den `books/`-Ordner legen.',
-                    ephemeral=True,
-                )
-                return
-
-            embed = discord.Embed(title='📚 Puzzle-Bücher', color=0x7fa650)
-            for i, book in enumerate(sorted(total_per_book), 1):
-                name  = book.removesuffix('_firstkey.pgn').removesuffix('.pgn')
-                total = total_per_book[book]
-                done  = posted_per_book[book]
-                meta  = books_config.get(book, {})
-                diff  = meta.get('difficulty', '')
-                rat   = meta.get('rating', 0)
-                stars = '★' * rat + '☆' * (10 - rat) if rat else ''
-                info  = f'{done}/{total} gepostet'
-                if diff:
-                    info += f'\n{diff}  {stars}' if stars else f'\n{diff}'
-                if meta.get('random', True):
-                    info += '\n🎲 Im Zufalls-/Daily-Pool'
-                if meta.get('blind'):
-                    info += '\n🙈 Blind-Modus verfügbar'
-                embed.add_field(name=f'{i}: {name}', value=info, inline=False)
-
-            total_all = sum(total_per_book.values())
-            done_all  = sum(posted_per_book.values())
-            embed.set_footer(text=f'Gesamt: {done_all}/{total_all} Linien gepostet')
-            await interaction.followup.send(embed=embed, ephemeral=True)
-        except Exception as e:
-            await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
+        await _cmd_buecher(interaction, buch)
 
     @tree.command(name='train', description='Buch für sequentielles Training auswählen')
     @discord.app_commands.describe(
         buch='Buchnummer aus /kurs (0 = Training beenden, leer = Status anzeigen)',
     )
     async def cmd_train(interaction: discord.Interaction, buch: int = None):
-        await interaction.response.defer(ephemeral=True)
-        user_id = interaction.user.id
-
-        if buch is None:
-            # Status anzeigen
-            training = _get_user_training(user_id)
-            if not training:
-                await interaction.followup.send(
-                    '📭 Kein Training aktiv. Wähle ein Buch mit `/train <nummer>` '
-                    '(Nummern aus `/kurs`).', ephemeral=True)
-                return
-            book_filename = training['book']
-            pos = training['position']
-            all_lines = load_all_lines()
-            total = sum(1 for lid, _ in all_lines if lid.startswith(book_filename + ':'))
-            name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
-            books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
-            kurs_nr = books.index(book_filename) + 1 if book_filename in books else 0
-            books_config = _load_books_config()
-            meta = books_config.get(book_filename, {})
-            diff = meta.get('difficulty', '')
-            rat = meta.get('rating', 0)
-            stars = ('★' * rat + '☆' * (10 - rat)) if rat else ''
-            pct = f' ({pos * 100 // total}%)' if total else ''
-
-            embed = discord.Embed(title=f'📖 Training: {name} ({kurs_nr})', color=0x7fa650)
-            embed.add_field(name='Fortschritt', value=f'{pos}/{total} Linien{pct}', inline=True)
-            if diff:
-                embed.add_field(name='Schwierigkeit',
-                                value=f'{diff}  {stars}' if stars else diff, inline=True)
-            embed.add_field(name='Nächster Schritt',
-                            value='`/next` `/next 5` `/next 10`', inline=False)
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            return
-
-        if buch == 0:
-            _clear_user_training(user_id)
-            await interaction.followup.send('🔓 Training beendet.', ephemeral=True)
-            return
-
-        # Buch validieren
-        if not os.path.isdir(BOOKS_DIR):
-            await interaction.followup.send('⚠️ Kein books-Ordner.', ephemeral=True)
-            return
-        books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
-        if buch < 1 or buch > len(books):
-            await interaction.followup.send(
-                f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die Liste.', ephemeral=True)
-            return
-
-        book_filename = books[buch - 1]
-        # Aktuelle Position beibehalten falls selbes Buch
-        training = _get_user_training(user_id)
-        if training and training.get('book') == book_filename:
-            pos = training['position']
-        else:
-            pos = 0
-
-        _set_user_training(user_id, book_filename, pos)
-
-        # Info anzeigen
-        all_lines = load_all_lines()
-        total = sum(1 for lid, _ in all_lines if lid.startswith(book_filename + ':'))
-        name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
-        books_config = _load_books_config()
-        meta = books_config.get(book_filename, {})
-        diff = meta.get('difficulty', '')
-        rat = meta.get('rating', 0)
-        stars = ('★' * rat + '☆' * (10 - rat)) if rat else ''
-
-        embed = discord.Embed(title=f'📖 Training: {name} ({buch})', color=0x7fa650)
-        embed.add_field(name='Fortschritt', value=f'{pos}/{total} Linien', inline=True)
-        if diff:
-            embed.add_field(name='Schwierigkeit',
-                            value=f'{diff}  {stars}' if stars else diff, inline=True)
-        embed.add_field(name='Nächster Schritt',
-                        value='`/next` `/next 5` `/next 10`', inline=False)
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await _cmd_train(interaction, buch)
 
     @tree.command(name='next', description='Nächste Linie(n) aus dem Trainingsbuch')
     @discord.app_commands.describe(
         anzahl='Anzahl Linien (Standard: 1, max 20)',
     )
     async def cmd_next(interaction: discord.Interaction, anzahl: int = 1):
-        await interaction.response.defer(ephemeral=True)
-        user_id = interaction.user.id
-        anzahl = max(1, min(anzahl, 20))
-
-        training = _get_user_training(user_id)
-        if not training:
-            await interaction.followup.send(
-                '⚠️ Kein Trainingsbuch gewählt. Nutze `/train <buch>` zuerst.',
-                ephemeral=True)
-            return
-
-        book_filename = training['book']
-        position = training.get('position', 0)
-
-        results = pick_sequential_lines(book_filename, position, anzahl)
-        if not results:
-            name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
-            # Position auf 0 zurücksetzen
-            _set_user_training(user_id, book_filename, 0)
-            await interaction.followup.send(
-                f'✅ Alle Linien in **{name}** durchgearbeitet! '
-                f'Nutze `/train` erneut zum Zurücksetzen oder wähle ein neues Buch.',
-                ephemeral=True)
-            return
-
-        # Position updaten
-        new_position = position + len(results)
-        _set_user_training(user_id, book_filename, new_position)
-
-        # Puzzles aufbereiten (wie in post_puzzle)
-        books_config = _load_books_config()
-        meta = books_config.get(book_filename, {})
-        diff = meta.get('difficulty', '')
-        rating = meta.get('rating', 0)
-
-        puzzles = []
-        for line_id, original_game in results:
-            game = _trim_to_training_position(original_game)
-            context = original_game if game is not original_game else None
-            puzzles.append((game, context, diff, rating, line_id))
-
-        # Upload (Studien-Reuse wie bei /puzzle)
-        reuse_study_id = _get_user_study_id(user_id)
-        base_count, base_total = _get_user_puzzle_count(user_id)
-
-        upload_pairs = [(g, c) for g, c, _, _, _ in puzzles]
-        loop = asyncio.get_running_loop()
-        if len(upload_pairs) == 1:
-            u = await loop.run_in_executor(
-                None, lambda: upload_to_lichess(
-                    upload_pairs[0][0], context_game=upload_pairs[0][1],
-                    reuse_study_id=reuse_study_id))
-            urls = [u] if u else []
-        else:
-            urls = await loop.run_in_executor(
-                None, lambda: upload_many_to_lichess(
-                    upload_pairs, reuse_study_id=reuse_study_id))
-
-        # Studie-ID + Zähler speichern
-        first_url = urls[0] if urls else None
-        if first_url:
-            parts = first_url.rstrip('/').split('/')
-            if 'study' in parts:
-                sidx = parts.index('study')
-                sid = parts[sidx + 1] if sidx + 1 < len(parts) else ''
-                if sid:
-                    _set_user_study_id(user_id, sid,
-                                       base_count + len(puzzles),
-                                       base_total + len(puzzles))
-
-        # DM senden
-        dm = await interaction.user.create_dm()
-        all_book_lines = load_all_lines()
-        total_in_book = sum(1 for lid, _ in all_book_lines
-                            if lid.startswith(book_filename + ':'))
-
-        puzzle_count = 0
-        for i, (game, context, d, r, lid) in enumerate(puzzles):
-            puzzle_url = urls[i] if i < len(urls) else None
-            is_chapter = context is None  # kein [%tqu] → Kapitel
-
-            if is_chapter:
-                # Kapitel: Züge offen anzeigen, keine Puzzle-Buttons
-                h = dict(game.headers)
-                chapter_name = h.get('White', h.get('Event', 'Kapitel'))
-                embed = discord.Embed(
-                    title=f'📖 Kapitel: {chapter_name}',
-                    color=0x7fa650)
-                embed.set_footer(
-                    text=f'📖 Training: {position + i + 1}/{total_in_book} · ID: {lid}')
-                exporter = chess.pgn.StringExporter(
-                    headers=False, variations=True, comments=True)
-                pgn_moves = _strip_pgn_annotations(game.accept(exporter))
-                if pgn_moves:
-                    embed.add_field(name='Züge', value=f'`{pgn_moves}`', inline=False)
-                msg = await dm.send(embed=embed)
-                if puzzle_url:
-                    await dm.send(f'[Auf Lichess ansehen]({puzzle_url})')
-            else:
-                puzzle_count += 1
-                puzzle_num = base_count + puzzle_count
-                puzzle_total = base_total + puzzle_count
-                try:
-                    board = game.board()
-                    turn = board.turn  # Lichess spielt den 1. Zug als Setup
-                    img = await asyncio.to_thread(_render_board, board)
-                except Exception:
-                    turn, img = None, None
-
-                embed = build_puzzle_embed(game, turn=turn,
-                                           puzzle_num=puzzle_num,
-                                           puzzle_total=puzzle_total,
-                                           difficulty=d, rating=r,
-                                           line_id=lid)
-                # Fortschrittsanzeige im Footer (überschreibt line_id-Footer)
-                embed.set_footer(
-                    text=f'📖 Training: {position + i + 1}/{total_in_book} · ID: {lid}')
-
-                if img:
-                    file = discord.File(img, filename='board.png')
-                    embed.set_image(url='attachment://board.png')
-                    msg = await dm.send(file=file, embed=embed)
-                else:
-                    msg = await dm.send(embed=embed)
-                _register_puzzle_msg(msg.id, lid)
-                await msg.edit(view=_fresh_button_view())
-
-                # PGN-Lösung als Spoiler
-                exporter = chess.pgn.StringExporter(
-                    headers=False, variations=True, comments=True)
-                pgn_moves = _strip_pgn_annotations(game.accept(exporter))
-                if pgn_moves:
-                    await dm.send(f'Lösung: ||`{pgn_moves}`||')
-                if context:
-                    prelude = _prelude_pgn(context, game)
-                    if prelude:
-                        await dm.send(f'Ganze Partie: ||`{prelude}`||')
-                if puzzle_url:
-                    await dm.send(f'[Klickbares Rätsel]({puzzle_url})')
-
-        if puzzle_count:
-            stats.inc(user_id, 'puzzles', puzzle_count)
-        name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
-        await interaction.followup.send(
-            f'✅ {len(results)} Linie(n) aus **{name}** per DM gesendet '
-            f'({new_position}/{total_in_book}).',
-            ephemeral=True)
+        await _cmd_next(interaction, anzahl)
 
     @tree.command(name='endless', description='Endlos-Puzzle-Modus starten/stoppen')
     @discord.app_commands.describe(
         buch='Buchnummer aus /kurs (Standard: alle Bücher)',
     )
     async def cmd_endless(interaction: discord.Interaction, buch: int = 0):
-        user_id = interaction.user.id
-        log.info('/endless von %s: buch=%d', interaction.user, buch)
-
-        # Toggle: wenn bereits aktiv → stoppen
-        if is_endless(user_id):
-            count = stop_endless(user_id)
-            await interaction.response.send_message(
-                f'⏹️ Endless-Modus beendet! **{count}** Puzzle(s) gelöst.',
-                ephemeral=True)
-            return
-
-        # Buch validieren
-        book_filename = None
-        if buch > 0:
-            if os.path.isdir(BOOKS_DIR):
-                books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
-                if 1 <= buch <= len(books):
-                    book_filename = books[buch - 1]
-                else:
-                    await interaction.response.send_message(
-                        f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die verfügbaren Bücher.',
-                        ephemeral=True)
-                    return
-
-        start_endless(user_id, book_filename)
-        await interaction.response.defer(ephemeral=True)
-
-        try:
-            await post_next_endless(bot, user_id)
-            book_info = ''
-            if book_filename:
-                name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
-                book_info = f' (Buch: **{name}**)'
-            await interaction.followup.send(
-                f'♾️ Endless-Modus gestartet{book_info}! '
-                f'Erstes Puzzle per DM gesendet.\n'
-                f'Nach jeder ✅/❌ kommt sofort das nächste. '
-                f'Nochmal `/endless` zum Stoppen.',
-                ephemeral=True)
-        except Exception as e:
-            stop_endless(user_id)
-            await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
-
+        await _cmd_endless(bot, interaction, buch)
 
     @tree.command(name='ignore_kapitel',
                   description='Ein ganzes Kapitel ignorieren oder Liste anzeigen (Admin)')
@@ -2340,68 +2455,4 @@ def setup(bot: discord.ext.commands.Bot):
         kapitel: int = 0,
         aktion: discord.app_commands.Choice[str] = None,
     ):
-        await interaction.response.defer(ephemeral=True)
-
-        # Ohne Parameter → Liste aller ignorierten Kapitel
-        if buch == 0 and kapitel == 0:
-            ignored = sorted(_load_chapter_ignore_list())
-            if not ignored:
-                await interaction.followup.send(
-                    'Keine Kapitel ignoriert.', ephemeral=True)
-                return
-            lines = ['**Ignorierte Kapitel:**']
-            for entry in ignored:
-                fname, _, prefix = entry.partition(':')
-                name = fname.removesuffix('_firstkey.pgn').removesuffix('.pgn')
-                lines.append(f'• `{name}` — Kapitel {prefix}')
-            await interaction.followup.send('\n'.join(lines), ephemeral=True)
-            return
-
-        if buch == 0 or kapitel == 0:
-            await interaction.followup.send(
-                '⚠️ Bitte sowohl `buch` als auch `kapitel` angeben.', ephemeral=True)
-            return
-
-        # Buch auflösen
-        if not os.path.isdir(BOOKS_DIR):
-            await interaction.followup.send(
-                f'⚠️ Books-Verzeichnis fehlt: `{BOOKS_DIR}`', ephemeral=True)
-            return
-        books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
-        if not 1 <= buch <= len(books):
-            await interaction.followup.send(
-                f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die verfügbaren Bücher.',
-                ephemeral=True)
-            return
-        book_filename = books[buch - 1]
-        book_name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
-
-        # Chapter-Präfix im tatsächlichen Format finden
-        prefix = _find_chapter_prefix(book_filename, kapitel)
-        if prefix is None:
-            chapters = _list_chapters(book_filename)
-            sample = ', '.join(sorted(chapters)[:10])
-            more = f' (von {len(chapters)})' if len(chapters) > 10 else ''
-            await interaction.followup.send(
-                f'⚠️ Kapitel {kapitel} in **{book_name}** nicht gefunden.\n'
-                f'Verfügbare Kapitel{more}: `{sample}`',
-                ephemeral=True)
-            return
-
-        action_value = aktion.value if aktion else 'ignore'
-        chapter_count = _list_chapters(book_filename).get(prefix, 0)
-
-        if action_value == 'unignore':
-            unignore_chapter(book_filename, prefix)
-            log.info('Kapitel reaktiviert: %s:%s', book_filename, prefix)
-            await interaction.followup.send(
-                f'♻️ Kapitel **{prefix}** in **{book_name}** wieder aktiviert '
-                f'({chapter_count} Linien).',
-                ephemeral=True)
-        else:
-            ignore_chapter(book_filename, prefix)
-            log.info('Kapitel ignoriert: %s:%s', book_filename, prefix)
-            await interaction.followup.send(
-                f'🚮 Kapitel **{prefix}** in **{book_name}** ignoriert '
-                f'({chapter_count} Linien werden nicht mehr gepostet).',
-                ephemeral=True)
+        await _cmd_ignore_kapitel(interaction, buch, kapitel, aktion)

@@ -14,13 +14,13 @@ JSON-Format:
     }
 """
 
-import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import discord
 
+from core.json_store import atomic_update
 from core.paths import CONFIG_DIR
 
 log = logging.getLogger('schach-bot')
@@ -28,18 +28,7 @@ log = logging.getLogger('schach-bot')
 DM_LOG_FILE = os.path.join(CONFIG_DIR, 'dm_log.json')
 _lock = None  # asyncio.Lock, wird in install() gesetzt
 
-
-def _load() -> dict:
-    try:
-        with open(DM_LOG_FILE, encoding='utf-8') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-
-def _save(data: dict):
-    with open(DM_LOG_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+_DM_LOG_MAX_AGE_DAYS = 30
 
 
 def _describe(*args, **kwargs) -> str:
@@ -66,15 +55,21 @@ def _describe(*args, **kwargs) -> str:
 
 
 def _append(user_id: int, text: str):
-    """Hängt einen Eintrag an das DM-Log an (sync, für asyncio.to_thread)."""
-    data = _load()
-    key = str(user_id)
-    entries = data.setdefault(key, [])
-    entries.append({
-        'ts':   datetime.now(timezone.utc).isoformat(),
-        'text': text,
-    })
-    _save(data)
+    """Hängt einen Eintrag an das DM-Log an (sync, für asyncio.to_thread).
+    Entfernt Einträge älter als 30 Tage für diesen User."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=_DM_LOG_MAX_AGE_DAYS)).isoformat()
+
+    def _update(data):
+        key = str(user_id)
+        entries = data.setdefault(key, [])
+        entries.append({
+            'ts':   datetime.now(timezone.utc).isoformat(),
+            'text': text,
+        })
+        data[key] = [e for e in entries if e.get('ts', '') >= cutoff]
+        return data
+
+    atomic_update(DM_LOG_FILE, _update)
 
 
 def install():

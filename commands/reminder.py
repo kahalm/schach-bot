@@ -1,6 +1,5 @@
 """Reminder-Modul: wiederkehrende Puzzle-DMs in konfigurierbarem Intervall."""
 
-import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -9,6 +8,7 @@ import discord
 from discord.ext import tasks
 
 import puzzle
+from core.json_store import atomic_read, atomic_write
 from core.paths import CONFIG_DIR
 
 log = logging.getLogger('schach-bot')
@@ -17,16 +17,11 @@ REMINDER_FILE = os.path.join(CONFIG_DIR, 'reminder.json')
 
 
 def _load() -> dict:
-    try:
-        with open(REMINDER_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+    return atomic_read(REMINDER_FILE)
 
 
 def _save(data: dict):
-    with open(REMINDER_FILE, 'w') as f:
-        json.dump(data, f, indent=2)
+    atomic_write(REMINDER_FILE, data)
 
 
 _bot = None
