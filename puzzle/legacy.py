@@ -317,7 +317,8 @@ async def post_next_endless(bot, user_id: int):
         user = await bot.fetch_user(user_id)
         dm = await user.create_dm()
     except Exception as e:
-        log.warning('Endless-DM fehlgeschlagen (user=%s): %s', user_id, e)
+        log.warning('Endless-DM fehlgeschlagen (user=%s): %s – Session beendet', user_id, e)
+        stop_endless(user_id)
         return
 
     try:

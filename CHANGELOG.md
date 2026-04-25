@@ -4,6 +4,20 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.14.2] - 2026-04-25
+### Changed
+- `/stats`: User-Fetches jetzt parallel via `asyncio.gather` statt sequentiell
+  (N+1 Problem behoben). Embed-Beschreibung wird bei >4096 Zeichen abgeschnitten.
+- `/stats` nutzt jetzt `defer()` + `followup` für robuste Antwortzeiten.
+- `command_prefix='!'` durch `when_mentioned` ersetzt (Prefix-Commands waren nie
+  im Einsatz, `!` konnte falsch-positive Matches auslösen).
+
+### Fixed
+- Endless-Session wird jetzt bei DM-Fehler automatisch beendet statt
+  endlos hängen zu bleiben.
+- `/announce`: Exception-Details werden nicht mehr an User geleakt
+  (generische Fehlermeldung + `log.exception()`).
+
 ## [1.14.1] - 2026-04-25
 ### Changed
 - `puzzle/legacy.py`: 3 neue Helper-Funktionen extrahiert:

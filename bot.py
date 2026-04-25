@@ -55,7 +55,7 @@ WELCOME_MESSAGE = (
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
-bot = commands.Bot(command_prefix='!', intents=intents)
+bot = commands.Bot(command_prefix=commands.when_mentioned, intents=intents)
 tree = bot.tree
 
 # Module laden
@@ -285,7 +285,8 @@ async def cmd_announce(interaction: discord.Interaction, user: discord.User):
             f'❌ Kann keine DM an **{user.display_name}** senden (DMs deaktiviert).',
             ephemeral=True)
     except Exception as e:
-        await interaction.response.send_message(f'❌ Fehler: {e}', ephemeral=True)
+        log.exception('cmd_announce fehlgeschlagen für %s', user)
+        await interaction.response.send_message('❌ Ein Fehler ist aufgetreten.', ephemeral=True)
 
 
 @tree.command(name='stats', description='Nutzungsstatistiken aller User anzeigen (Admin)')
@@ -295,6 +296,21 @@ async def cmd_stats(interaction: discord.Interaction):
     if not all_stats:
         await interaction.response.send_message('Noch keine Statistiken vorhanden.', ephemeral=True)
         return
+
+    await interaction.response.defer(ephemeral=True)
+
+    # User-Infos parallel fetchen statt sequentiell
+    import asyncio
+    uids = list(all_stats.keys())
+
+    async def _fetch_name(uid):
+        try:
+            user = await bot.fetch_user(int(uid))
+            return uid, user.display_name
+        except Exception:
+            return uid, f'User {uid}'
+
+    names = dict(await asyncio.gather(*[_fetch_name(uid) for uid in uids]))
 
     embed = discord.Embed(title='📊 Statistiken', color=EMBED_COLOR)
     lines = []
@@ -306,11 +322,7 @@ async def cmd_stats(interaction: discord.Interaction):
         liked = data.get('reaction_👍', 0)
         disliked = data.get('reaction_👎', 0)
         trashed = data.get('reaction_🚮', 0)
-        try:
-            user = await bot.fetch_user(int(uid))
-            name = user.display_name
-        except Exception:
-            name = f'User {uid}'
+        name = names.get(uid, f'User {uid}')
         line = f'**{name}** — 🧩 {puzzles} · 📥 {downloads}'
         if solved or failed:
             line += f' · ✅ {solved} · ❌ {failed}'
@@ -320,8 +332,12 @@ async def cmd_stats(interaction: discord.Interaction):
             line += f' · 🚮 {trashed}'
         lines.append(line)
 
-    embed.description = '\n'.join(lines)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    # Discord Embed-Beschreibung max 4096 Zeichen
+    text = '\n'.join(lines)
+    if len(text) > 4096:
+        text = text[:4093] + '...'
+    embed.description = text
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 # --- Admin-Befehle ---
