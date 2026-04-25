@@ -233,6 +233,26 @@ def _solution_pgn(game: chess.pgn.Game) -> str:
     return _strip_pgn_annotations(game.accept(exporter))
 
 
+def _clean_book_name(filename: str) -> str:
+    """Entfernt PGN-Suffixe aus einem Buch-Dateinamen für die Anzeige."""
+    return filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+
+
+def _list_pgn_files() -> list[str]:
+    """Gibt sortierte Liste aller PGN-Dateien im Books-Verzeichnis zurück."""
+    if not os.path.isdir(BOOKS_DIR):
+        return []
+    return sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
+
+
+def _export_pgn_for_lichess(game: chess.pgn.Game, headers=True,
+                             variations=True, comments=True) -> str:
+    """Exportiert ein Game als PGN und bereinigt es für Lichess."""
+    exp = chess.pgn.StringExporter(
+        headers=headers, variations=variations, comments=comments)
+    return _clean_pgn_for_lichess(game.accept(exp))
+
+
 async def _send_puzzle_followups(target, game: chess.pgn.Game,
                                  context: chess.pgn.Game | None,
                                  puzzle_url: str | None,
@@ -1212,12 +1232,10 @@ def upload_to_lichess(game: chess.pgn.Game,
         return None
     try:
         # Gamebook: nur Züge + Varianten, keine Kommentare (stören im Gamebook-Modus)
-        exporter = chess.pgn.StringExporter(headers=True, variations=True, comments=False)
-        pgn_text = game.accept(exporter)
+        pgn_text = _export_pgn_for_lichess(game, comments=False)
     except Exception as e:
         log.error('PGN-Export fehlgeschlagen: %s', e)
         return None
-    pgn_text = _clean_pgn_for_lichess(pgn_text)
 
     h = dict(game.headers)
     line_name  = h.get('White', h.get('Event', 'Puzzle'))
@@ -1234,9 +1252,7 @@ def upload_to_lichess(game: chess.pgn.Game,
     context_name = None
     if context_game is not None:
         try:
-            ctx_exp = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
-            context_pgn = context_game.accept(ctx_exp)
-            context_pgn = _clean_pgn_for_lichess(context_pgn)
+            context_pgn = _export_pgn_for_lichess(context_game)
             ch = dict(context_game.headers)
             ctx_title = ch.get('White', ch.get('Event', 'Partie'))
             if len(ctx_title) > _LICHESS_CHAPTER_NAME_MAX:
@@ -1410,8 +1426,7 @@ def upload_many_to_lichess(
         chapter_urls: list[str] = []
         for game, context in puzzles:
             try:
-                exp  = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
-                pgn  = _clean_pgn_for_lichess(game.accept(exp))
+                pgn  = _export_pgn_for_lichess(game)
                 h    = dict(game.headers)
                 name = h.get('White', h.get('Event', 'Puzzle'))[:_LICHESS_CHAPTER_NAME_MAX]
                 ori  = 'black' if game.board().turn == chess.BLACK else 'white'
@@ -1439,8 +1454,7 @@ def upload_many_to_lichess(
                     chapter_urls.append(f'https://lichess.org/study/{study_id}')
 
                 if context is not None:
-                    ctx_exp = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
-                    ctx_pgn = _clean_pgn_for_lichess(context.accept(ctx_exp))
+                    ctx_pgn = _export_pgn_for_lichess(context)
                     ch      = dict(context.headers)
                     ctx_name = f'Partie: {ch.get("White", "Partie")[:64]}'
                     _lichess_request(
@@ -1564,8 +1578,8 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
     # Buch bestimmen
     book_filename = None
     if book_idx > 0:
-        if os.path.isdir(BOOKS_DIR):
-            books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
+        books = _list_pgn_files()
+        if books:
             if 1 <= book_idx <= len(books):
                 book_filename = books[book_idx - 1]
             else:
@@ -1693,8 +1707,8 @@ async def post_blind_puzzle(channel,
 
     book_filename = None
     if book_idx > 0:
-        if os.path.isdir(BOOKS_DIR):
-            books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
+        books = _list_pgn_files()
+        if books:
             if 1 <= book_idx <= len(books):
                 book_filename = books[book_idx - 1]
             else:
@@ -1959,7 +1973,7 @@ async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
                     ephemeral=True)
                 return
             book_fn = sorted_books[buch - 1]
-            book_name = book_fn.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+            book_name = _clean_book_name(book_fn)
             meta  = books_config.get(book_fn, {})
             diff  = meta.get('difficulty', '')
             rat   = meta.get('rating', 0)
@@ -2058,7 +2072,7 @@ async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
 
         embed = discord.Embed(title='📚 Puzzle-Bücher', color=0x7fa650)
         for i, book in enumerate(sorted(total_per_book), 1):
-            name  = book.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+            name  = _clean_book_name(book)
             total = total_per_book[book]
             done  = posted_per_book[book]
             meta  = books_config.get(book, {})
@@ -2098,8 +2112,8 @@ async def _cmd_train(interaction: discord.Interaction, buch: int = None):
         pos = training['position']
         all_lines = load_all_lines()
         total = sum(1 for lid, _ in all_lines if lid.startswith(book_filename + ':'))
-        name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
-        books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
+        name = _clean_book_name(book_filename)
+        books = _list_pgn_files()
         kurs_nr = books.index(book_filename) + 1 if book_filename in books else 0
         books_config = _load_books_config()
         meta = books_config.get(book_filename, {})
@@ -2124,10 +2138,10 @@ async def _cmd_train(interaction: discord.Interaction, buch: int = None):
         return
 
     # Buch validieren
-    if not os.path.isdir(BOOKS_DIR):
+    books = _list_pgn_files()
+    if not books:
         await interaction.followup.send('⚠️ Kein books-Ordner.', ephemeral=True)
         return
-    books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
     if buch < 1 or buch > len(books):
         await interaction.followup.send(
             f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die Liste.', ephemeral=True)
@@ -2146,7 +2160,7 @@ async def _cmd_train(interaction: discord.Interaction, buch: int = None):
     # Info anzeigen
     all_lines = load_all_lines()
     total = sum(1 for lid, _ in all_lines if lid.startswith(book_filename + ':'))
-    name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+    name = _clean_book_name(book_filename)
     books_config = _load_books_config()
     meta = books_config.get(book_filename, {})
     diff = meta.get('difficulty', '')
@@ -2180,7 +2194,7 @@ async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
 
     results = pick_sequential_lines(book_filename, position, anzahl)
     if not results:
-        name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+        name = _clean_book_name(book_filename)
         # Position auf 0 zurücksetzen
         _set_user_training(user_id, book_filename, 0)
         await interaction.followup.send(
@@ -2279,7 +2293,7 @@ async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
 
     if puzzle_count:
         stats.inc(user_id, 'puzzles', puzzle_count)
-    name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+    name = _clean_book_name(book_filename)
     await interaction.followup.send(
         f'✅ {len(results)} Linie(n) aus **{name}** per DM gesendet '
         f'({new_position}/{total_in_book}).',
@@ -2301,8 +2315,8 @@ async def _cmd_endless(bot, interaction: discord.Interaction, buch: int = 0):
     # Buch validieren
     book_filename = None
     if buch > 0:
-        if os.path.isdir(BOOKS_DIR):
-            books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
+        books = _list_pgn_files()
+        if books:
             if 1 <= buch <= len(books):
                 book_filename = books[buch - 1]
             else:
@@ -2318,7 +2332,7 @@ async def _cmd_endless(bot, interaction: discord.Interaction, buch: int = 0):
         await post_next_endless(bot, user_id)
         book_info = ''
         if book_filename:
-            name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+            name = _clean_book_name(book_filename)
             book_info = f' (Buch: **{name}**)'
         await interaction.followup.send(
             f'♾️ Endless-Modus gestartet{book_info}! '
@@ -2349,7 +2363,7 @@ async def _cmd_ignore_kapitel(
         lines = ['**Ignorierte Kapitel:**']
         for entry in ignored:
             fname, _, prefix = entry.partition(':')
-            name = fname.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+            name = _clean_book_name(fname)
             lines.append(f'• `{name}` — Kapitel {prefix}')
         await interaction.followup.send('\n'.join(lines), ephemeral=True)
         return
@@ -2360,18 +2374,18 @@ async def _cmd_ignore_kapitel(
         return
 
     # Buch auflösen
-    if not os.path.isdir(BOOKS_DIR):
+    books = _list_pgn_files()
+    if not books:
         await interaction.followup.send(
             f'⚠️ Books-Verzeichnis fehlt: `{BOOKS_DIR}`', ephemeral=True)
         return
-    books = sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
     if not 1 <= buch <= len(books):
         await interaction.followup.send(
             f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die verfügbaren Bücher.',
             ephemeral=True)
         return
     book_filename = books[buch - 1]
-    book_name = book_filename.removesuffix('_firstkey.pgn').removesuffix('.pgn')
+    book_name = _clean_book_name(book_filename)
 
     # Chapter-Präfix im tatsächlichen Format finden
     prefix = _find_chapter_prefix(book_filename, kapitel)

@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.14.1] - 2026-04-25
+### Changed
+- `puzzle/legacy.py`: 3 neue Helper-Funktionen extrahiert:
+  - `_clean_book_name()` — ersetzt 9× dupliziertes `.removesuffix()`
+  - `_list_pgn_files()` — ersetzt 6× dupliziertes `sorted(listdir(…))`
+  - `_export_pgn_for_lichess()` — ersetzt 4× dupliziertes
+    `StringExporter + _clean_pgn_for_lichess`
+
 ## [1.14.0] - 2026-04-25
 ### Changed
 - `EMBED_COLOR` als zentrale Konstante in `core/version.py` — ersetzt 5×
