@@ -23,9 +23,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DISCORD_TOKEN   = os.getenv('DISCORD_TOKEN')
+if not DISCORD_TOKEN:
+    raise SystemExit('DISCORD_TOKEN fehlt in .env – siehe .env.example')
 CHANNEL_ID      = int(os.getenv('CHANNEL_ID', '0'))
 PUZZLE_HOUR     = int(os.getenv('PUZZLE_HOUR', '9'))
 PUZZLE_MINUTE   = int(os.getenv('PUZZLE_MINUTE', '0'))
+if not (0 <= PUZZLE_HOUR <= 23 and 0 <= PUZZLE_MINUTE <= 59):
+    raise SystemExit(f'PUZZLE_HOUR/PUZZLE_MINUTE ungültig: {PUZZLE_HOUR}:{PUZZLE_MINUTE}')
 DM_STATE_FILE   = os.path.join(CONFIG_DIR, 'dm_state.json')
 
 WELCOME_MESSAGE = (

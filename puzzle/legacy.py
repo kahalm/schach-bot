@@ -1530,7 +1530,7 @@ async def _resilient_send(target, *args, retries: int = 3, **kwargs):
             log.warning('Discord-5xx (Versuch %d/%d): %s – retry in %.1fs',
                         attempt, retries, e, delay)
             await asyncio.sleep(delay)
-            delay *= 2
+            delay = delay * 2 + random.uniform(0, 1)
 
 
 async def _send_optional(target, *args, label: str = '', **kwargs):
@@ -1818,6 +1818,10 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
             _blind_match = re.search(r':blind:(\d+)$', id, re.IGNORECASE)
             if _blind_match:
                 _blind_moves = int(_blind_match.group(1))
+                if _blind_moves > 50:
+                    await interaction.followup.send(
+                        '⚠️ Maximal 50 Blind-Züge erlaubt.', ephemeral=True)
+                    return
                 _lookup_id = id[:_blind_match.start()]
 
             result = find_line_by_id(_lookup_id)

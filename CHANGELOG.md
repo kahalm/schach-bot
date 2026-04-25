@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.13.2] - 2026-04-25
+### Fixed
+- `DISCORD_TOKEN`-Validierung: fehlendes Token bricht jetzt sofort mit
+  klarer Fehlermeldung ab statt kryptischem Crash bei `bot.run()`.
+- `PUZZLE_HOUR`/`PUZZLE_MINUTE` Range-Check (0-23 / 0-59) beim Start.
+- Blind-Moves Obergrenze (max 50) gegen übermäßige Speicherallokation.
+- Discord-Retry-Backoff mit Jitter gegen Thundering-Herd-Effekt.
+- `_sftpgo_rel_path()` nutzt jetzt `pathlib.Path.resolve()` gegen
+  Path-Traversal (Symlinks, `/../`).
+
 ## [1.13.1] - 2026-04-25
 ### Fixed
 - Race Condition in DM-Greeting (`bot.py`): manuelles `json.load/dump` durch

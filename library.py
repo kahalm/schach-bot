@@ -560,11 +560,14 @@ def _sftpgo_rel_path(local_path: str) -> str | None:
     """Gibt den relativen Pfad der Datei innerhalb der Library zurück."""
     if not _LOCAL_BASE:
         return None
-    norm = local_path.replace('\\', '/')
-    base = _LOCAL_BASE.replace('\\', '/')
-    if not norm.startswith(base):
+    from pathlib import Path
+    try:
+        resolved = Path(local_path).resolve()
+        base = Path(_LOCAL_BASE).resolve()
+        rel = resolved.relative_to(base)
+    except (ValueError, OSError):
         return None
-    return norm[len(base):].lstrip('/')
+    return str(rel).replace('\\', '/')
 
 
 def _sftpgo_message(entry: dict, path: str, fmt: str) -> str:
