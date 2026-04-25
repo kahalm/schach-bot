@@ -8,30 +8,21 @@ import discord
 from discord.ext import tasks
 
 import puzzle
-from core.json_store import atomic_read, atomic_write
+from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 
 log = logging.getLogger('schach-bot')
 
 REMINDER_FILE = os.path.join(CONFIG_DIR, 'reminder.json')
 
-
-def _load() -> dict:
-    return atomic_read(REMINDER_FILE)
-
-
-def _save(data: dict):
-    atomic_write(REMINDER_FILE, data)
-
-
 _bot = None
 
 
 @tasks.loop(minutes=1)
 async def _reminder_loop():
-    data = _load()
+    data = atomic_read(REMINDER_FILE)
     now = datetime.now(timezone.utc)
-    changed = False
+    updated_nexts: dict[str, str] = {}
 
     for uid_str, entry in list(data.items()):
         next_time = datetime.fromisoformat(entry['next']).replace(tzinfo=timezone.utc)
@@ -68,11 +59,16 @@ async def _reminder_loop():
 
         # Nächsten Zeitpunkt ab jetzt setzen (verpasste Runden überspringen)
         new_next = next_time + timedelta(hours=hours) * (missed + 1)
-        entry['next'] = new_next.isoformat()
-        changed = True
+        updated_nexts[uid_str] = new_next.isoformat()
 
-    if changed:
-        _save(data)
+    # Atomares Update: nur next-Felder aktualisieren (bewahrt parallele Aenderungen)
+    if updated_nexts:
+        def _update_nexts(data):
+            for uid_str, new_next in updated_nexts.items():
+                if uid_str in data:
+                    data[uid_str]['next'] = new_next
+            return data
+        atomic_update(REMINDER_FILE, _update_nexts)
 
 
 def setup(bot):
@@ -93,10 +89,10 @@ def setup(bot):
         buch: int = 0,
     ):
         uid = str(interaction.user.id)
-        data = _load()
 
         # Ohne Parameter → Status anzeigen
         if hours is None:
+            data = atomic_read(REMINDER_FILE)
             entry = data.get(uid)
             if not entry:
                 await interaction.response.send_message(
@@ -117,37 +113,43 @@ def setup(bot):
 
         # hours:0 → Reminder stoppen
         if hours == 0:
-            if uid in data:
-                del data[uid]
-                _save(data)
+            result = {'deleted': False}
+            def _remove(data):
+                if uid in data:
+                    del data[uid]
+                    result['deleted'] = True
+                return data
+            atomic_update(REMINDER_FILE, _remove)
+            if result['deleted']:
                 await interaction.response.send_message('Reminder gestoppt.', ephemeral=True)
             else:
                 await interaction.response.send_message(
-                    'Du hattest keinen aktiven Reminder.', ephemeral=True
-                )
+                    'Du hattest keinen aktiven Reminder.', ephemeral=True)
             return
 
         # Validierung
         if not 1 <= hours <= 168:
             await interaction.response.send_message(
-                'Stunden müssen zwischen 1 und 168 liegen.', ephemeral=True
-            )
+                'Stunden müssen zwischen 1 und 168 liegen.', ephemeral=True)
             return
         if not 1 <= puzzle_count <= 20:
             await interaction.response.send_message(
-                'Puzzle-Anzahl muss zwischen 1 und 20 liegen.', ephemeral=True
-            )
+                'Puzzle-Anzahl muss zwischen 1 und 20 liegen.', ephemeral=True)
             return
 
         # Reminder aktivieren
         next_time = datetime.now(timezone.utc) + timedelta(hours=hours)
-        data[uid] = {
+        new_entry = {
             'hours': hours,
             'puzzle': puzzle_count,
             'buch': buch,
             'next': next_time.isoformat(),
         }
-        _save(data)
+
+        def _set(data):
+            data[uid] = new_entry
+            return data
+        atomic_update(REMINDER_FILE, _set)
 
         buch_txt = f"Buch {buch}" if buch else 'alle Bücher'
         await interaction.response.send_message(

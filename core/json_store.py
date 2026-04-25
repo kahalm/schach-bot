@@ -17,10 +17,11 @@ _meta_lock = threading.Lock()
 
 def _lock_for(path: str) -> threading.Lock:
     """Gibt den Lock für eine bestimmte Datei zurück (lazy erzeugt)."""
+    key = os.path.abspath(path)
     with _meta_lock:
-        if path not in _locks:
-            _locks[path] = threading.Lock()
-        return _locks[path]
+        if key not in _locks:
+            _locks[key] = threading.Lock()
+        return _locks[key]
 
 
 def atomic_read(path: str, default=None):

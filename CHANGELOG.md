@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.33.0] - 2026-04-25
+### Fixed
+- **Race Conditions**: `_set_user_study_id`, `_set_user_training`, `_clear_user_training`
+  nutzen jetzt `atomic_update` statt separatem `_load`/`_save` (kein Datenverlust mehr)
+- **Race Conditions**: `/wanted` (vote, add, delete), `/resourcen`, `/youtube`, `/reminder`
+  nutzen jetzt `atomic_update` statt `atomic_read`+`atomic_write`
+- **Race Conditions**: Reminder-Loop aktualisiert `next`-Felder atomar (parallele
+  `/reminder`-Aenderungen gehen nicht mehr verloren)
+- **Datenintegritaet**: `json_store._lock_for()` normalisiert Pfade mit `os.path.abspath()`
+  (verschiedene Pfadformen fuer dieselbe Datei teilen jetzt denselben Lock)
+- **Datenintegritaet**: `event_log.log_reaction()` nutzt jetzt einen Lock fuer
+  thread-sichere JSONL-Appends
+
 ## [1.32.0] - 2026-04-25
 ### Fixed
 - **Sicherheit**: Path-Traversal-Schutz in `_local_path()` (library.py) —

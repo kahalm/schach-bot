@@ -12,6 +12,7 @@ Datei: ``config/reaction_log.jsonl``
 import json
 import logging
 import os
+import threading
 from datetime import datetime, timezone
 
 from core.paths import CONFIG_DIR
@@ -19,6 +20,7 @@ from core.paths import CONFIG_DIR
 log = logging.getLogger('schach-bot')
 
 REACTION_LOG_FILE = os.path.join(CONFIG_DIR, 'reaction_log.jsonl')
+_log_lock = threading.Lock()
 
 
 def _current_elo(user_id: int) -> int | None:
@@ -50,8 +52,9 @@ def log_reaction(user_id: int,
         'elo': _current_elo(user_id),
     }
     try:
-        with open(REACTION_LOG_FILE, 'a', encoding='utf-8') as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+        with _log_lock:
+            with open(REACTION_LOG_FILE, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + '\n')
     except OSError as e:
         log.warning('Reaction-Log Schreibfehler: %s', e)
 

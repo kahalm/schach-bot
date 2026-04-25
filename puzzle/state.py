@@ -220,19 +220,19 @@ def _get_user_puzzle_count(user_id: int) -> tuple[int, int]:
 
 
 def _set_user_study_id(user_id: int, study_id: str, count: int, total: int):
-    data = _load_user_studies()
     key = str(user_id)
-    prev = data.get(key) if isinstance(data.get(key), dict) else {}
-    data[key] = {
-        'id':    study_id,
-        'today': _date.today().isoformat(),
-        'count': count,
-        'total': total,
-    }
-    # Training-State beibehalten
-    if 'training' in prev:
-        data[key]['training'] = prev['training']
-    _save_user_studies(data)
+    def _update(data):
+        prev = data.get(key) if isinstance(data.get(key), dict) else {}
+        data[key] = {
+            'id':    study_id,
+            'today': _date.today().isoformat(),
+            'count': count,
+            'total': total,
+        }
+        if 'training' in prev:
+            data[key]['training'] = prev['training']
+        return data
+    atomic_update(USER_STUDIES_FILE, _update)
     log.info('User-Studie gespeichert: user=%s study_id=%s count=%d total=%d', user_id, study_id, count, total)
 
 
@@ -268,18 +268,20 @@ def _get_user_training(user_id: int) -> dict | None:
 
 def _set_user_training(user_id: int, book: str, position: int):
     """Setzt das Trainingsbuch und die Position für den User."""
-    data = _load_user_studies()
     key = str(user_id)
-    if key not in data or not isinstance(data[key], dict):
-        data[key] = {}
-    data[key]['training'] = {'book': book, 'position': position}
-    _save_user_studies(data)
+    def _update(data):
+        if key not in data or not isinstance(data[key], dict):
+            data[key] = {}
+        data[key]['training'] = {'book': book, 'position': position}
+        return data
+    atomic_update(USER_STUDIES_FILE, _update)
 
 
 def _clear_user_training(user_id: int):
     """Entfernt die Trainingsbuch-Zuordnung."""
-    data = _load_user_studies()
     key = str(user_id)
-    if key in data and isinstance(data[key], dict):
-        data[key].pop('training', None)
-        _save_user_studies(data)
+    def _update(data):
+        if key in data and isinstance(data[key], dict):
+            data[key].pop('training', None)
+        return data
+    atomic_update(USER_STUDIES_FILE, _update)

@@ -8,7 +8,7 @@ import discord
 from discord.ext import commands
 
 from core.paths import CONFIG_DIR
-from core.json_store import atomic_read, atomic_write
+from core.json_store import atomic_read, atomic_update
 
 log = logging.getLogger('schach-bot')
 
@@ -40,19 +40,28 @@ def setup(bot: commands.Bot):
                     '⚠️ Bitte auch eine `beschreibung` angeben.',
                     ephemeral=True)
                 return
-            videos = atomic_read(YOUTUBE_FILE, default=list)
-            if len(videos) >= _MAX_ENTRIES:
-                await interaction.response.send_message(
-                    f'⚠️ Maximum von {_MAX_ENTRIES} Eintraegen erreicht.',
-                    ephemeral=True)
-                return
-            videos.append({
+
+            new_entry = {
                 'url': url,
                 'beschreibung': beschreibung,
                 'user': interaction.user.display_name,
                 'datum': str(date.today()),
-            })
-            atomic_write(YOUTUBE_FILE, videos)
+            }
+            result = {}
+
+            def _add(entries):
+                if len(entries) >= _MAX_ENTRIES:
+                    result['full'] = True
+                    return entries
+                entries.append(new_entry)
+                return entries
+
+            atomic_update(YOUTUBE_FILE, _add, default=list)
+            if result.get('full'):
+                await interaction.response.send_message(
+                    f'⚠️ Maximum von {_MAX_ENTRIES} Eintraegen erreicht.',
+                    ephemeral=True)
+                return
             await interaction.response.send_message(
                 f'✅ YouTube-Link gespeichert: **{beschreibung}**\n{url}')
             return
