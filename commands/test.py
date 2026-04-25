@@ -10,6 +10,7 @@ import io
 import chess.pgn
 import discord
 
+from core.version import EMBED_COLOR
 from puzzle.legacy import (
     find_line_by_id, _trim_to_training_position, build_puzzle_embed,
     _render_board, _load_books_config, _strip_pgn_annotations, _prelude_pgn,
@@ -268,7 +269,7 @@ def setup(bot):
 
         total = len(snapshots)
         all_ok = ok_count == total
-        colour = 0x4e9e4e if all_ok else 0xe74c3c
+        colour = EMBED_COLOR if all_ok else 0xe74c3c
 
         # Discord max 25 Felder pro Embed — bei Bedarf auf mehrere aufteilen.
         MAX_FIELDS = 25

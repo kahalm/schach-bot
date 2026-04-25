@@ -9,6 +9,7 @@ import re
 from collections import defaultdict
 
 from core import stats
+from core.version import EMBED_COLOR
 
 import discord
 
@@ -494,7 +495,7 @@ _TYPE_EMOJI = {
 
 def _build_library_embed(entries: list[dict], page: int, total_pages: int,
                           query: str) -> discord.Embed:
-    embed = discord.Embed(title=f'📚 Bibliothek: {query}', color=0x4e9e4e)
+    embed = discord.Embed(title=f'📚 Bibliothek: {query}', color=EMBED_COLOR)
     for e in entries:
         emoji = _TYPE_EMOJI.get(e.get('file_type', ''), '📄')
         year_str = f' ({e["year"]})' if e.get('year') else ''

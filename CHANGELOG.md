@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.14.0] - 2026-04-25
+### Changed
+- `EMBED_COLOR` als zentrale Konstante in `core/version.py` — ersetzt 5×
+  hardcoded `0x4e9e4e` in `bot.py`, `library.py`, `commands/test.py`.
+- Lichess-/Discord-Limits als benannte Konstanten in `puzzle/legacy.py`:
+  `_LICHESS_STUDY_NAME_MAX`, `_LICHESS_CHAPTER_NAME_MAX`,
+  `_DISCORD_THREAD_NAME_MAX` — ersetzt 5× Magic Numbers.
+
 ## [1.13.3] - 2026-04-25
 ### Changed
 - `commands/elo.py`, `commands/resourcen.py`, `commands/youtube.py`: manuelle

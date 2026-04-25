@@ -25,7 +25,13 @@ from reportlab.graphics import renderPM
 log = logging.getLogger('schach-bot')
 
 from core.json_store import atomic_read, atomic_write, atomic_update
+from core.version import EMBED_COLOR
 from puzzle.buttons import fresh_view as _fresh_button_view
+
+# Lichess-/Discord-Limits für Truncation
+_LICHESS_STUDY_NAME_MAX = 100
+_LICHESS_CHAPTER_NAME_MAX = 70
+_DISCORD_THREAD_NAME_MAX = 100
 
 # Puzzle-Nachrichten-IDs für Reaction-Tracking (in-memory, reicht da Reactions
 # typischerweise kurz nach dem Posten kommen).
@@ -1220,8 +1226,8 @@ def upload_to_lichess(game: chess.pgn.Game,
     orientation = 'black' if game.board().turn == chess.BLACK else 'white'
     today      = _date.today().strftime('%d.%m.%Y')
     study_name = f'{event_name} – {today}'
-    if len(study_name) > 100:
-        study_name = study_name[:97] + '...'
+    if len(study_name) > _LICHESS_STUDY_NAME_MAX:
+        study_name = study_name[:_LICHESS_STUDY_NAME_MAX - 3] + '...'
 
     # Kontext-PGN vorbereiten (2. Kapitel: vollständiges Originalspiel)
     context_pgn = None
@@ -1233,8 +1239,8 @@ def upload_to_lichess(game: chess.pgn.Game,
             context_pgn = _clean_pgn_for_lichess(context_pgn)
             ch = dict(context_game.headers)
             ctx_title = ch.get('White', ch.get('Event', 'Partie'))
-            if len(ctx_title) > 70:
-                ctx_title = ctx_title[:67] + '...'
+            if len(ctx_title) > _LICHESS_CHAPTER_NAME_MAX:
+                ctx_title = ctx_title[:_LICHESS_CHAPTER_NAME_MAX - 3] + '...'
             context_name = f'Partie: {ctx_title}'
         except Exception as e:
             log.warning('Kontext-PGN-Export fehlgeschlagen: %s', e)
@@ -1407,7 +1413,7 @@ def upload_many_to_lichess(
                 exp  = chess.pgn.StringExporter(headers=True, variations=True, comments=True)
                 pgn  = _clean_pgn_for_lichess(game.accept(exp))
                 h    = dict(game.headers)
-                name = h.get('White', h.get('Event', 'Puzzle'))[:70]
+                name = h.get('White', h.get('Event', 'Puzzle'))[:_LICHESS_CHAPTER_NAME_MAX]
                 ori  = 'black' if game.board().turn == chess.BLACK else 'white'
                 r_ch = _lichess_request(
                     'POST', f'https://lichess.org/api/study/{study_id}/import-pgn',
@@ -1605,7 +1611,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
     today = _date.today().strftime('%d.%m.%Y')
     thread_name = f'{event} – {today}'
     if len(thread_name) > 100:
-        thread_name = thread_name[:97] + '...'
+        thread_name = thread_name[:_DISCORD_THREAD_NAME_MAX - 3] + '...'
 
     # Ziel: Thread (Server) oder direkt (DM / bestehender Thread)
     is_dm = isinstance(channel, discord.DMChannel)
@@ -1724,7 +1730,7 @@ async def post_blind_puzzle(channel,
     today = _date.today().strftime('%d.%m.%Y')
     thread_name = f'🙈 {event} (blind {moves}) – {today}'
     if len(thread_name) > 100:
-        thread_name = thread_name[:97] + '...'
+        thread_name = thread_name[:_DISCORD_THREAD_NAME_MAX - 3] + '...'
 
     is_dm = isinstance(channel, discord.DMChannel)
     if is_dm:

@@ -16,7 +16,7 @@ from datetime import time
 
 from core import stats, dm_log
 from core.paths import CONFIG_DIR
-from core.version import VERSION, START_TIME
+from core.version import VERSION, START_TIME, EMBED_COLOR
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -233,12 +233,12 @@ async def cmd_help(interaction: discord.Interaction, bereich: str = ''):
                 ephemeral=True,
             )
             return
-        embed = discord.Embed(title=title, color=0x4e9e4e)
+        embed = discord.Embed(title=title, color=EMBED_COLOR)
         for name, value in fields:
             embed.add_field(name=name, value=value, inline=False)
     else:
         # Übersicht aller Bereiche
-        embed = discord.Embed(title='♟️ Schach-Bot — Hilfe', color=0x4e9e4e,
+        embed = discord.Embed(title='♟️ Schach-Bot — Hilfe', color=EMBED_COLOR,
                               description='Nutze `/help bereich:…` für Details.')
         embed.add_field(name='🧩 puzzle',
                         value='`/puzzle` `/kurs` `/train` `/next` `/blind` `/endless` `/reminder`',
@@ -296,7 +296,7 @@ async def cmd_stats(interaction: discord.Interaction):
         await interaction.response.send_message('Noch keine Statistiken vorhanden.', ephemeral=True)
         return
 
-    embed = discord.Embed(title='📊 Statistiken', color=0x4e9e4e)
+    embed = discord.Embed(title='📊 Statistiken', color=EMBED_COLOR)
     lines = []
     for uid, data in all_stats.items():
         puzzles = data.get('puzzles', 0)
