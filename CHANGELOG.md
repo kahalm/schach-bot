@@ -4,6 +4,20 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.17.0] - 2026-04-25
+### Added
+- `tests/test_commands.py`: Slash-Command-Testframework mit Mock-Infrastruktur
+  (FakeInteraction, FakeBot, temp-CONFIG_DIR). Erste 32 Tests fuer `/help`,
+  `/version`, `/elo`, `/resourcen`, `/youtube`.
+
+## [1.16.0] - 2026-04-25
+### Added
+- `/wanted` Feature-Wunschliste: Vorschläge einreichen, für bestehende
+  abstimmen (+1 Toggle), Liste nach Stimmen sortiert anzeigen.
+- `/wanted_list` zeigt alle Wünsche als Embed (nach Votes sortiert).
+- `/wanted_vote <id>` stimmt für einen Wunsch ab (Toggle).
+- `/wanted_delete <id>` (Admin) löscht einen Wunsch.
+
 ## [1.15.0] - 2026-04-25
 ### Added
 - `/greeted` (Admin): zeigt alle User, die die Begrüßungs-DM erhalten haben,
