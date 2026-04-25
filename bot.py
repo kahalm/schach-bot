@@ -128,130 +128,122 @@ def _is_admin(interaction: discord.Interaction) -> bool:
     )
 
 
-@tree.command(name='help', description='Alle verfügbaren Befehle anzeigen')
-async def cmd_help(interaction: discord.Interaction):
+def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str]]]:
+    """Gibt (Titel, [(name, value), ...]) für den gewünschten Bereich zurück."""
+    if bereich == 'puzzle':
+        return '🧩 Puzzles', [
+            ('/puzzle [anzahl] [buch]',
+             'Zufälliges Puzzle per DM senden.\n'
+             '`anzahl` — 1–20 Puzzles (Standard: 1)\n'
+             '`buch` — Nur aus diesem Buch (Nummer aus `/kurs`, Standard: alle)'),
+            ('/kurs',
+             'Alle verfügbaren Puzzle-Bücher mit Fortschritt anzeigen.'),
+            ('/train [buch]',
+             'Buch für sequentielles Training wählen (Nummer aus `/kurs`).\n'
+             '`/train` — Status anzeigen · `/train 0` — Training beenden'),
+            ('/next [anzahl]',
+             'Nächste Linie(n) aus dem Trainingsbuch per DM senden.\n'
+             '`/next` — 1 Linie · `/next 5` — 5 Linien'),
+            ('/blind [moves] [anzahl] [buch]',
+             'Blind-Puzzle: Stellung X Halbzüge VOR dem eigentlichen Puzzle.\n'
+             '`/blind` — 4 Züge blind, zufälliges Buch\n'
+             '`/blind moves:5 anzahl:2 buch:3` — 2 Puzzles aus Buch 3, je 5 Züge blind\n'
+             'Nur Bücher mit `blind: true` nutzbar (siehe `/kurs`).'),
+            ('/endless [buch]',
+             'Endlos-Modus: nach jeder ✅/❌ kommt sofort das nächste Puzzle per DM.\n'
+             'Nochmal `/endless` zum Stoppen.'),
+            ('/reminder [hours] [puzzle_count] [buch]',
+             'Wiederkehrende Puzzle-DMs einstellen.\n'
+             '`/reminder hours:4 puzzle_count:3` — Alle 4h 3 Puzzles\n'
+             '`/reminder hours:0` — Stoppen · `/reminder` — Status anzeigen'),
+        ]
+    if bereich == 'bibliothek':
+        return '📚 Bibliothek', [
+            ('/bibliothek <suche>',
+             'Schachbuch-Bibliothek durchsuchen (Titel, Autor, Tags).\nDownload mit Formatauswahl (PDF/DJVU/EPUB).'),
+            ('/autor <autor>',
+             'Alle Bücher eines Autors anzeigen.'),
+            ('/tag <tag>',
+             'Bücher nach Tag filtern (z.B. Taktik, Französisch, Endspiel).'),
+        ]
+    if bereich == 'community':
+        return '🌐 Community', [
+            ('/resourcen [url] [beschreibung]',
+             'Online-Lernressourcen anzeigen oder hinzufügen.\n'
+             '`/resourcen` — Auflisten · `/resourcen url:… beschreibung:…` — Hinzufügen'),
+            ('/youtube [url] [beschreibung]',
+             'YouTube-Kanäle/Videos anzeigen oder hinzufügen.\n'
+             '`/youtube` — Auflisten · `/youtube url:… beschreibung:…` — Hinzufügen'),
+            ('/elo [wert]',
+             'Eigene Schach-Elo angeben oder anzeigen.\n'
+             '`/elo wert:1500` — Setzen · `/elo` — Anzeigen mit Historie'),
+        ]
+    if bereich == 'info':
+        return 'ℹ️ Info', [
+            ('/version', 'Aktuelle Bot-Version und Uptime anzeigen.'),
+            ('/release-notes [version] [anzahl]',
+             'Versionshistorie/Changelog anzeigen.\n'
+             '`/release-notes` — Letzte 3 Versionen\n'
+             '`/release-notes version:1.1.0` — Bestimmte Version'),
+            ('/help [bereich]',
+             'Hilfe anzeigen. Bereiche: `puzzle` · `bibliothek` · `community` · `info`'
+             + (' · `admin`' if is_admin else '')),
+        ]
+    if bereich == 'admin' and is_admin:
+        return '🔧 Admin', [
+            ('/daily', 'Tägliches Puzzle manuell auslösen.'),
+            ('/stats', 'Nutzungsstatistiken aller User anzeigen.'),
+            ('/announce <user>', 'Begrüßungsnachricht per DM an einen User senden.'),
+            ('/ignore_kapitel [buch] [kapitel] [aktion]',
+             'Ein ganzes Kapitel ignorieren.\n'
+             '`/ignore_kapitel buch:2 kapitel:3` — ignorieren\n'
+             '`/ignore_kapitel buch:2 kapitel:3 aktion:unignore` — reaktivieren\n'
+             '`/ignore_kapitel` — alle ignorierten Kapitel anzeigen'),
+            ('/test', 'Snapshot-Regressionstests ausführen.'),
+        ]
+    return '', []
+
+
+@tree.command(name='help', description='Verfügbare Befehle anzeigen')
+@discord.app_commands.describe(bereich='Bereich: puzzle, bibliothek, community, info, admin')
+async def cmd_help(interaction: discord.Interaction, bereich: str = ''):
     is_admin = _is_admin(interaction)
-    embed = discord.Embed(title='♟️ Bot-Befehle', color=0x4e9e4e)
-    embed.add_field(
-        name='/puzzle [anzahl] [buch]',
-        value='Zufälliges Puzzle per DM senden.\n'
-              '`anzahl` — 1–20 Puzzles in einer Studie (Standard: 1)\n'
-              '`buch` — Nur aus diesem Buch (Nummer aus `/kurs`, Standard: alle)',
-        inline=False,
-    )
-    embed.add_field(
-        name='/kurs',
-        value='Alle verfügbaren Puzzle-Bücher mit Fortschritt anzeigen.',
-        inline=False,
-    )
-    embed.add_field(
-        name='/train [buch]',
-        value='Buch für sequentielles Training wählen (Nummer aus `/kurs`).\n'
-              '`/train` zeigt den aktuellen Status · `/train 0` beendet das Training.',
-        inline=False,
-    )
-    embed.add_field(
-        name='/next [anzahl]',
-        value='Nächste Linie(n) aus dem Trainingsbuch per DM senden.\n'
-              '`/next` — 1 Linie · `/next 5` — 5 Linien · `/next 10` — 10 Linien',
-        inline=False,
-    )
-    embed.add_field(
-        name='/bibliothek <suche>',
-        value='Schachbuch-Bibliothek durchsuchen (Titel, Autor, Tags, Dateinamen).\nDownload mit Formatauswahl (PDF/DJVU/EPUB).',
-        inline=False,
-    )
-    embed.add_field(
-        name='/autor <autor>',
-        value='Alle Bücher eines Autors anzeigen.',
-        inline=False,
-    )
-    embed.add_field(
-        name='/tag <tag>',
-        value='Bücher nach Tag filtern (z.B. Taktik, Französisch, Endspiel).',
-        inline=False,
-    )
-    embed.add_field(
-        name='/blind [moves] [anzahl] [buch]',
-        value='Blind-Puzzle: Stellung X Halbzüge VOR dem eigentlichen Puzzle.\n'
-              'Du musst die X Züge im Kopf spielen, dann das Puzzle lösen.\n'
-              '`/blind` — 4 Züge im Voraus, zufälliges Blind-Buch\n'
-              '`/blind moves:5 anzahl:2 buch:3` — 2 Puzzles aus Buch 3, je 5 Züge blind\n'
-              'Nur Bücher mit `blind: true` in `books/books.json` sind nutzbar (siehe `/kurs`).',
-        inline=False,
-    )
-    embed.add_field(
-        name='/endless [buch]',
-        value='Endlos-Puzzle-Modus: nach jeder ✅/❌ kommt sofort das nächste Puzzle per DM.\n'
-              'Nochmal `/endless` zum Stoppen.',
-        inline=False,
-    )
-    embed.add_field(
-        name='/reminder [hours] [puzzle_count] [buch]',
-        value='Wiederkehrende Puzzle-DMs einstellen.\n'
-              '`/reminder hours:4 puzzle_count:3` — Alle 4h 3 Puzzles per DM\n'
-              '`/reminder hours:0` — Reminder stoppen\n'
-              '`/reminder` — Aktuellen Status anzeigen',
-        inline=False,
-    )
-    embed.add_field(
-        name='/resourcen [url] [beschreibung]',
-        value='Online-Lernressourcen anzeigen oder hinzufügen.\n'
-              '`/resourcen` — Alle Ressourcen auflisten\n'
-              '`/resourcen url:… beschreibung:…` — Neue Ressource hinzufügen',
-        inline=False,
-    )
-    embed.add_field(
-        name='/youtube [url] [beschreibung]',
-        value='YouTube-Kanäle/Videos anzeigen oder hinzufügen.\n'
-              '`/youtube` — Alle Links auflisten\n'
-              '`/youtube url:… beschreibung:…` — Neuen Link hinzufügen',
-        inline=False,
-    )
-    if is_admin:
-        embed.add_field(
-            name='/ignore_kapitel [buch] [kapitel] [aktion]',
-            value='Ein ganzes Kapitel ignorieren.\n'
-                  '`/ignore_kapitel buch:2 kapitel:3` — ignoriert Kapitel 3 in Buch 2\n'
-                  '`/ignore_kapitel buch:2 kapitel:3 aktion:unignore` — wieder aktivieren\n'
-                  '`/ignore_kapitel` — alle ignorierten Kapitel anzeigen',
-            inline=False,
-        )
-    embed.add_field(
-        name='/elo [wert]',
-        value='Eigene Schach-Elo angeben oder anzeigen.\n'
-              '`/elo wert:1500` — Setzt deine aktuelle Elo (mit Zeitstempel)\n'
-              '`/elo` — Zeigt deine aktuelle Elo + Historie',
-        inline=False,
-    )
-    if is_admin:
-        embed.add_field(
-            name='/stats',
-            value='Nutzungsstatistiken aller User anzeigen.',
-            inline=False,
-        )
-        embed.add_field(
-            name='/daily',
-            value='Tägliches Puzzle manuell auslösen.',
-            inline=False,
-        )
-        embed.add_field(
-            name='/announce <user>',
-            value='Begrüßungsnachricht per DM an einen User senden.',
-            inline=False,
-        )
-    embed.add_field(
-        name='/version',
-        value='Aktuelle Bot-Version anzeigen.',
-        inline=False,
-    )
-    embed.add_field(
-        name='/release-notes [version] [anzahl]',
-        value='Versionshistorie/Changelog des Bots anzeigen.\n'
-              '`/release-notes` — Letzte 3 Versionen\n'
-              '`/release-notes version:1.1.0` — Bestimmte Version',
-        inline=False,
-    )
+    bereich = bereich.lower().strip()
+
+    if bereich:
+        title, fields = _help_fields(bereich, is_admin)
+        if not fields:
+            await interaction.response.send_message(
+                f'Unbekannter Bereich `{bereich}`. '
+                'Verfügbar: `puzzle` · `bibliothek` · `community` · `info`'
+                + (' · `admin`' if is_admin else ''),
+                ephemeral=True,
+            )
+            return
+        embed = discord.Embed(title=title, color=0x4e9e4e)
+        for name, value in fields:
+            embed.add_field(name=name, value=value, inline=False)
+    else:
+        # Übersicht aller Bereiche
+        embed = discord.Embed(title='♟️ Schach-Bot — Hilfe', color=0x4e9e4e,
+                              description='Nutze `/help bereich:…` für Details.')
+        embed.add_field(name='🧩 puzzle',
+                        value='`/puzzle` `/kurs` `/train` `/next` `/blind` `/endless` `/reminder`',
+                        inline=False)
+        embed.add_field(name='📚 bibliothek',
+                        value='`/bibliothek` `/autor` `/tag`',
+                        inline=False)
+        embed.add_field(name='🌐 community',
+                        value='`/resourcen` `/youtube` `/elo`',
+                        inline=False)
+        embed.add_field(name='ℹ️ info',
+                        value='`/version` `/release-notes` `/help`',
+                        inline=False)
+        if is_admin:
+            embed.add_field(name='🔧 admin',
+                            value='`/daily` `/stats` `/announce` `/ignore_kapitel` `/test`',
+                            inline=False)
+
     embed.set_footer(text=f'Schach-Bot v{VERSION}')
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
