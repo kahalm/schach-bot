@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.20.0] - 2026-04-25
+### Added
+- Puzzle-Command Smoke-Tests: `/puzzle`, `/kurs`, `/train`, `/next`, `/endless`,
+  `/blind`, `/daily`, `/ignore_kapitel` (36 neue Checks, gesamt 110).
+
 ## [1.19.0] - 2026-04-25
 ### Added
 - Command-Tests fuer `/reminder` (Status, aktivieren, stoppen, Validierung),

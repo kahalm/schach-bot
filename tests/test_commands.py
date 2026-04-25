@@ -792,6 +792,446 @@ def test_stats():
     print()
 
 
+def test_puzzle():
+    """Smoke-Tests fuer /puzzle Command."""
+    print('[/puzzle]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('puzzle')
+        check('cmd_puzzle gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        import puzzle.legacy as leg
+
+        # Patch post_puzzle um IO zu vermeiden
+        orig_post = leg.post_puzzle
+        call_log = []
+
+        async def fake_post_puzzle(channel, count=1, book_idx=0, user_id=None):
+            call_log.append({'count': count, 'book_idx': book_idx, 'user_id': user_id})
+            return count
+
+        leg.post_puzzle = fake_post_puzzle
+
+        try:
+            # Test: Standard-Aufruf
+            ia = make_interaction()
+            run_async(cmd(ia, anzahl=2, buch=0, id='', user=None))
+            check('defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
+            check('post_puzzle aufgerufen', len(call_log) == 1)
+            check('post_puzzle count=2', call_log[0]['count'] == 2)
+            check('followup mit Bestaetigung',
+                  len(ia.followup.calls) > 0 and
+                  '2' in (ia.followup.calls[0].get('content') or ''))
+
+            # Test: id nicht gefunden
+            call_log.clear()
+            orig_find = leg.find_line_by_id
+            leg.find_line_by_id = lambda lid: None
+            ia = make_interaction()
+            run_async(cmd(ia, anzahl=1, buch=0, id='nonexistent.pgn:999', user=None))
+            check('id nicht gefunden → Fehlermeldung',
+                  len(ia.followup.calls) > 0 and
+                  'nicht gefunden' in (ia.followup.calls[0].get('content') or '').lower())
+            leg.find_line_by_id = orig_find
+        finally:
+            leg.post_puzzle = orig_post
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_kurs():
+    """Smoke-Tests fuer /kurs Command."""
+    print('[/kurs]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('kurs')
+        check('cmd_kurs gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        import puzzle.legacy as leg
+
+        # Patch load_all_lines
+        orig_load = leg.load_all_lines
+        orig_state = leg.load_puzzle_state
+        orig_books = leg._load_books_config
+        orig_list = leg._list_pgn_files
+
+        leg.load_all_lines = lambda: []
+        leg.load_puzzle_state = lambda: {'posted': []}
+        leg._load_books_config = lambda: {}
+        leg._list_pgn_files = lambda: []
+
+        try:
+            # Test: keine Buecher
+            ia = make_interaction()
+            run_async(cmd(ia, buch=0))
+            check('defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
+            # Bei leeren lines gibt es ein Embed ohne Felder oder Warnung
+            check('followup gesendet', len(ia.followup.calls) > 0)
+
+            # Test: mit Buechern
+            leg.load_all_lines = lambda: [
+                ('book1.pgn:001.001', MagicMock()),
+                ('book1.pgn:001.002', MagicMock()),
+            ]
+            leg._list_pgn_files = lambda: ['book1.pgn']
+            leg._load_books_config = lambda: {
+                'book1.pgn': {'difficulty': 'Anfaenger', 'rating': 3,
+                              'random': True, 'blind': False}
+            }
+            ia = make_interaction()
+            run_async(cmd(ia, buch=0))
+            check('mit Buch → followup', len(ia.followup.calls) > 0)
+            embed = ia.followup.calls[0].get('embed')
+            check('mit Buch → Embed hat Felder',
+                  embed is not None and len(embed.fields) > 0)
+        finally:
+            leg.load_all_lines = orig_load
+            leg.load_puzzle_state = orig_state
+            leg._load_books_config = orig_books
+            leg._list_pgn_files = orig_list
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_train():
+    """Smoke-Tests fuer /train Command."""
+    print('[/train]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('train')
+        check('cmd_train gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        import puzzle.legacy as leg
+
+        orig_get = leg._get_user_training
+        orig_set = leg._set_user_training
+        orig_clear = leg._clear_user_training
+        orig_load = leg.load_all_lines
+        orig_list = leg._list_pgn_files
+        orig_books = leg._load_books_config
+
+        _training = {}
+
+        def fake_get(uid):
+            return _training.get(uid)
+
+        def fake_set(uid, book, pos):
+            _training[uid] = {'book': book, 'position': pos}
+
+        def fake_clear(uid):
+            _training.pop(uid, None)
+
+        leg._get_user_training = fake_get
+        leg._set_user_training = fake_set
+        leg._clear_user_training = fake_clear
+        leg.load_all_lines = lambda: [
+            ('book1.pgn:001.001', MagicMock()),
+            ('book1.pgn:001.002', MagicMock()),
+        ]
+        leg._list_pgn_files = lambda: ['book1.pgn']
+        leg._load_books_config = lambda: {
+            'book1.pgn': {'difficulty': 'Anfaenger', 'rating': 3}
+        }
+
+        try:
+            # Test: Status ohne Training
+            ia = make_interaction()
+            run_async(cmd(ia, buch=None))
+            content = (ia.followup.calls[0].get('content') or '').lower()
+            check('kein Training → Hinweis', 'kein training' in content)
+
+            # Test: Buch waehlen
+            ia = make_interaction()
+            run_async(cmd(ia, buch=1))
+            check('Buch waehlen → Embed',
+                  len(ia.followup.calls) > 0 and
+                  ia.followup.calls[0].get('embed') is not None)
+            check('Training gesetzt', 12345 in _training)
+
+            # Test: Buch 0 = stoppen
+            ia = make_interaction()
+            run_async(cmd(ia, buch=0))
+            content = (ia.followup.calls[0].get('content') or '').lower()
+            check('Buch 0 → beendet', 'beendet' in content)
+
+            # Test: ungueliges Buch
+            ia = make_interaction()
+            run_async(cmd(ia, buch=99))
+            content = (ia.followup.calls[0].get('content') or '').lower()
+            check('ungültiges Buch → Fehler', 'nicht gefunden' in content)
+        finally:
+            leg._get_user_training = orig_get
+            leg._set_user_training = orig_set
+            leg._clear_user_training = orig_clear
+            leg.load_all_lines = orig_load
+            leg._list_pgn_files = orig_list
+            leg._load_books_config = orig_books
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_next():
+    """Smoke-Tests fuer /next Command."""
+    print('[/next]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('next')
+        check('cmd_next gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        import puzzle.legacy as leg
+
+        orig_get = leg._get_user_training
+        _training = {}
+        leg._get_user_training = lambda uid: _training.get(uid)
+
+        try:
+            # Test: kein Training → Fehler
+            ia = make_interaction()
+            run_async(cmd(ia, anzahl=1))
+            content = (ia.followup.calls[0].get('content') or '').lower()
+            check('kein Training → Fehler', 'kein trainingsbuch' in content)
+        finally:
+            leg._get_user_training = orig_get
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_endless():
+    """Smoke-Tests fuer /endless Command."""
+    print('[/endless]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('endless')
+        check('cmd_endless gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        import puzzle.legacy as leg
+
+        orig_is = leg.is_endless
+        orig_start = leg.start_endless
+        orig_stop = leg.stop_endless
+        orig_post = leg.post_next_endless
+        orig_list = leg._list_pgn_files
+
+        _sessions = {}
+
+        def fake_is(uid):
+            return uid in _sessions
+
+        def fake_start(uid, book):
+            _sessions[uid] = {'book': book, 'count': 0}
+
+        def fake_stop(uid):
+            count = _sessions.pop(uid, {}).get('count', 0)
+            return count
+
+        async def fake_post_next(bot, uid):
+            if uid in _sessions:
+                _sessions[uid]['count'] += 1
+
+        leg.is_endless = fake_is
+        leg.start_endless = fake_start
+        leg.stop_endless = fake_stop
+        leg.post_next_endless = fake_post_next
+        leg._list_pgn_files = lambda: ['book1.pgn']
+
+        try:
+            # Test: starten (braucht den bot-Parameter)
+            # endless-Command in bot.py ruft _cmd_endless(bot, interaction, buch)
+            # aber der captured Command ist: async def cmd_endless(interaction, buch=0)
+            # → _cmd_endless(bot, interaction, buch)
+            ia = make_interaction()
+            run_async(cmd(ia, buch=0))
+            check('starten → defer + followup',
+                  ia.response.calls[0].get('type') == 'defer' and
+                  len(ia.followup.calls) > 0)
+
+            # Test: stoppen (Toggle)
+            ia = make_interaction()
+            run_async(cmd(ia, buch=0))
+            content = ia.response.calls[0].get('content') or ''
+            check('stoppen-Toggle → beendet',
+                  'beendet' in content.lower() or 'Endless' in content)
+        finally:
+            leg.is_endless = orig_is
+            leg.start_endless = orig_start
+            leg.stop_endless = orig_stop
+            leg.post_next_endless = orig_post
+            leg._list_pgn_files = orig_list
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_blind():
+    """Smoke-Tests fuer /blind Command."""
+    print('[/blind]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('blind')
+        check('cmd_blind gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        import puzzle as puzzle_mod
+
+        orig_post = puzzle_mod.post_blind_puzzle
+
+        call_log = []
+        async def fake_post_blind(channel, moves=4, count=1, book_idx=0, user_id=None):
+            call_log.append({'moves': moves, 'count': count})
+
+        puzzle_mod.post_blind_puzzle = fake_post_blind
+
+        try:
+            # Test: moves < 1 → Fehler
+            ia = make_interaction()
+            run_async(cmd(ia, moves=0, anzahl=1, buch=0, user=None))
+            content = (ia.response.calls[0].get('content') or '').lower()
+            check('moves < 1 → Fehler', 'mindestens 1' in content)
+
+            # Test: Standard-Aufruf
+            ia = make_interaction()
+            run_async(cmd(ia, moves=4, anzahl=2, buch=0, user=None))
+            check('Standard → defer', ia.response.calls[0].get('type') == 'defer')
+            check('post_blind_puzzle aufgerufen', len(call_log) > 0)
+        finally:
+            puzzle_mod.post_blind_puzzle = orig_post
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_daily():
+    """Smoke-Tests fuer /daily Command."""
+    print('[/daily]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('daily')
+        check('cmd_daily gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        import bot as bot_mod
+        import puzzle as puzzle_mod
+
+        old_bot = bot_mod.bot
+        old_channel_id = bot_mod.CHANNEL_ID
+        orig_post = puzzle_mod.post_puzzle
+
+        call_log = []
+        async def fake_post(channel, **kw):
+            call_log.append(True)
+            return 1
+
+        puzzle_mod.post_puzzle = fake_post
+
+        try:
+            # Test: Channel nicht gefunden
+            bot_mod.CHANNEL_ID = 0
+
+            class NullBot:
+                def get_channel(self, cid):
+                    return None
+
+            bot_mod.bot = NullBot()
+            ia = make_interaction()
+            run_async(cmd(ia))
+            content = (ia.response.calls[0].get('content') or '').lower()
+            check('Channel nicht gefunden → Fehler', 'nicht gefunden' in content)
+
+            # Test: Erfolg
+            bot_mod.CHANNEL_ID = 99999
+            bot_mod.bot = _CapturingBot()
+            ia = make_interaction()
+            run_async(cmd(ia))
+            check('defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
+            check('post_puzzle aufgerufen', len(call_log) > 0)
+            check('followup gesendet', len(ia.followup.calls) > 0)
+        finally:
+            bot_mod.bot = old_bot
+            bot_mod.CHANNEL_ID = old_channel_id
+            puzzle_mod.post_puzzle = orig_post
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_ignore_kapitel():
+    """Smoke-Tests fuer /ignore_kapitel Command."""
+    print('[/ignore_kapitel]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('ignore_kapitel')
+        check('cmd_ignore_kapitel gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        import puzzle.legacy as leg
+
+        orig_load_ign = leg._load_chapter_ignore_list
+        orig_ignore = leg.ignore_chapter
+        orig_unignore = leg.unignore_chapter
+        orig_list = leg._list_pgn_files
+        orig_find_prefix = leg._find_chapter_prefix
+        orig_list_chapters = leg._list_chapters
+
+        _ignored = set()
+
+        leg._load_chapter_ignore_list = lambda: _ignored
+        leg.ignore_chapter = lambda b, p: _ignored.add(f'{b}:{p}')
+        leg.unignore_chapter = lambda b, p: _ignored.discard(f'{b}:{p}')
+        leg._list_pgn_files = lambda: ['book1.pgn']
+        leg._find_chapter_prefix = lambda b, k: str(k) if k <= 5 else None
+        leg._list_chapters = lambda b: {'1': 10, '2': 8, '3': 5}
+        leg._clean_book_name = lambda fn: fn.replace('.pgn', '')
+
+        try:
+            # Test: Liste leer
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, buch=0, kapitel=0, aktion=None))
+            content = (ia.followup.calls[0].get('content') or '').lower()
+            check('Liste leer → Hinweis', 'keine kapitel' in content)
+
+            # Test: ignore
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, buch=1, kapitel=3, aktion=None))
+            content = ia.followup.calls[0].get('content') or ''
+            check('ignore → Bestaetigung', 'ignoriert' in content.lower())
+            check('Kapitel in Liste', 'book1.pgn:3' in _ignored)
+
+            # Test: unignore
+            aktion_mock = MagicMock()
+            aktion_mock.value = 'unignore'
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, buch=1, kapitel=3, aktion=aktion_mock))
+            content = ia.followup.calls[0].get('content') or ''
+            check('unignore → Bestaetigung', 'aktiviert' in content.lower())
+        finally:
+            leg._load_chapter_ignore_list = orig_load_ign
+            leg.ignore_chapter = orig_ignore
+            leg.unignore_chapter = orig_unignore
+            leg._list_pgn_files = orig_list
+            leg._find_chapter_prefix = orig_find_prefix
+            leg._list_chapters = orig_list_chapters
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_wanted():
     """Tests fuer /wanted, /wanted_list, /wanted_vote, /wanted_delete."""
     print('[/wanted]')
@@ -932,6 +1372,14 @@ def main():
     test_elo()
     test_resourcen()
     test_youtube()
+    test_puzzle()
+    test_kurs()
+    test_train()
+    test_next()
+    test_endless()
+    test_blind()
+    test_daily()
+    test_ignore_kapitel()
     test_reminder()
     test_announce()
     test_greeted()
