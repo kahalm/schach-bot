@@ -612,6 +612,186 @@ def test_youtube():
     print()
 
 
+def test_reminder():
+    """Tests fuer /reminder Command."""
+    print('[/reminder]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('reminder')
+        check('cmd_reminder gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        # Test: Status ohne Reminder
+        ia = make_interaction()
+        run_async(cmd(ia, hours=None, puzzle_count=1, buch=0))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('kein Reminder → Hinweis',
+              'keinen aktiven reminder' in content or 'kein' in content)
+
+        # Test: Reminder aktivieren
+        ia = make_interaction()
+        run_async(cmd(ia, hours=4, puzzle_count=3, buch=0))
+        content = ia.response.calls[0].get('content') or ''
+        check('aktivieren → Bestaetigung', '4' in content and '3' in content)
+
+        # Test: Status mit Reminder
+        ia = make_interaction()
+        run_async(cmd(ia, hours=None, puzzle_count=1, buch=0))
+        content = ia.response.calls[0].get('content') or ''
+        check('Status → zeigt Details', '4' in content)
+
+        # Test: Reminder stoppen
+        ia = make_interaction()
+        run_async(cmd(ia, hours=0, puzzle_count=1, buch=0))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('stoppen → Bestaetigung', 'gestoppt' in content)
+
+        # Test: Validierung hours
+        ia = make_interaction()
+        run_async(cmd(ia, hours=200, puzzle_count=1, buch=0))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('hours > 168 → Fehler', '168' in content)
+
+        # Test: Validierung puzzle_count
+        ia = make_interaction()
+        run_async(cmd(ia, hours=4, puzzle_count=25, buch=0))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('puzzle_count > 20 → Fehler', '20' in content)
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_announce():
+    """Tests fuer /announce Command."""
+    print('[/announce]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('announce')
+        check('cmd_announce gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        # Test: Erfolg
+        target = FakeUser(uid=54321, name='Empfaenger')
+        ia = make_interaction(admin=True)
+        run_async(cmd(ia, user=target))
+        content = ia.response.calls[0].get('content') or ''
+        check('Erfolg → Bestaetigung',
+              'Empfaenger' in content and '✅' in content)
+
+        # Test: Forbidden
+        class ForbiddenUser:
+            id = 99
+            display_name = 'Gesperrt'
+            name = 'Gesperrt'
+            mention = '<@99>'
+            bot = False
+            async def create_dm(self):
+                raise _discord.Forbidden(MagicMock(), 'DMs disabled')
+
+        ia = make_interaction(admin=True)
+        run_async(cmd(ia, user=ForbiddenUser()))
+        content = ia.response.calls[0].get('content') or ''
+        check('Forbidden → Fehlermeldung', '❌' in content)
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_greeted():
+    """Tests fuer /greeted Command."""
+    print('[/greeted]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('greeted')
+        check('cmd_greeted gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        # DM_STATE_FILE patchen
+        import bot as bot_mod
+        old_dm_state = bot_mod.DM_STATE_FILE
+        bot_mod.DM_STATE_FILE = os.path.join(tmpdir, 'dm_state.json')
+
+        # bot-Variable in bot_mod patchen (greeted nutzt bot.fetch_user)
+        old_bot = bot_mod.bot
+        bot_mod.bot = _CapturingBot()
+
+        try:
+            # Test: leer
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia))
+            content = (ia.response.calls[0].get('content') or '').lower()
+            check('leer → Hinweis', 'niemand' in content)
+
+            # Test: mit Eintraegen
+            atomic_write(bot_mod.DM_STATE_FILE,
+                         {'greeted': [12345, 67890]})
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia))
+            # greeted defers, dann followup.send
+            check('defer aufgerufen',
+                  ia.response.calls[0].get('type') == 'defer')
+            check('followup.send aufgerufen', len(ia.followup.calls) > 0)
+            if ia.followup.calls:
+                embed = ia.followup.calls[0].get('embed')
+                check('mit Eintraegen → Embed',
+                      embed is not None and '2' in (embed.description or ''))
+        finally:
+            bot_mod.DM_STATE_FILE = old_dm_state
+            bot_mod.bot = old_bot
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_stats():
+    """Tests fuer /stats Command."""
+    print('[/stats]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('stats')
+        check('cmd_stats gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        # bot-Variable patchen (stats nutzt bot.fetch_user)
+        import bot as bot_mod
+        old_bot = bot_mod.bot
+        bot_mod.bot = _CapturingBot()
+
+        try:
+            # Test: leer
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia))
+            content = (ia.response.calls[0].get('content') or '').lower()
+            check('leer → Hinweis', 'keine statistiken' in content)
+
+            # Test: mit Daten
+            import core.stats as stats_mod
+            atomic_write(stats_mod.STATS_FILE, {
+                '12345': {'puzzles': 10, 'downloads': 5,
+                          'reaction_✅': 8, 'reaction_❌': 2},
+            })
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia))
+            check('defer aufgerufen',
+                  ia.response.calls[0].get('type') == 'defer')
+            check('followup.send aufgerufen', len(ia.followup.calls) > 0)
+            if ia.followup.calls:
+                embed = ia.followup.calls[0].get('embed')
+                check('mit Daten → Embed mit Stats',
+                      embed is not None and embed.description is not None
+                      and '10' in embed.description)
+        finally:
+            bot_mod.bot = old_bot
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_wanted():
     """Tests fuer /wanted, /wanted_list, /wanted_vote, /wanted_delete."""
     print('[/wanted]')
@@ -752,6 +932,10 @@ def main():
     test_elo()
     test_resourcen()
     test_youtube()
+    test_reminder()
+    test_announce()
+    test_greeted()
+    test_stats()
     test_wanted()
     test_release_notes()
 

@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.19.0] - 2026-04-25
+### Added
+- Command-Tests fuer `/reminder` (Status, aktivieren, stoppen, Validierung),
+  `/announce` (Erfolg, Forbidden), `/greeted` (leer, mit Eintraegen),
+  `/stats` (leer, mit Daten). 20 neue Checks, gesamt 74.
+
 ## [1.18.0] - 2026-04-25
 ### Added
 - Command-Tests fuer `/wanted`, `/wanted_list`, `/wanted_vote`, `/wanted_delete`
