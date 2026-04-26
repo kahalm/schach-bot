@@ -276,7 +276,7 @@ def upload_many_to_lichess(
                     default_chapter_id = dg.headers.get('ChapterURL', '').rstrip('/').split('/')[-1]
 
         chapter_urls: list[str] = []
-        for game, context in puzzles:
+        for idx, (game, context) in enumerate(puzzles):
             try:
                 pgn  = _export_pgn_for_lichess(game)
                 h    = dict(game.headers)
@@ -294,7 +294,7 @@ def upload_many_to_lichess(
                 log.info('Gamebook-Kapitel importiert: %s (chapter_id=%s)', name, ch_id)
 
                 if not ch_id and reuse_study_id:
-                    remaining = puzzles[puzzles.index((game, context)):]
+                    remaining = puzzles[idx:]
                     log.info('Studie %s voll – lege neue an fuer %d verbleibende Kapitel.',
                              reuse_study_id, len(remaining))
                     return chapter_urls + upload_many_to_lichess(remaining, reuse_study_id=None)

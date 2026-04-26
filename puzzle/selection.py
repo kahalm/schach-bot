@@ -297,7 +297,7 @@ def find_line_by_id(line_id: str) -> tuple[str, chess.pgn.Game] | None:
         if lid == line_id:
             return (lid, game)
     for lid, game in all_lines:
-        if lid.endswith(line_id):
+        if lid.endswith(':' + line_id):
             return (lid, game)
     return None
 

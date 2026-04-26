@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.40.1] - 2026-04-26
+### Fixed
+- `find_line_by_id`: Suffix-Match nur an `:`-Grenze — `"3"` matcht nicht mehr `"book:13"` (1.1)
+- `upload_many_to_lichess`: `enumerate()` statt `list.index()` — korrekte Kapitel-Zuordnung bei Duplikaten (1.2)
+
 ## [1.40.0] - 2026-04-26
 ### Changed
 - CLAUDE.md: Architektur-Tabelle aktualisiert (puzzle/ Module, wanted.py, _collection.py)
