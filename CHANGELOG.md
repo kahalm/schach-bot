@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.7.0] - 2026-04-26
+### Added
+- Docker HEALTHCHECK: Bot schreibt alle 60s `config/health.json` (Version, Latency, Guilds, Timestamp)
+- `healthcheck.py` Script prueft ob Timestamp < 120s alt ist (Exit 0/1)
+- Dockerfile HEALTHCHECK Directive fuer automatische Container-Ueberwachung
+
 ## [2.6.0] - 2026-04-26
 ### Added
 - Rolle "Moderator" hat jetzt dieselben Rechte wie Admin bei allen Bot-Commands

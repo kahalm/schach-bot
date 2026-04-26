@@ -18,4 +18,7 @@ COPY . .
 RUN useradd -m botuser && chown -R botuser:botuser /app
 USER botuser
 
+HEALTHCHECK --interval=60s --timeout=5s --start-period=30s --retries=3 \
+  CMD ["python", "healthcheck.py"]
+
 CMD ["python", "bot.py"]

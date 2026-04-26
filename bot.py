@@ -12,8 +12,9 @@ log = log_setup.setup()
 import asyncio
 import discord
 from discord.ext import tasks, commands
+import json
 import os
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 
 from core import stats, dm_log
 from core.json_store import atomic_read, atomic_update
@@ -102,6 +103,25 @@ wochenpost.setup(bot, wochenpost_channel_id=WOCHENPOST_CHANNEL_ID)
 
 _ready_done = False
 
+HEALTH_FILE = os.path.join(CONFIG_DIR, 'health.json')
+
+
+def _write_health():
+    """Schreibt config/health.json mit aktuellem Status."""
+    data = {
+        'status': 'ok',
+        'version': VERSION,
+        'ts': datetime.now(timezone.utc).isoformat(),
+        'latency_ms': round(bot.latency * 1000) if bot.latency else None,
+        'guilds': len(bot.guilds),
+    }
+    os.makedirs(os.path.dirname(HEALTH_FILE), exist_ok=True)
+    tmp = HEALTH_FILE + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(data, f)
+    os.replace(tmp, HEALTH_FILE)
+
+
 @bot.event
 async def on_ready():
     global _ready_done
@@ -124,7 +144,9 @@ async def on_ready():
             if attempt == 4:
                 log.error('tree.sync() endgültig fehlgeschlagen — Commands evtl. nicht verfügbar')
     log.info('Bot online als %s v%s', bot.user, VERSION)
+    await asyncio.to_thread(_write_health)
     puzzle_task.start()
+    _health_loop.start()
 
 
 @bot.event
@@ -562,6 +584,15 @@ async def cmd_daily(interaction: discord.Interaction):
 
 
 # --- Tägliche Tasks ---
+
+@tasks.loop(seconds=60)
+async def _health_loop():
+    if bot.is_ready():
+        try:
+            await asyncio.to_thread(_write_health)
+        except Exception as e:
+            log.warning('Health-Write fehlgeschlagen: %s', e)
+
 
 @tasks.loop(time=time(hour=PUZZLE_HOUR, minute=PUZZLE_MINUTE))
 async def puzzle_task():

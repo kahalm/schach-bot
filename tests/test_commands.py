@@ -212,6 +212,8 @@ class _CapturingBot:
     async def fetch_user(self, uid):
         return FakeUser(uid=uid, name=f'User_{uid}')
 
+    latency = 0.0
+
     @property
     def guilds(self):
         return []
@@ -3183,6 +3185,76 @@ def test_wochenpost_buttons():
     print()
 
 
+def test_healthcheck():
+    """Tests fuer _write_health() und healthcheck.py."""
+    print('[healthcheck]')
+    tmpdir = setup_temp_config()
+    try:
+        import bot as bot_mod
+        old_health = bot_mod.HEALTH_FILE
+        bot_mod.HEALTH_FILE = os.path.join(tmpdir, 'health.json')
+
+        # Mock bot.latency (Klassenattribut, ueberschreibbar)
+        old_latency = bot_mod.bot.latency
+        bot_mod.bot.latency = 0.042
+
+        # Test: _write_health erzeugt gueltige JSON
+        bot_mod._write_health()
+        check('health.json existiert', os.path.exists(bot_mod.HEALTH_FILE))
+
+        with open(bot_mod.HEALTH_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        check('health status=ok', data.get('status') == 'ok')
+        check('health version', data.get('version') == core.version.VERSION)
+        check('health latency_ms', data.get('latency_ms') == 42)
+        check('health guilds ist int', isinstance(data.get('guilds'), int))
+        check('health ts vorhanden', 'ts' in data)
+
+        # Test: healthcheck.py Exit 0 bei frischer Datei
+        # healthcheck.py liest config/health.json relativ zum cwd
+        import subprocess
+        hc_path = os.path.join(parent_dir, 'healthcheck.py')
+        # health.json ins richtige Unterverz. kopieren
+        hc_dir = os.path.join(tmpdir, 'config')
+        os.makedirs(hc_dir, exist_ok=True)
+        shutil.copy2(bot_mod.HEALTH_FILE, os.path.join(hc_dir, 'health.json'))
+        result = subprocess.run(
+            [sys.executable, hc_path],
+            cwd=tmpdir,
+            capture_output=True, text=True, timeout=5,
+        )
+        check('healthcheck exit 0 (frisch)', result.returncode == 0,
+              result.stdout.strip())
+
+        # Test: healthcheck.py Exit 1 bei stale Datei
+        hf = os.path.join(hc_dir, 'health.json')
+        with open(hf, 'w', encoding='utf-8') as f:
+            json.dump({'status': 'ok', 'ts': '2020-01-01T00:00:00+00:00'}, f)
+        result = subprocess.run(
+            [sys.executable, hc_path],
+            cwd=tmpdir,
+            capture_output=True, text=True, timeout=5,
+        )
+        check('healthcheck exit 1 (stale)', result.returncode == 1,
+              result.stdout.strip())
+
+        # Test: healthcheck.py Exit 1 bei fehlender Datei
+        os.remove(hf)
+        result = subprocess.run(
+            [sys.executable, hc_path],
+            cwd=tmpdir,
+            capture_output=True, text=True, timeout=5,
+        )
+        check('healthcheck exit 1 (missing)', result.returncode == 1,
+              result.stdout.strip())
+
+        bot_mod.HEALTH_FILE = old_health
+        bot_mod.bot.latency = old_latency
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
 # ===================================================================
 # MAIN
 # ===================================================================
@@ -3232,6 +3304,7 @@ def main():
     test_posted_reset_per_pool()
     test_wochenpost()
     test_wochenpost_buttons()
+    test_healthcheck()
 
     print(f'---\n{total - failed}/{total} checks passed.')
     if failed:
