@@ -172,12 +172,13 @@ async def on_member_join(member: discord.Member):
 
 async def _display_name(uid, guild=None):
     """Server-Nick wenn moeglich, sonst globaler Name."""
-    if guild:
+    guilds = [guild] if guild else bot.guilds
+    for g in guilds:
         try:
-            member = guild.get_member(int(uid)) or await guild.fetch_member(int(uid))
+            member = g.get_member(int(uid)) or await g.fetch_member(int(uid))
             return member.display_name
         except Exception:
-            pass
+            continue
     try:
         u = await bot.fetch_user(int(uid))
         return u.display_name

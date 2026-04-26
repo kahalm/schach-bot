@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.0.6] - 2026-04-26
+### Fixed
+- `_display_name()` findet Server-Nicks auch aus DM-Kontext (iteriert ueber alle Bot-Guilds statt nur interaction.guild)
+
 ## [2.0.5] - 2026-04-26
 ### Changed
 - `/dm-log` ohne Parameter zeigt kompakte Uebersicht (eine Zeile pro User) statt alle DM-Inhalte
