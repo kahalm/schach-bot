@@ -287,7 +287,8 @@ async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
             return
 
         embed = discord.Embed(title='📚 Puzzle-Bücher', color=0x7fa650)
-        for i, book in enumerate(sorted(total_per_book), 1):
+        sorted_books = sorted(total_per_book)
+        for i, book in enumerate(sorted_books[:25], 1):
             name  = _pkg._clean_book_name(book)
             total = total_per_book[book]
             done  = posted_per_book[book]
@@ -306,7 +307,10 @@ async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
 
         total_all = sum(total_per_book.values())
         done_all  = sum(posted_per_book.values())
-        embed.set_footer(text=f'Gesamt: {done_all}/{total_all} Linien gepostet')
+        footer = f'Gesamt: {done_all}/{total_all} Linien gepostet'
+        if len(sorted_books) > 25:
+            footer += f' — {len(sorted_books) - 25} weitere Bücher nicht angezeigt'
+        embed.set_footer(text=footer)
         await interaction.followup.send(embed=embed, ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)

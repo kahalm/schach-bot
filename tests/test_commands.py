@@ -732,7 +732,8 @@ def test_greeted():
                   ia.response.calls[0].get('type') == 'defer')
             check('followup.send aufgerufen', len(ia.followup.calls) > 0)
             if ia.followup.calls:
-                embed = ia.followup.calls[0].get('embed')
+                embeds = ia.followup.calls[0].get('embeds', [])
+                embed = ia.followup.calls[0].get('embed') or (embeds[0] if embeds else None)
                 check('mit Eintraegen → Embed',
                       embed is not None and '2' in (embed.description or ''))
         finally:
@@ -777,7 +778,8 @@ def test_stats():
                   ia.response.calls[0].get('type') == 'defer')
             check('followup.send aufgerufen', len(ia.followup.calls) > 0)
             if ia.followup.calls:
-                embed = ia.followup.calls[0].get('embed')
+                embeds = ia.followup.calls[0].get('embeds', [])
+                embed = ia.followup.calls[0].get('embed') or (embeds[0] if embeds else None)
                 check('mit Daten → Embed mit Stats',
                       embed is not None and embed.description is not None
                       and '10' in embed.description)

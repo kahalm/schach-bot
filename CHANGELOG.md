@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.40.6] - 2026-04-26
+### Fixed
+- /greeted + /stats: Embed-Paginierung bei >4096 Zeichen statt stiller Truncation (8.1/8.2)
+- /kurs: Buch-Liste auf 25 Felder begrenzt mit Footer-Hinweis (8.3)
+
 ## [1.40.5] - 2026-04-26
 ### Changed
 - `bot.py`: `json_store`-Imports auf Top-Level verschoben — 3x In-Function-Import entfernt (5.1)

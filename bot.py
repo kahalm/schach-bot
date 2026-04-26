@@ -159,6 +159,25 @@ async def on_member_join(member: discord.Member):
         log.warning('Willkommens-DM fehlgeschlagen für %s: %s', member, e)
 
 
+# --- Helpers ---
+
+def _paginate_lines(header: str, lines: list[str],
+                    max_len: int = 4096) -> list[discord.Embed]:
+    """Teilt Zeilen auf mehrere Embeds auf, wenn >max_len Zeichen."""
+    embeds: list[discord.Embed] = []
+    buf = header
+    for line in lines:
+        candidate = buf + line + '\n'
+        if len(candidate) > max_len:
+            embeds.append(discord.Embed(description=buf.rstrip(), color=EMBED_COLOR))
+            buf = line + '\n'
+        else:
+            buf = candidate
+    if buf.strip():
+        embeds.append(discord.Embed(description=buf.rstrip(), color=EMBED_COLOR))
+    return embeds or [discord.Embed(description=header.rstrip(), color=EMBED_COLOR)]
+
+
 # --- Slash-Commands ---
 
 def _is_admin(interaction: discord.Interaction) -> bool:
@@ -326,11 +345,9 @@ async def cmd_greeted(interaction: discord.Interaction):
 
     results = await asyncio.gather(*[_fetch(uid) for uid in greeted], return_exceptions=True)
     lines = [r for r in results if isinstance(r, str)]
-    text = f'**Begrüßte User ({len(greeted)}):**\n' + '\n'.join(lines)
-    if len(text) > 4096:
-        text = text[:4093] + '...'
-    embed = discord.Embed(description=text, color=EMBED_COLOR)
-    await interaction.followup.send(embed=embed, ephemeral=True)
+    header = f'**Begrüßte User ({len(greeted)}):**\n'
+    embeds = _paginate_lines(header, lines)
+    await interaction.followup.send(embeds=embeds, ephemeral=True)
 
 
 @tree.command(name='announce', description='Begrüßungsnachricht an einen User senden (Admin)')
@@ -375,7 +392,6 @@ async def cmd_stats(interaction: discord.Interaction):
     results = await asyncio.gather(*[_fetch_name(uid) for uid in uids], return_exceptions=True)
     names = dict(r for r in results if isinstance(r, tuple))
 
-    embed = discord.Embed(title='📊 Statistiken', color=EMBED_COLOR)
     lines = []
     for uid, data in all_stats.items():
         puzzles = data.get('puzzles', 0)
@@ -395,12 +411,8 @@ async def cmd_stats(interaction: discord.Interaction):
             line += f' · 🚮 {trashed}'
         lines.append(line)
 
-    # Discord Embed-Beschreibung max 4096 Zeichen
-    text = '\n'.join(lines)
-    if len(text) > 4096:
-        text = text[:4093] + '...'
-    embed.description = text
-    await interaction.followup.send(embed=embed, ephemeral=True)
+    embeds = _paginate_lines('📊 **Statistiken**\n', lines)
+    await interaction.followup.send(embeds=embeds, ephemeral=True)
 
 
 # --- Admin-Befehle ---
