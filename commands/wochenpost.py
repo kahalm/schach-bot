@@ -14,6 +14,7 @@ import json
 import logging
 import os
 from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 from urllib.parse import urlparse
 
 import discord
@@ -30,6 +31,8 @@ log = logging.getLogger('schach-bot')
 
 WOCHENPOST_FILE = os.path.join(CONFIG_DIR, 'wochenpost.json')
 WOCHENPOST_SUB_FILE = os.path.join(CONFIG_DIR, 'wochenpost_sub.json')
+
+_VIENNA = ZoneInfo('Europe/Vienna')
 
 
 def _sub_default():
@@ -432,7 +435,7 @@ def setup(bot, wochenpost_channel_id: int = 0):
     @tree.command(name='wochenpost_sub',
                   description='Taeglich DM-Erinnerung an den aktuellen Wochenpost')
     @discord.app_commands.describe(
-        zeit='Uhrzeit UTC (0-23, Standard: 17)',
+        zeit='Uhrzeit Wiener Zeit (0-23, Standard: 17)',
         user='Anderen User subscriben (Admin/Mod)')
     async def cmd_wochenpost_sub(interaction: discord.Interaction,
                                   zeit: int = 17,
@@ -451,10 +454,11 @@ def setup(bot, wochenpost_channel_id: int = 0):
 
         target = user or interaction.user
         uid = str(target.id)
-        now = datetime.now(timezone.utc)
-        next_dt = now.replace(hour=zeit, minute=0, second=0, microsecond=0)
-        if next_dt <= now:
+        now_vienna = datetime.now(_VIENNA)
+        next_dt = now_vienna.replace(hour=zeit, minute=0, second=0, microsecond=0)
+        if next_dt <= now_vienna:
             next_dt += timedelta(days=1)
+        next_dt = next_dt.astimezone(timezone.utc)
 
         result = {'updated': False}
 
@@ -475,23 +479,23 @@ def setup(bot, wochenpost_channel_id: int = 0):
             if user:
                 await interaction.response.send_message(
                     f'\u2705 {name} aktualisiert: '
-                    f'taeglich um **{zeit}:00 UTC**.',
+                    f'taeglich um **{zeit}:00 Wiener Zeit**.',
                     ephemeral=True)
             else:
                 await interaction.response.send_message(
                     f'\u2705 {name} aktualisiert: '
-                    f'taeglich um **{zeit}:00 UTC**.',
+                    f'taeglich um **{zeit}:00 Wiener Zeit**.',
                     ephemeral=True)
         else:
             if user:
                 await interaction.response.send_message(
                     f'\u2705 {name} fuer Wochenpost-Erinnerungen subscribed: '
-                    f'taeglich um **{zeit}:00 UTC**.',
+                    f'taeglich um **{zeit}:00 Wiener Zeit**.',
                     ephemeral=True)
             else:
                 await interaction.response.send_message(
                     f'\u2705 Wochenpost-Erinnerung abonniert: '
-                    f'taeglich um **{zeit}:00 UTC**.\n'
+                    f'taeglich um **{zeit}:00 Wiener Zeit**.\n'
                     f'Du bekommst eine DM, bis du den aktuellen '
                     f'Wochenpost als erledigt markierst.',
                     ephemeral=True)
@@ -709,6 +713,7 @@ async def _run_wochenpost_reminders():
         thread_url = f'https://discord.com/channels/{guild_id}/{thread_id}'
 
     now = datetime.now(timezone.utc)
+    now_vienna = now.astimezone(_VIENNA)
     today_str = date.today().strftime('%Y-%m-%d')
 
     sub_data = atomic_read(WOCHENPOST_SUB_FILE, default=_sub_default)
@@ -724,8 +729,9 @@ async def _run_wochenpost_reminders():
             continue
 
         hour = info.get('hour', 17)
-        tomorrow = (now + timedelta(days=1)).replace(
+        tomorrow_vienna = (now_vienna + timedelta(days=1)).replace(
             hour=hour, minute=0, second=0, microsecond=0)
+        tomorrow = tomorrow_vienna.astimezone(timezone.utc)
 
         # Veroeffentlichungstag → skip
         if entry_date == today_str:

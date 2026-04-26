@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.9.1] - 2026-04-26
+### Changed
+- `/wochenpost_sub` `zeit`-Parameter nutzt jetzt Wiener Zeit (Europe/Vienna) statt UTC
+
 ## [2.9.0] - 2026-04-26
 ### Added
 - `/wochenpost_sub [zeit] [user]` — Taeglich DM-Erinnerung an den aktuellen Wochenpost (Uhrzeit UTC 0-23, Standard: 17); Admins/Mods koennen andere User subscriben
