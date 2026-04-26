@@ -4,6 +4,25 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.0.1] - 2026-04-26
+### Added
+- `/turnier_sub`, `/turnier_unsub` Commands mit Tag-basiertem Ping bei neuen Turnieren
+- `/turnier_sub` ohne Parameter zeigt eigene Abos
+- Automatischer Turnier-Import taeglich um 18:00 UTC
+- Tags: jugend, senioren, klassisch (auto-erkannt beim Import)
+- Willkommensnachricht um neue Features erweitert
+- 234 Command-Tests
+
+### Changed
+- `RALLYE_CHANNEL_ID` → `TOURNAMENT_CHANNEL_ID` (Fallback auf alten Namen)
+- `/schachrallye_sub` erwaehnt jetzt Ping + 7-Tage-Reminder
+- Channel-Posts fuer alle neuen Turniere (nicht nur Nicht-Rallye)
+
+### Fixed
+- HTML-Parser: fehlende Leerzeichen bei `<br>`-Tags
+- Turniernamen-Bereinigung (Start-Uhrzeiten, Chess-Results-Suffix)
+- URL-Validierung fuer Embed-Links (Discord 400 Bad Request)
+
 ## [2.0.0] - 2026-04-26
 ### Added
 - Dockerfile, docker-compose.yml und .dockerignore fuer Container-Deployment

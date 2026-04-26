@@ -55,6 +55,7 @@ Runtime state lives in `config/` (gitignored, auto-created).
    python tests/test_commands.py   # 131 Command-Tests
    ```
 2. **Test-First**: Für jedes neue Feature ZUERST einen Test schreiben, dann die Implementierung.
+3. **Bug-First-Test**: Wenn der User einen Bug meldet, ZUERST einen Test schreiben der den Fehler reproduziert (Test muss fehlschlagen), DANN den Bug fixen (Test muss bestehen). So wird sichergestellt, dass der Fehler nie wieder auftreten kann.
 
 ## Release-Regel (PFLICHT bei jedem Commit!)
 

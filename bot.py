@@ -13,7 +13,7 @@ import asyncio
 import discord
 from discord.ext import tasks, commands
 import os
-from datetime import time
+from datetime import datetime, time
 
 from core import stats, dm_log
 from core.json_store import atomic_read, atomic_update
@@ -30,6 +30,10 @@ try:
     CHANNEL_ID = int(os.getenv('CHANNEL_ID', '0'))
 except ValueError:
     raise SystemExit(f"CHANNEL_ID ungültig: {os.getenv('CHANNEL_ID')!r} — muss eine Zahl sein")
+try:
+    TOURNAMENT_CHANNEL_ID = int(os.getenv('TOURNAMENT_CHANNEL_ID') or os.getenv('RALLYE_CHANNEL_ID', '0'))
+except ValueError:
+    raise SystemExit(f"TOURNAMENT_CHANNEL_ID ungültig: {os.getenv('TOURNAMENT_CHANNEL_ID')!r} — muss eine Zahl sein")
 try:
     PUZZLE_HOUR = int(os.getenv('PUZZLE_HOUR', '9'))
     PUZZLE_MINUTE = int(os.getenv('PUZZLE_MINUTE', '0'))
@@ -54,6 +58,10 @@ WELCOME_MESSAGE = (
     '▶️ `/youtube` — YouTube-Kanäle/Videos anzeigen oder hinzufügen\n'
     '⏰ `/reminder` — Wiederkehrende Puzzle-DMs einstellen\n'
     '🏅 `/elo` — Eigene Schach-Elo angeben\n'
+    '🏆 `/turnier` — Turniere in Tirol anzeigen\n'
+    '🔔 `/turnier_sub` — Bei neuen Turnieren gepingt werden\n'
+    '🏇 `/schachrallye` — Schachrallye-Termine anzeigen\n'
+    '💡 `/wanted` — Feature-Wünsche einreichen\n'
     '📊 `/stats` — Deine Statistiken\n\n'
     'Mit `/help` siehst du alle Befehle im Detail.'
 )
@@ -71,7 +79,7 @@ tree = bot.tree
 # Module laden
 import puzzle
 import library
-from commands import reminder, resourcen, youtube, elo, release_notes, blind, test, wanted
+from commands import reminder, resourcen, youtube, elo, release_notes, blind, test, wanted, schachrallye
 
 puzzle.setup(bot)
 library.setup(bot)
@@ -83,6 +91,7 @@ release_notes.setup(bot)
 blind.setup(bot)
 test.setup(bot)
 wanted.setup(bot)
+schachrallye.setup(bot, tournament_channel_id=TOURNAMENT_CHANNEL_ID)
 
 
 _ready_done = False
@@ -243,6 +252,16 @@ def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str
              '`/wanted` — Auflisten · `/wanted beschreibung:…` — Einreichen'),
             ('/wanted_list', 'Alle Feature-Wünsche anzeigen (nach Stimmen sortiert).'),
             ('/wanted_vote <id>', 'Für einen Feature-Wunsch stimmen (Toggle +1/−1).'),
+            ('/schachrallye', 'Alle Schachrallye-Termine anzeigen.'),
+            ('/schachrallye_sub [user]',
+             'Für Rallye-Erinnerungen subscriben.\n'
+             '`/schachrallye_sub` — Selbst · `/schachrallye_sub user:@X` — Admin subscribed anderen'),
+            ('/schachrallye_unsub [user]', 'Rallye-Erinnerungen abbestellen.'),
+            ('/turnier', 'Alle zukünftigen Turniere anzeigen (tirol.chess.at).'),
+            ('/turnier_sub <tag> [user]',
+             'Für Turnier-Tag subscriben (Ping bei neuen Turnieren).\n'
+             'Tags z.B.: `schnellschach`, `blitz`, `960`, `schachrallye`'),
+            ('/turnier_unsub <tag> [user]', 'Turnier-Tag-Abo abbestellen.'),
         ]
     if bereich == 'info':
         return 'ℹ️ Info', [
@@ -266,8 +285,12 @@ def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str
              '`/ignore_kapitel buch:2 kapitel:3` — ignorieren\n'
              '`/ignore_kapitel buch:2 kapitel:3 aktion:unignore` — reaktivieren\n'
              '`/ignore_kapitel` — alle ignorierten Kapitel anzeigen'),
+            ('/dm-log [user]', 'DM-Log anzeigen (alle oder ein bestimmter User).'),
             ('/test', 'Snapshot-Regressionstests ausführen.'),
             ('/wanted_delete <id>', 'Feature-Wunsch löschen.'),
+            ('/schachrallye_add <datum> <ort>', 'Rallye-Termin anlegen (TT.MM.JJJJ).'),
+            ('/schachrallye_del <id>', 'Rallye-Termin löschen.'),
+            ('/turnier_parse', 'Termine von tirol.chess.at importieren.'),
         ]
     return '', []
 
@@ -302,14 +325,14 @@ async def cmd_help(interaction: discord.Interaction, bereich: str = ''):
                         value='`/bibliothek` `/autor` `/tag`',
                         inline=False)
         embed.add_field(name='🌐 community',
-                        value='`/resourcen` `/youtube` `/elo` `/wanted`',
+                        value='`/resourcen` `/youtube` `/elo` `/wanted` `/schachrallye` `/turnier`',
                         inline=False)
         embed.add_field(name='ℹ️ info',
                         value='`/version` `/release-notes` `/help`',
                         inline=False)
         if is_admin:
             embed.add_field(name='🔧 admin',
-                            value='`/daily` `/stats` `/announce` `/ignore_kapitel` `/test` `/wanted_delete`',
+                            value='`/daily` `/stats` `/announce` `/dm-log` `/ignore_kapitel` `/test` `/wanted_delete` `/schachrallye_add` `/schachrallye_del`',
                             inline=False)
 
     embed.set_footer(text=f'Schach-Bot v{VERSION}')
@@ -347,6 +370,55 @@ async def cmd_greeted(interaction: discord.Interaction):
     lines = [r for r in results if isinstance(r, str)]
     header = f'**Begrüßte User ({len(greeted)}):**\n'
     embeds = _paginate_lines(header, lines)
+    await interaction.followup.send(embeds=embeds, ephemeral=True)
+
+
+@tree.command(name='dm-log', description='DM-Log anzeigen (Admin)')
+@discord.app_commands.describe(user='Nur DMs dieses Users anzeigen')
+@discord.app_commands.default_permissions(administrator=True)
+async def cmd_dm_log(interaction: discord.Interaction, user: discord.User = None):
+    await interaction.response.defer(ephemeral=True)
+    data = await asyncio.to_thread(atomic_read, dm_log.DM_LOG_FILE, dict)
+
+    if user:
+        subset = {str(user.id): data.get(str(user.id), [])}
+        subset = {k: v for k, v in subset.items() if v}
+    else:
+        subset = {k: v for k, v in data.items() if v}
+
+    if not subset:
+        await interaction.followup.send('Noch keine DMs protokolliert.', ephemeral=True)
+        return
+
+    # User-Namen parallel fetchen
+    uids = list(subset.keys())
+
+    async def _fetch_name(uid):
+        try:
+            u = await bot.fetch_user(int(uid))
+            return uid, u.display_name
+        except Exception:
+            return uid, f'User {uid}'
+
+    results = await asyncio.gather(*[_fetch_name(uid) for uid in uids],
+                                   return_exceptions=True)
+    names = dict(r for r in results if isinstance(r, tuple))
+
+    lines = []
+    for uid, entries in subset.items():
+        name = names.get(uid, f'User {uid}')
+        lines.append(f'**{name}** ({len(entries)} DMs):')
+        for entry in entries[-10:]:
+            ts = entry.get('ts', '')
+            text = entry.get('text', '')
+            try:
+                dt = datetime.fromisoformat(ts)
+                unix = int(dt.timestamp())
+                lines.append(f'  <t:{unix}:f> {text}')
+            except (ValueError, TypeError):
+                lines.append(f'  {ts} {text}')
+
+    embeds = _paginate_lines('', lines)
     await interaction.followup.send(embeds=embeds, ephemeral=True)
 
 

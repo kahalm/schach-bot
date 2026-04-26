@@ -17,6 +17,7 @@ import tempfile
 import shutil
 import unittest.mock as _mock
 from unittest.mock import MagicMock, AsyncMock
+import logging
 from datetime import datetime, timezone, timedelta
 
 # ---------------------------------------------------------------------------
@@ -307,6 +308,7 @@ def setup_temp_config():
     # resourcen/youtube nutzen jetzt _collection._json_path() mit CONFIG_DIR zur Laufzeit
     _patch_file_constant('commands.wanted', 'WANTED_FILE', tmpdir)
     _patch_file_constant('commands.reminder', 'REMINDER_FILE', tmpdir)
+    _patch_file_constant('commands.schachrallye', 'TURNIER_FILE', tmpdir)
     _patch_file_constant('core.stats', 'STATS_FILE', tmpdir)
 
     return tmpdir
@@ -384,6 +386,7 @@ import commands.youtube as youtube_mod
 import commands.wanted as wanted_mod
 import commands.release_notes as release_notes_mod
 import commands.reminder as reminder_mod
+import commands.schachrallye as schachrallye_mod
 
 # bot.py importieren (ruft am Ende bot.run() auf, was jetzt ein no-op ist)
 import bot as bot_mod
@@ -393,8 +396,11 @@ import bot as bot_mod
 # _CapturingTree registriert)
 _cap_bot = _CapturingBot()
 for mod in (elo_mod, resourcen_mod, youtube_mod, wanted_mod,
-            release_notes_mod, reminder_mod):
-    mod.setup(_cap_bot)
+            release_notes_mod, reminder_mod, schachrallye_mod):
+    if mod is schachrallye_mod:
+        mod.setup(_cap_bot, tournament_channel_id=0)
+    else:
+        mod.setup(_cap_bot)
 
 # bot.py-interne Helper merken
 _help_fields_fn = bot_mod._help_fields
@@ -1708,6 +1714,449 @@ def test_build_library_catalog():
     print()
 
 
+def test_dm_log():
+    """Tests fuer /dm-log Command."""
+    print('[/dm-log]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('dm-log')
+        check('cmd_dm_log gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        # DM_LOG_FILE patchen
+        import core.dm_log as dm_log_mod
+        import bot as bot_mod
+        old_dm_log_file = dm_log_mod.DM_LOG_FILE
+        dm_log_mod.DM_LOG_FILE = os.path.join(tmpdir, 'dm_log.json')
+        old_bot = bot_mod.bot
+        bot_mod.bot = _CapturingBot()
+
+        try:
+            # Test: leer
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, user=None))
+            check('defer aufgerufen (leer)',
+                  ia.response.calls[0].get('type') == 'defer')
+            content = (ia.followup.calls[0].get('content') or '').lower()
+            check('leer → Hinweis', 'keine dms' in content)
+
+            # Test: mit Eintraegen
+            atomic_write(dm_log_mod.DM_LOG_FILE, {
+                '12345': [
+                    {'ts': '2026-04-25T18:00:00+00:00', 'text': 'Hallo!'},
+                    {'ts': '2026-04-25T19:00:00+00:00', 'text': 'Puzzle gesendet'},
+                ],
+                '67890': [
+                    {'ts': '2026-04-26T10:00:00+00:00', 'text': 'Willkommen'},
+                ],
+            })
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, user=None))
+            check('defer aufgerufen (Daten)',
+                  ia.response.calls[0].get('type') == 'defer')
+            check('followup.send aufgerufen', len(ia.followup.calls) > 0)
+            if ia.followup.calls:
+                embeds = ia.followup.calls[0].get('embeds', [])
+                embed = embeds[0] if embeds else None
+                desc = embed.description if embed else ''
+                check('Embed enthaelt DM-Inhalt', 'Hallo' in desc)
+        finally:
+            dm_log_mod.DM_LOG_FILE = old_dm_log_file
+            bot_mod.bot = old_bot
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_schachrallye():
+    """Tests fuer /schachrallye, /schachrallye_add, _del, _sub, _unsub."""
+    print('[/schachrallye]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd_rallye = _captured_commands.get('schachrallye')
+        cmd_add = _captured_commands.get('schachrallye_add')
+        cmd_del = _captured_commands.get('schachrallye_del')
+        cmd_sub = _captured_commands.get('schachrallye_sub')
+        cmd_unsub = _captured_commands.get('schachrallye_unsub')
+
+        check('cmd_schachrallye gefunden', cmd_rallye is not None)
+        check('cmd_schachrallye_add gefunden', cmd_add is not None)
+        check('cmd_schachrallye_del gefunden', cmd_del is not None)
+        check('cmd_schachrallye_sub gefunden', cmd_sub is not None)
+        check('cmd_schachrallye_unsub gefunden', cmd_unsub is not None)
+        if not all([cmd_rallye, cmd_add, cmd_del, cmd_sub, cmd_unsub]):
+            return
+
+        # Test: Leere Liste → Hinweis
+        ia = make_interaction()
+        run_async(cmd_rallye(ia))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('leere Liste → Hinweis', 'keine' in content)
+
+        # Test: Termin anlegen (Zukunftsdatum)
+        from datetime import date, timedelta
+        future = date.today() + timedelta(days=30)
+        datum_str = future.strftime('%d.%m.%Y')
+        ia = make_interaction(admin=True)
+        run_async(cmd_add(ia, datum=datum_str, ort='Berlin'))
+        content = ia.response.calls[0].get('content') or ''
+        check('Termin anlegen → Bestaetigung',
+              '#1' in content and 'Berlin' in content)
+
+        # Test: Termin in JSON gespeichert (mit schachrallye-Tag)
+        tdata = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+        check('Termin in JSON', len(tdata.get('events', [])) == 1)
+        check('Termin hat schachrallye-Tag',
+              'schachrallye' in tdata['events'][0].get('tags', []))
+
+        # Test: Termine anzeigen → Embed mit Termin
+        ia = make_interaction()
+        run_async(cmd_rallye(ia))
+        call = ia.response.calls[0]
+        embed = call.get('embed')
+        check('Termine anzeigen → Embed', embed is not None)
+        check('Embed enthaelt Berlin',
+              embed is not None and 'Berlin' in (embed.description or ''))
+
+        # Test: Subscriben
+        sub_user = FakeMember(uid=55555, name='SubUser')
+        sub_dm_channel = FakeChannel()
+        sub_user.create_dm = AsyncMock(return_value=sub_dm_channel)
+        ia = make_interaction(user=sub_user)
+        run_async(cmd_sub(ia, user=None))
+        content = ia.response.calls[0].get('content') or ''
+        check('Subscriben → Bestaetigung', 'subscribed' in content.lower())
+        check('Subscriben → DM gesendet', len(sub_dm_channel.sent) == 1)
+        dm_text = sub_dm_channel.sent[0].content or ''
+        check('Subscriben → DM enthaelt unsub-Hinweis', '/schachrallye_unsub' in dm_text)
+
+        # Test: DM fehlgeschlagen (Forbidden) → kein Crash, Warning geloggt
+        forbidden_user = FakeMember(uid=66666, name='NoDM')
+
+        async def _raise_forbidden():
+            raise discord.Forbidden(MagicMock(status=403), 'Cannot send DM')
+        forbidden_user.create_dm = _raise_forbidden
+        # Erst unsubscriben falls vorhanden, dann sub mit Forbidden-User
+        ia = make_interaction(user=forbidden_user)
+        with _mock.patch('logging.Logger.warning') as mock_warn:
+            run_async(cmd_sub(ia, user=None))
+            content = ia.response.calls[0].get('content') or ''
+            check('Sub trotz DM-Fehler → Bestaetigung', 'subscribed' in content.lower())
+            check('DM-Fehler → Warning geloggt',
+                  any('66666' in str(c) for c in mock_warn.call_args_list))
+        # User wieder unsubscriben fuer sauberen State
+        ia = make_interaction(user=forbidden_user)
+        run_async(cmd_unsub(ia, user=None))
+
+        # Test: Doppelt subscriben
+        ia = make_interaction(user=sub_user)
+        run_async(cmd_sub(ia, user=None))
+        content = ia.response.calls[0].get('content') or ''
+        check('Doppelt sub → bereits', 'bereits' in content.lower())
+
+        # Test: Unsubscriben (gleicher User der vorher subscribed hat)
+        ia = make_interaction(user=sub_user)
+        run_async(cmd_unsub(ia, user=None))
+        content = ia.response.calls[0].get('content') or ''
+        check('Unsub → Bestaetigung', 'abbestellt' in content.lower())
+
+        # Test: Unsub wenn nicht subscribed
+        ia = make_interaction(user=sub_user)
+        run_async(cmd_unsub(ia, user=None))
+        content = ia.response.calls[0].get('content') or ''
+        check('Unsub nicht subscribed', 'nicht subscribed' in content.lower())
+
+        # Test: Termin loeschen
+        ia = make_interaction(admin=True)
+        run_async(cmd_del(ia, id=1))
+        content = ia.response.calls[0].get('content') or ''
+        check('Termin loeschen → Bestaetigung', '#1' in content)
+
+        # Test: Termin loeschen nicht gefunden
+        ia = make_interaction(admin=True)
+        run_async(cmd_del(ia, id=999))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('Termin loeschen nicht gefunden', 'nicht gefunden' in content)
+
+        # Test: Datum-Validierung falsches Format
+        ia = make_interaction(admin=True)
+        run_async(cmd_add(ia, datum='2026-05-15', ort='Test'))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('Falsches Datumsformat → Fehler', 'ungueltig' in content or 'format' in content)
+
+        # Test: Datum in der Vergangenheit
+        ia = make_interaction(admin=True)
+        run_async(cmd_add(ia, datum='01.01.2020', ort='Test'))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('Vergangenheit → Fehler', 'vergangenheit' in content)
+
+        # Test: Sub mit user-Param als Nicht-Admin
+        other = FakeMember(uid=99999, name='Other')
+        ia = make_interaction(admin=False)
+        run_async(cmd_sub(ia, user=other))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('Sub user ohne Admin → Fehler', 'admin' in content)
+
+        # --- /turnier_parse + /turnier Tests ---
+        cmd_parse = _captured_commands.get('turnier_parse')
+        cmd_turnier = _captured_commands.get('turnier')
+        check('cmd_turnier_parse gefunden', cmd_parse is not None)
+        check('cmd_turnier gefunden', cmd_turnier is not None)
+        if cmd_parse and cmd_turnier:
+            # Fake-HTML mit Rallye, Turnier+Link, Training, OeM (letzte 2 = rausgefiltert)
+            future2 = (date.today() + timedelta(days=60)).strftime('%d.%m.%Y')
+            future3 = (date.today() + timedelta(days=90)).strftime('%d.%m.%Y')
+            fake_html = (
+                '<table>'
+                '<tr><th>Datum</th><th>Veranstaltung</th><th>Ort</th></tr>'
+                f'<tr><td>{future2}</td><td>5. Jugendschachrallye</td>'
+                '<td>SK Jenbach</td></tr>'
+                '<tr><td>14.05.2026</td>'
+                '<td><a href="https://example.com/ausschreibung.pdf">'
+                'Staatsmeisterschaft Schnellschach</a></td>'
+                '<td>PlusCity Linz</td></tr>'
+                '<tr><td>20.-24.05.2026</td><td>Mannschaftsturnier</td>'
+                '<td>Leutasch</td></tr>'
+                f'<tr><td>{future3}</td><td>Offenes Blitzturnier</td>'
+                '<td>Innsbruck</td></tr>'
+                f'<tr><td>{future3}</td><td>Chess960 Open</td>'
+                '<td>Schwaz</td></tr>'
+                f'<tr><td>{future3}</td><td>Tiroler Senioren Einzelmeisterschaft</td>'
+                '<td>Schwaz</td></tr>'
+                f'<tr><td>{future2}</td><td>Blitzschach-Einzelmeisterschaft U08-U18</td>'
+                '<td>Innsbruck</td></tr>'
+                '<tr><td>26.04.2026</td><td>Kadertraining Gruppe Bauer</td>'
+                '<td>Kufstein</td></tr>'
+                '<tr><td>22.05.-25.05.2026</td>'
+                '<td>Österreichische Meisterschaften U08/ U10</td>'
+                '<td>Fuerstenfeld</td></tr>'
+                '</table>'
+            )
+            fake_resp = MagicMock()
+            fake_resp.text = fake_html
+            fake_resp.raise_for_status = MagicMock()
+            old_fetch = schachrallye_mod.requests.get
+            schachrallye_mod.requests.get = MagicMock(return_value=fake_resp)
+            try:
+                # Parse: importiert Rallye + Turniere, filtert Training
+                ia = make_interaction(admin=True)
+                run_async(cmd_parse(ia))
+                check('parse → defer', any(c['type'] == 'defer' for c in ia.response.calls))
+                fu_call = ia.followup.calls[0]
+                fu_embed = fu_call.get('embed')
+                fu_desc = fu_embed.description if fu_embed else ''
+                # Fallback auf content (z.B. bei "bereits vorhanden")
+                if not fu_desc:
+                    fu_desc = fu_call.get('content') or ''
+                check('parse → Rallye importiert', 'Jugendschachrallye' in fu_desc)
+                check('parse → Turniere importiert', 'Staatsmeisterschaft' in fu_desc)
+                check('parse → Training gefiltert', 'Kadertraining' not in fu_desc)
+                check('parse → OeM gefiltert', 'Meisterschaften U08' not in fu_desc)
+
+                # Alles in einer turnier.json?
+                tdata = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+                all_events = tdata.get('events', [])
+                # Rallye (1) + manueller Termin von oben (1, bereits geloescht) + 2 Turniere = 3
+                # Aber der manuell angelegte wurde geloescht → Rallye(1) + Turniere(2) = 3
+                rallye_events = [e for e in all_events if 'schachrallye' in e.get('tags', [])]
+                turnier_events = [e for e in all_events if 'schachrallye' not in e.get('tags', [])]
+                check('parse → Rallye in JSON', len(rallye_events) >= 1)
+                check('parse → Turniere in JSON', len(turnier_events) == 6)
+                check('parse → Tags korrekt',
+                      all('schachrallye' in e.get('tags', []) for e in rallye_events))
+
+                # Schnellschach/Blitz/960 Tags
+                staats_tags = [e for e in all_events if 'Staatsmeisterschaft' in e.get('name', '')]
+                check('parse → Schnellschach-Tag',
+                      len(staats_tags) == 1 and 'schnellschach' in staats_tags[0].get('tags', []))
+                blitz_evts = [e for e in all_events if 'Blitz' in e.get('name', '')]
+                check('parse → Blitz-Tag',
+                      len(blitz_evts) >= 1 and all('blitz' in e.get('tags', []) for e in blitz_evts))
+                c960_evts = [e for e in all_events if '960' in e.get('name', '')]
+                check('parse → 960-Tag',
+                      len(c960_evts) == 1 and '960' in c960_evts[0].get('tags', []))
+
+                # Jugend-Tag
+                jugend_rallye = [e for e in all_events if 'Jugendschachrallye' in e.get('name', '')]
+                check('parse → Jugend-Tag auf Rallye',
+                      len(jugend_rallye) >= 1 and 'jugend' in jugend_rallye[0].get('tags', []))
+                jugend_u18 = [e for e in all_events if 'U08-U18' in e.get('name', '')]
+                check('parse → Jugend-Tag auf U08-U18',
+                      len(jugend_u18) == 1 and 'jugend' in jugend_u18[0].get('tags', []))
+                # Senioren-Tag
+                senior_evts = [e for e in all_events if 'Senioren' in e.get('name', '')]
+                check('parse → Senioren-Tag',
+                      len(senior_evts) == 1 and 'senioren' in senior_evts[0].get('tags', []))
+                # Klassisch-Tag (Open)
+                open_evts = [e for e in all_events if 'Open' in e.get('name', '')]
+                check('parse → Klassisch-Tag',
+                      len(open_evts) >= 1 and all('klassisch' in e.get('tags', []) for e in open_evts))
+                # URL-Validierung: ungueltige URLs nicht als Embed-URL
+                check('_is_valid_url gueltig',
+                      schachrallye_mod._is_valid_url('https://example.com/foo.pdf'))
+                check('_is_valid_url ungueltig (Leerzeichen)',
+                      not schachrallye_mod._is_valid_url('http://Rallye Jenbach: https://foo.com'))
+                check('_is_valid_url ungueltig (leer)',
+                      not schachrallye_mod._is_valid_url(''))
+
+                # Link korrekt erfasst?
+                staats = [e for e in all_events if 'Staatsmeisterschaft' in e.get('name', '')]
+                check('parse → Link erfasst',
+                      len(staats) == 1 and staats[0].get('link') == 'https://example.com/ausschreibung.pdf')
+
+                # Datumsbereich korrekt geparst?
+                mannschaft = [e for e in all_events if 'Mannschaft' in e.get('name', '')]
+                check('parse → Datumsbereich geparst',
+                      len(mannschaft) == 1 and mannschaft[0].get('datum_text') == '20.-24.05.2026')
+                check('parse → kein Link wenn keiner da',
+                      len(mannschaft) == 1 and mannschaft[0].get('link', '') == '')
+
+                # Nochmal parsen → keine Duplikate
+                ia = make_interaction(admin=True)
+                run_async(cmd_parse(ia))
+                fu_content = (ia.followup.calls[0].get('content') or '').lower()
+                check('parse erneut → keine Duplikate', 'bereits vorhanden' in fu_content)
+
+                # /turnier zeigt Turniere mit Link
+                ia = make_interaction()
+                run_async(cmd_turnier(ia))
+                call = ia.response.calls[0]
+                embed = call.get('embed')
+                check('/turnier → Embed', embed is not None)
+                desc = embed.description if embed else ''
+                check('/turnier → enthaelt Turnier', 'Staatsmeisterschaft' in desc)
+                check('/turnier → Link im Embed', 'example.com/ausschreibung.pdf' in desc)
+                check('/turnier → kein Training', 'Kadertraining' not in desc)
+                check('/turnier → keine OeM', 'Meisterschaften U08' not in desc)
+
+                # /turnier leer
+                atomic_write(schachrallye_mod.TURNIER_FILE, {"events": [], "subscribers": {}, "next_id": 1})
+                ia = make_interaction()
+                run_async(cmd_turnier(ia))
+                content = (ia.response.calls[0].get('content') or '').lower()
+                check('/turnier leer → Hinweis', 'keine' in content)
+            finally:
+                schachrallye_mod.requests.get = old_fetch
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_turnier_sub():
+    """Tests fuer /turnier_sub und /turnier_unsub."""
+    print('[/turnier_sub]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd_sub = _captured_commands.get('turnier_sub')
+        cmd_unsub = _captured_commands.get('turnier_unsub')
+        check('cmd_turnier_sub gefunden', cmd_sub is not None)
+        check('cmd_turnier_unsub gefunden', cmd_unsub is not None)
+        if not cmd_sub or not cmd_unsub:
+            return
+
+        # Sub fuer Tag → Bestaetigung + in JSON
+        sub_user = FakeMember(uid=77777, name='TagUser')
+        sub_dm_channel = FakeChannel()
+        sub_user.create_dm = AsyncMock(return_value=sub_dm_channel)
+        ia = make_interaction(user=sub_user)
+        run_async(cmd_sub(ia, tag='blitz', user=None))
+        content = ia.response.calls[0].get('content') or ''
+        check('turnier_sub → Bestaetigung', 'blitz' in content.lower() and 'gepingt' in content.lower())
+
+        # DM gesendet?
+        check('turnier_sub → DM gesendet', len(sub_dm_channel.sent) == 1)
+        dm_text = sub_dm_channel.sent[0].content or ''
+        check('turnier_sub → DM enthaelt unsub-Hinweis', '/turnier_unsub' in dm_text)
+
+        # In JSON gespeichert?
+        tdata = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+        blitz_subs = tdata.get('subscribers', {}).get('blitz', [])
+        check('turnier_sub → in JSON unter subscribers.blitz', 77777 in blitz_subs)
+
+        # Doppelt sub → bereits
+        ia = make_interaction(user=sub_user)
+        run_async(cmd_sub(ia, tag='blitz', user=None))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('turnier_sub doppelt → bereits', 'bereits' in content)
+
+        # Unsub → Bestaetigung + entfernt
+        ia = make_interaction(user=sub_user)
+        run_async(cmd_unsub(ia, tag='blitz', user=None))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('turnier_unsub → Bestaetigung', 'abbestellt' in content)
+
+        tdata = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+        blitz_subs = tdata.get('subscribers', {}).get('blitz', [])
+        check('turnier_unsub → aus JSON entfernt', 77777 not in blitz_subs)
+
+        # Unsub wenn nicht subscribed
+        ia = make_interaction(user=sub_user)
+        run_async(cmd_unsub(ia, tag='blitz', user=None))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('turnier_unsub nicht subscribed → Hinweis', 'nicht' in content)
+
+        # Ohne Tag → eigene Subs anzeigen (leer)
+        ia = make_interaction(user=sub_user)
+        run_async(cmd_sub(ia, tag='', user=None))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('turnier_sub ohne tag leer → Hinweis', 'keine' in content)
+
+        # Sub fuer 2 Tags, dann ohne Tag → Liste
+        sub_user2 = FakeMember(uid=77777, name='TagUser')
+        sub_user2.create_dm = AsyncMock(return_value=FakeChannel())
+        ia = make_interaction(user=sub_user2)
+        run_async(cmd_sub(ia, tag='blitz', user=None))
+        ia = make_interaction(user=sub_user2)
+        run_async(cmd_sub(ia, tag='960', user=None))
+        ia = make_interaction(user=sub_user2)
+        run_async(cmd_sub(ia, tag='', user=None))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('turnier_sub ohne tag → zeigt Tags', '`blitz`' in content and '`960`' in content)
+
+        # Aufraumen
+        ia = make_interaction(user=sub_user2)
+        run_async(cmd_unsub(ia, tag='blitz', user=None))
+        ia = make_interaction(user=sub_user2)
+        run_async(cmd_unsub(ia, tag='960', user=None))
+
+        # Nicht-Admin mit user → Fehler
+        other = FakeMember(uid=88888, name='Other')
+        ia = make_interaction(admin=False)
+        run_async(cmd_sub(ia, tag='blitz', user=other))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('turnier_sub user ohne Admin → Fehler', 'admin' in content)
+
+        ia = make_interaction(admin=False)
+        run_async(cmd_unsub(ia, tag='blitz', user=other))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('turnier_unsub user ohne Admin → Fehler', 'admin' in content)
+
+    finally:
+        teardown_temp_config(tmpdir)
+
+    # schachrallye_sub Message erwaehnt Ping-Feature
+    tmpdir = setup_temp_config()
+    try:
+        cmd_rallye_sub = _captured_commands.get('schachrallye_sub')
+        if cmd_rallye_sub:
+            ping_user = FakeMember(uid=44444, name='PingCheck')
+            ping_dm = FakeChannel()
+            ping_user.create_dm = AsyncMock(return_value=ping_dm)
+            ia = make_interaction(user=ping_user)
+            run_async(cmd_rallye_sub(ia, user=None))
+            content = ia.response.calls[0].get('content') or ''
+            check('schachrallye_sub → erwaehnt Ping', 'gepingt' in content.lower())
+            check('schachrallye_sub → erwaehnt 7 Tage', '7 tage' in content.lower())
+            dm_text = ping_dm.sent[0].content or '' if ping_dm.sent else ''
+            check('schachrallye_sub DM → erwaehnt Ping', 'gepingt' in dm_text.lower())
+        else:
+            check('schachrallye_sub Ping-Feature', False, 'cmd nicht gefunden')
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_admin_enforcement():
     """Tests dass Admin-Commands von Nicht-Admins abgelehnt werden."""
     print('[Admin-Enforcement]')
@@ -1807,6 +2256,9 @@ def main():
     test_parse_index_entry()
     test_auto_tag()
     test_build_library_catalog()
+    test_dm_log()
+    test_schachrallye()
+    test_turnier_sub()
     test_admin_enforcement()
 
     print(f'---\n{total - failed}/{total} checks passed.')
