@@ -79,6 +79,8 @@ class _PuzzleSelect(discord.ui.Select):
         super().__init__(placeholder='Puzzle anzeigen...', options=options)
 
     async def callback(self, interaction: discord.Interaction):
+        if not self.values:
+            return
         puzzle_id = self.values[0]
         await interaction.response.defer(ephemeral=True)
 

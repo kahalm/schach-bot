@@ -403,7 +403,7 @@ def build_library_catalog() -> tuple[int, int, int, int, int]:
             }
         else:
             years = [e[2] for e in entries if e[2]]
-            chosen_year = max(set(years), key=years.count) if years else None
+            chosen_year = max(set(years), key=lambda y: (years.count(y), y)) if years else None
             auto_tags = _auto_tag(stem, author, ext)
             new_entry = {
                 'id':          entry_id,

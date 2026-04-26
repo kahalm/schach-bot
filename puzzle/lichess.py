@@ -25,6 +25,11 @@ LICHESS_TOKEN = os.getenv('LICHESS_TOKEN', '')
 _LICHESS_COOLDOWN_SECS = 3600  # 1 Stunde
 
 
+def _auth_headers() -> dict[str, str]:
+    """Gibt Auth-Header fuer Lichess-API zurueck (leer wenn kein Token)."""
+    return {'Authorization': f'Bearer {LICHESS_TOKEN}'} if LICHESS_TOKEN else {}
+
+
 def _extract_study_id(url: str) -> str | None:
     """Extrahiert die Studien-ID aus einer Lichess-URL."""
     if not url:
@@ -123,9 +128,7 @@ def upload_to_lichess(game: chess.pgn.Game,
             log.warning('Kontext-PGN-Export fehlgeschlagen: %s', e)
             context_pgn = None
 
-    auth_headers = {}
-    if LICHESS_TOKEN:
-        auth_headers['Authorization'] = f'Bearer {LICHESS_TOKEN}'
+    auth = _auth_headers()
 
     if LICHESS_TOKEN:
         try:
@@ -144,14 +147,14 @@ def upload_to_lichess(game: chess.pgn.Game,
                         'shareable':  'everyone',
                         'chat':       'everyone',
                     },
-                    headers=auth_headers,
+                    headers=auth,
                     timeout=LICHESS_API_TIMEOUT,
                 )
                 r.raise_for_status()
                 study_id = r.json().get('id', '')
                 pgn_resp = _lichess_request(
                     'GET', f'https://lichess.org/api/study/{study_id}.pgn',
-                    headers=auth_headers,
+                    headers=auth,
                     timeout=LICHESS_API_TIMEOUT,
                 )
                 default_game = chess.pgn.read_game(io.StringIO(pgn_resp.text))
@@ -167,7 +170,7 @@ def upload_to_lichess(game: chess.pgn.Game,
                     'POST', f'https://lichess.org/api/study/{study_id}/import-pgn',
                     data={'pgn': pgn_text, 'name': line_name, 'mode': 'gamebook',
                           'orientation': orientation},
-                    headers=auth_headers,
+                    headers=auth,
                     timeout=LICHESS_API_TIMEOUT,
                 )
                 r2.raise_for_status()
@@ -184,7 +187,7 @@ def upload_to_lichess(game: chess.pgn.Game,
                     r3 = _lichess_request(
                         'POST', f'https://lichess.org/api/study/{study_id}/import-pgn',
                         data={'pgn': context_pgn, 'name': context_name, 'mode': 'normal'},
-                        headers=auth_headers,
+                        headers=auth,
                         timeout=LICHESS_API_TIMEOUT,
                     )
                     if r3.status_code == 200:
@@ -195,7 +198,7 @@ def upload_to_lichess(game: chess.pgn.Game,
                 if default_chapter_id:
                     rd = _lichess_request(
                         'DELETE', f'https://lichess.org/api/study/{study_id}/{default_chapter_id}',
-                        headers=auth_headers,
+                        headers=auth,
                         timeout=LICHESS_API_TIMEOUT,
                     )
                     log.info('Auto-Kapitel geloescht: HTTP %s', rd.status_code)
@@ -216,7 +219,7 @@ def upload_to_lichess(game: chess.pgn.Game,
         resp = _lichess_request(
             'POST', 'https://lichess.org/api/import',
             data={'pgn': pgn_text},
-            headers=auth_headers,
+            headers=auth,
             timeout=LICHESS_API_TIMEOUT,
         )
         resp.raise_for_status()
@@ -244,7 +247,7 @@ def upload_many_to_lichess(
         u = upload_to_lichess(puzzles[0][0], context_game=puzzles[0][1], reuse_study_id=reuse_study_id)
         return [u] if u else []
 
-    auth_headers = {'Authorization': f'Bearer {LICHESS_TOKEN}'}
+    auth = _auth_headers()
 
     try:
         if reuse_study_id:
@@ -258,7 +261,7 @@ def upload_many_to_lichess(
                 data={'name': study_name, 'visibility': 'unlisted', 'computer': 'everyone',
                       'explorer': 'everyone', 'cloneable': 'everyone',
                       'shareable': 'everyone', 'chat': 'everyone'},
-                headers=auth_headers, timeout=LICHESS_API_TIMEOUT,
+                headers=auth, timeout=LICHESS_API_TIMEOUT,
             )
             r.raise_for_status()
             study_id = r.json().get('id', '')
@@ -267,7 +270,7 @@ def upload_many_to_lichess(
 
             pgn_resp = _lichess_request(
                 'GET', f'https://lichess.org/api/study/{study_id}.pgn',
-                headers=auth_headers, timeout=LICHESS_API_TIMEOUT,
+                headers=auth, timeout=LICHESS_API_TIMEOUT,
             )
             default_chapter_id = ''
             if pgn_resp.status_code == 200:
@@ -286,7 +289,7 @@ def upload_many_to_lichess(
                     'POST', f'https://lichess.org/api/study/{study_id}/import-pgn',
                     data={'pgn': pgn, 'name': name, 'mode': 'gamebook',
                           'orientation': ori},
-                    headers=auth_headers, timeout=LICHESS_API_TIMEOUT,
+                    headers=auth, timeout=LICHESS_API_TIMEOUT,
                 )
                 r_ch.raise_for_status()
                 chs = r_ch.json().get('chapters', [])
@@ -311,7 +314,7 @@ def upload_many_to_lichess(
                     _lichess_request(
                         'POST', f'https://lichess.org/api/study/{study_id}/import-pgn',
                         data={'pgn': ctx_pgn, 'name': ctx_name, 'mode': 'normal'},
-                        headers=auth_headers, timeout=LICHESS_API_TIMEOUT,
+                        headers=auth, timeout=LICHESS_API_TIMEOUT,
                     )
                     log.info('Kontext-Kapitel importiert: %s', ctx_name)
             except LichessRateLimitError:
@@ -324,7 +327,7 @@ def upload_many_to_lichess(
         if default_chapter_id:
             _lichess_request(
                 'DELETE', f'https://lichess.org/api/study/{study_id}/{default_chapter_id}',
-                headers=auth_headers, timeout=LICHESS_API_TIMEOUT,
+                headers=auth, timeout=LICHESS_API_TIMEOUT,
             )
 
         return chapter_urls

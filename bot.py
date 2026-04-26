@@ -16,6 +16,7 @@ import os
 from datetime import time
 
 from core import stats, dm_log
+from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 from core.version import VERSION, START_TIME, EMBED_COLOR
 
@@ -130,7 +131,6 @@ async def on_message(message: discord.Message):
         data['greeted'] = greeted
         return data
 
-    from core.json_store import atomic_update
     await asyncio.to_thread(atomic_update, DM_STATE_FILE, _check_and_greet, dict)
     if should_greet:
         await message.channel.send(WELCOME_MESSAGE)
@@ -146,14 +146,13 @@ async def on_member_join(member: discord.Member):
         dm = await member.create_dm()
         await dm.send(WELCOME_MESSAGE)
         # In greeted-Liste eintragen, damit on_message kein Doppel-Willkommen schickt
-        from core.json_store import atomic_update as _au
         def _mark_greeted(data):
             greeted = data.get('greeted', [])
             if member.id not in greeted:
                 greeted.append(member.id)
                 data['greeted'] = greeted
             return data
-        await asyncio.to_thread(_au, DM_STATE_FILE, _mark_greeted, dict)
+        await asyncio.to_thread(atomic_update, DM_STATE_FILE, _mark_greeted, dict)
     except discord.Forbidden:
         log.warning('Kann DM an %s nicht senden (DMs deaktiviert).', member)
     except Exception as e:
@@ -310,8 +309,6 @@ async def cmd_version(interaction: discord.Interaction):
 @tree.command(name='greeted', description='Zeigt alle User, die die Begrüßungs-DM erhalten haben (Admin)')
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_greeted(interaction: discord.Interaction):
-    from core.json_store import atomic_read
-
     data = await asyncio.to_thread(atomic_read, DM_STATE_FILE, dict)
     greeted = data.get('greeted', [])
     if not greeted:

@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.40.5] - 2026-04-26
+### Changed
+- `bot.py`: `json_store`-Imports auf Top-Level verschoben — 3x In-Function-Import entfernt (5.1)
+- `lichess.py`: `_auth_headers()` Helper extrahiert — Auth-Header-Konstruktion an einer Stelle (5.2)
+- `test.py`: `self.values` Bounds-Check vor Zugriff auf `[0]` (5.3)
+- `library.py`: Jahr-Tie-Breaking deterministisch — hoechstes Jahr gewinnt bei Gleichstand (5.4)
+
 ## [1.40.4] - 2026-04-26
 ### Fixed
 - Elo-Cache Zugriff unter `_log_lock` — Race-Condition bei parallelen Reactions behoben (3.1)
