@@ -2862,13 +2862,55 @@ def test_wochenpost():
         # JSON fuer nachfolgende Tests aufraumen
         atomic_write(wochenpost_mod.WOCHENPOST_FILE, [])
 
+        # Test: Vergangenes Datum → sofort posten
+        fake_channel = FakeChannel(channel_id=88888)
+        old_bot = wochenpost_mod._bot
+        old_channel_id = wochenpost_mod._wochenpost_channel_id
+        fake_bot = MagicMock()
+        fake_bot.get_channel = lambda cid: fake_channel if cid == 88888 else None
+        wochenpost_mod._bot = fake_bot
+        wochenpost_mod._wochenpost_channel_id = 88888
+
+        ia = make_interaction(admin=True)
+        # 24.04.2026 = Freitag in der Vergangenheit (heute ist 26.04)
+        with unittest.mock.patch('commands.wochenpost.date') as mock_date:
+            mock_date.today.return_value = date(2026, 4, 27)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            run_async(cmd_add(ia, datum='24.04.2026'))
+        check('altes Datum → defer', ia.response.calls[0]['type'] == 'defer')
+        followup = ia.followup.calls[0] if ia.followup.calls else {}
+        check('altes Datum → sofort gepostet',
+              'sofort gepostet' in (followup.get('content') or '').lower())
+        check('altes Datum → Thread erstellt', len(fake_channel.threads) == 1)
+        if fake_channel.threads:
+            check('altes Datum → Thread-Name = 24.04.2026',
+                  fake_channel.threads[0].name == '24.04.2026')
+        entries = atomic_read(wochenpost_mod.WOCHENPOST_FILE, default=list)
+        check('altes Datum → posted=true', entries[0].get('posted') is True)
+
+        # Test: Zukunfts-Datum → NICHT sofort posten
+        fake_channel.threads = []
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [])
+        ia = make_interaction(admin=True)
+        with unittest.mock.patch('commands.wochenpost.date') as mock_date:
+            mock_date.today.return_value = date(2026, 4, 27)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            run_async(cmd_add(ia, datum='01.05.2026'))
+        check('Zukunft → send_message (kein defer)',
+              ia.response.calls[0]['type'] == 'send_message')
+        check('Zukunft → kein Thread', len(fake_channel.threads) == 0)
+
+        wochenpost_mod._bot = old_bot
+        wochenpost_mod._wochenpost_channel_id = old_channel_id
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [])
+
         # Test: Loop-Logik (run_wochenpost)
 
         # Wochenpost-Eintrag fuer 2026-05-01 anlegen
         test_entry = {
             'id': 10,
             'datum': '2026-05-01',
-            'titel': 'Loop-Test',
+            'titel': '01.05.2026',
             'text': 'Testbeschreibung',
             'url': 'https://example.com/loop',
             'pdf_url': '',

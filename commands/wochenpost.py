@@ -199,6 +199,25 @@ def setup(bot, wochenpost_channel_id: int = 0):
 
         atomic_update(WOCHENPOST_FILE, _add, default=list)
 
+        # Vergangenes oder heutiges Datum → sofort posten
+        today = date.today()
+        if d <= today and _wochenpost_channel_id:
+            channel = _bot.get_channel(_wochenpost_channel_id)
+            if channel:
+                try:
+                    await interaction.response.defer(ephemeral=True)
+                    await _post_entry(channel, entry)
+                    msg = f"\u2705 Wochenpost #{result['id']} (**{d_fmt}**) sofort gepostet."
+                    await interaction.followup.send(msg, ephemeral=True)
+                    return
+                except Exception:
+                    log.exception('Sofort-Post fehlgeschlagen fuer #%d', result['id'])
+                    await interaction.followup.send(
+                        f"\u2705 Wochenpost #{result['id']} angelegt fuer **{d_fmt}** "
+                        f"(Sofort-Post fehlgeschlagen, wird beim naechsten Freitag nachgeholt).",
+                        ephemeral=True)
+                    return
+
         msg = f"\u2705 Wochenpost #{result['id']} angelegt fuer **{d_fmt}**"
         if url:
             msg += f'\n{url}'
@@ -250,6 +269,61 @@ def setup(bot, wochenpost_channel_id: int = 0):
             _wochenpost_loop.start()
 
 
+async def _post_entry(channel, entry: dict):
+    """Postet einen einzelnen Wochenpost-Eintrag als Thread."""
+    thread_name = entry.get('titel', entry.get('datum', 'Wochenpost'))
+
+    thread = await channel.create_thread(
+        name=thread_name,
+        type=discord.ChannelType.public_thread,
+    )
+
+    # Embed bauen
+    embed = discord.Embed(
+        title=entry.get('titel', ''),
+        color=EMBED_COLOR,
+    )
+    desc_parts = []
+    if entry.get('text'):
+        desc_parts.append(entry['text'])
+    if entry.get('url'):
+        desc_parts.append(entry['url'])
+    if desc_parts:
+        embed.description = '\n\n'.join(desc_parts)
+
+    # PDF runterladen falls vorhanden
+    file = None
+    if entry.get('pdf_url'):
+        try:
+            resp = await asyncio.to_thread(
+                requests.get, entry['pdf_url'], timeout=30)
+            resp.raise_for_status()
+            file = discord.File(
+                io.BytesIO(resp.content),
+                filename=entry.get('pdf_name', 'datei.pdf'),
+            )
+        except Exception as e:
+            log.warning('Wochenpost PDF-Download fehlgeschlagen: %s', e)
+
+    kwargs = {'embed': embed}
+    if file:
+        kwargs['file'] = file
+    await thread.send(**kwargs)
+
+    # posted = true setzen
+    def _mark_posted(entries, eid=entry['id']):
+        if not isinstance(entries, list):
+            return entries
+        for e in entries:
+            if e.get('id') == eid:
+                e['posted'] = True
+        return entries
+
+    await asyncio.to_thread(atomic_update, WOCHENPOST_FILE,
+                            _mark_posted, list)
+    log.info('Wochenpost #%d gepostet: %s', entry['id'], entry.get('titel', ''))
+
+
 async def run_wochenpost():
     """Prueft ob heute Freitag ist und postet faellige Wochenposts."""
     today = date.today()
@@ -272,59 +346,8 @@ async def run_wochenpost():
     if not pending:
         return
 
-    thread_name = today.strftime('%d.%m.%Y')
-
     for entry in pending:
         try:
-            thread = await channel.create_thread(
-                name=thread_name,
-                type=discord.ChannelType.public_thread,
-            )
-
-            # Embed bauen
-            embed = discord.Embed(
-                title=entry.get('titel', ''),
-                color=EMBED_COLOR,
-            )
-            desc_parts = []
-            if entry.get('text'):
-                desc_parts.append(entry['text'])
-            if entry.get('url'):
-                desc_parts.append(entry['url'])
-            if desc_parts:
-                embed.description = '\n\n'.join(desc_parts)
-
-            # PDF runterladen falls vorhanden
-            file = None
-            if entry.get('pdf_url'):
-                try:
-                    resp = await asyncio.to_thread(
-                        requests.get, entry['pdf_url'], timeout=30)
-                    resp.raise_for_status()
-                    file = discord.File(
-                        io.BytesIO(resp.content),
-                        filename=entry.get('pdf_name', 'datei.pdf'),
-                    )
-                except Exception as e:
-                    log.warning('Wochenpost PDF-Download fehlgeschlagen: %s', e)
-
-            kwargs = {'embed': embed}
-            if file:
-                kwargs['file'] = file
-            await thread.send(**kwargs)
-
-            # posted = true setzen
-            def _mark_posted(entries, eid=entry['id']):
-                if not isinstance(entries, list):
-                    return entries
-                for e in entries:
-                    if e.get('id') == eid:
-                        e['posted'] = True
-                return entries
-
-            await asyncio.to_thread(atomic_update, WOCHENPOST_FILE,
-                                    _mark_posted, list)
-            log.info('Wochenpost #%d gepostet: %s', entry['id'], entry.get('titel', ''))
-
+            await _post_entry(channel, entry)
         except Exception:
             log.exception('Wochenpost #%d fehlgeschlagen', entry.get('id', 0))
