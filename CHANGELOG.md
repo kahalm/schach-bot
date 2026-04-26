@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.36.0] - 2026-04-26
+### Changed
+- **Duplikation**: `resourcen.py` und `youtube.py` nutzen jetzt generisches
+  `commands/_collection.py` — ~95% Code-Duplikation eliminiert
+- **Duplikation**: `PUZZLE_HOUR`/`PUZZLE_MINUTE`/`CHANNEL_ID` aus `puzzle/commands.py`
+  entfernt (nur noch in `bot.py` definiert, waren im Puzzle-Paket unbenutzt)
+- **Duplikation**: `LICHESS_API_TIMEOUT` in `rendering.py` durch eigene
+  `_PIECE_DOWNLOAD_TIMEOUT`-Konstante ersetzt (klarer Kontext)
+- Unused `import os` aus `puzzle/commands.py` entfernt
+
 ## [1.35.0] - 2026-04-25
 ### Fixed
 - `on_member_join` traegt User jetzt in greeted-Liste ein (kein Doppel-Willkommen mehr)

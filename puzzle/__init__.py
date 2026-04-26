@@ -66,7 +66,6 @@ from .posting import (  # noqa: F401
 
 # --- Slash-Commands ---
 from .commands import (  # noqa: F401
-    PUZZLE_HOUR, PUZZLE_MINUTE, CHANNEL_ID,
     _cmd_puzzle, _cmd_buecher, _cmd_train, _cmd_next,
     _cmd_endless, _cmd_ignore_kapitel, setup,
 )

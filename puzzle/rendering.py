@@ -13,7 +13,7 @@ from reportlab.graphics import renderPM
 
 log = logging.getLogger('schach-bot')
 
-LICHESS_API_TIMEOUT = 15  # Sekunden für Piece-Downloads
+_PIECE_DOWNLOAD_TIMEOUT = 15  # Sekunden für cburnett-SVG-Downloads
 
 _SQ         = 60
 _MAR        = 22
@@ -72,7 +72,7 @@ def _svg_to_pil(svg_bytes: bytes, size: int) -> Image.Image:
 def _get_piece(code: str, size: int) -> Image.Image:
     if code not in _piece_cache:
         url  = f'https://lichess1.org/assets/piece/cburnett/{code}.svg'
-        resp = requests.get(url, timeout=LICHESS_API_TIMEOUT)
+        resp = requests.get(url, timeout=_PIECE_DOWNLOAD_TIMEOUT)
         resp.raise_for_status()
         _piece_cache[code] = _svg_to_pil(resp.content, size)
         log.info('Figur geladen: %s', code)

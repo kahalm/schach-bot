@@ -1,86 +1,20 @@
 """YouTube-Sammlung: Schach-YouTube-Kanäle und -Videos teilen und auflisten."""
 
-import logging
-import os
-from datetime import date
-
-import discord
-from discord.ext import commands
-
-from core.paths import CONFIG_DIR
-from core.json_store import atomic_read, atomic_update
-
-log = logging.getLogger('schach-bot')
-
-YOUTUBE_FILE = os.path.join(CONFIG_DIR, 'youtube.json')
-_MAX_ENTRIES = 100
+from commands._collection import setup_collection
 
 
-def setup(bot: commands.Bot):
-    """Registriert den /youtube Command."""
-    tree = bot.tree
-
-    @tree.command(name='youtube',
-                  description='YouTube-Kanäle/Videos anzeigen oder hinzufügen')
-    @discord.app_commands.describe(
-        url='YouTube-URL (zum Hinzufügen)',
-        beschreibung='Kurze Beschreibung (Kanal/Video)')
-    async def cmd_youtube(interaction: discord.Interaction,
-                          url: str = None,
-                          beschreibung: str = None):
-        # Hinzufügen
-        if url:
-            if not url.startswith(('http://', 'https://')):
-                await interaction.response.send_message(
-                    '⚠️ Bitte eine gueltige URL angeben (http:// oder https://).',
-                    ephemeral=True)
-                return
-            if not beschreibung:
-                await interaction.response.send_message(
-                    '⚠️ Bitte auch eine `beschreibung` angeben.',
-                    ephemeral=True)
-                return
-
-            new_entry = {
-                'url': url,
-                'beschreibung': beschreibung,
-                'user': interaction.user.display_name,
-                'datum': str(date.today()),
-            }
-            result = {}
-
-            def _add(entries):
-                if len(entries) >= _MAX_ENTRIES:
-                    result['full'] = True
-                    return entries
-                entries.append(new_entry)
-                return entries
-
-            atomic_update(YOUTUBE_FILE, _add, default=list)
-            if result.get('full'):
-                await interaction.response.send_message(
-                    f'⚠️ Maximum von {_MAX_ENTRIES} Eintraegen erreicht.',
-                    ephemeral=True)
-                return
-            await interaction.response.send_message(
-                f'✅ YouTube-Link gespeichert: **{beschreibung}**\n{url}')
-            return
-
-        # Auflisten
-        videos = atomic_read(YOUTUBE_FILE, default=list)
-        if not videos:
-            await interaction.response.send_message(
-                'Noch keine YouTube-Links vorhanden. '
-                'Füge einen hinzu mit `/youtube url:… beschreibung:…`',
-                ephemeral=True)
-            return
-
-        embed = discord.Embed(title='▶️ YouTube', color=0xff0000)
-        for i, v in enumerate(videos, 1):
-            name = f'{i}. {v["beschreibung"]}'
-            if len(name) > 256:
-                name = name[:253] + '...'
-            value = f'{v["url"]}\n_von {v["user"]} am {v["datum"]}_'
-            embed.add_field(name=name, value=value, inline=False)
-
-        await interaction.response.send_message(embed=embed)
+def setup(bot):
+    setup_collection(
+        bot,
+        cmd_name='youtube',
+        cmd_description='YouTube-Kanäle/Videos anzeigen oder hinzufügen',
+        url_label='YouTube-URL (zum Hinzufügen)',
+        desc_label='Kurze Beschreibung (Kanal/Video)',
+        json_filename='youtube.json',
+        embed_title='▶️ YouTube',
+        embed_color=0xff0000,
+        item_label='YouTube-Link',
+        add_hint='/youtube url:… beschreibung:…',
+        empty_msg='Noch keine YouTube-Links vorhanden. '
+                  'Füge einen hinzu mit `/youtube url:… beschreibung:…`',
+    )

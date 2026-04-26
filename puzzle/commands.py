@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import os
 import re
 from collections import defaultdict
 
@@ -19,11 +18,6 @@ from core import stats
 import puzzle as _pkg
 
 log = logging.getLogger('schach-bot')
-
-PUZZLE_HOUR   = int(os.getenv('PUZZLE_HOUR', '9'))
-PUZZLE_MINUTE = int(os.getenv('PUZZLE_MINUTE', '0'))
-CHANNEL_ID    = int(os.getenv('CHANNEL_ID', '0'))
-
 
 async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: int = 0,
                       id: str = '', user: discord.Member | None = None):

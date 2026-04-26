@@ -304,8 +304,7 @@ def setup_temp_config():
     core.paths.CONFIG_DIR = tmpdir
 
     _patch_file_constant('commands.elo', 'ELO_FILE', tmpdir)
-    _patch_file_constant('commands.resourcen', 'RESOURCEN_FILE', tmpdir)
-    _patch_file_constant('commands.youtube', 'YOUTUBE_FILE', tmpdir)
+    # resourcen/youtube nutzen jetzt _collection._json_path() mit CONFIG_DIR zur Laufzeit
     _patch_file_constant('commands.wanted', 'WANTED_FILE', tmpdir)
     _patch_file_constant('commands.reminder', 'REMINDER_FILE', tmpdir)
     _patch_file_constant('core.stats', 'STATS_FILE', tmpdir)
