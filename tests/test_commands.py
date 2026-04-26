@@ -2969,6 +2969,45 @@ def test_wochenpost():
             run_async(wochenpost_mod.run_wochenpost())
         check('bereits gepostet → kein Thread', len(fake_channel.threads) == 0)
 
+        # Test: Catchup beim Start — verpasste Posts der letzten 7 Tage
+        fake_channel2 = FakeChannel(channel_id=88888)
+        fake_bot2 = MagicMock()
+        fake_bot2.get_channel = lambda cid: fake_channel2 if cid == 88888 else None
+        wochenpost_mod._bot = fake_bot2
+        wochenpost_mod._wochenpost_channel_id = 88888
+
+        # 3 Eintraege: 1x innerhalb 7 Tage, 1x aelter, 1x bereits gepostet
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [
+            {'id': 20, 'datum': '2026-04-24', 'titel': '24.04.2026',
+             'text': '', 'url': '', 'pdf_url': '', 'pdf_name': '',
+             'posted': False, 'user': 'A'},
+            {'id': 21, 'datum': '2026-04-17', 'titel': '17.04.2026',
+             'text': '', 'url': '', 'pdf_url': '', 'pdf_name': '',
+             'posted': False, 'user': 'A'},
+            {'id': 22, 'datum': '2026-04-24', 'titel': '24.04.2026b',
+             'text': '', 'url': '', 'pdf_url': '', 'pdf_name': '',
+             'posted': True, 'user': 'A'},
+        ])
+
+        # "Heute" = 2026-04-27 → Cutoff = 2026-04-20
+        with unittest.mock.patch('commands.wochenpost.date') as mock_date:
+            mock_date.today.return_value = date(2026, 4, 27)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            run_async(wochenpost_mod._catchup_missed())
+
+        check('Catchup → 1 Thread (nur #20)', len(fake_channel2.threads) == 1)
+        entries_cu = atomic_read(wochenpost_mod.WOCHENPOST_FILE, default=list)
+        check('Catchup → #20 posted=true',
+              next(e for e in entries_cu if e['id'] == 20).get('posted') is True)
+        check('Catchup → #21 bleibt unposted (>7 Tage)',
+              next(e for e in entries_cu if e['id'] == 21).get('posted') is False)
+
+        # Test: Catchup ohne Channel-ID → nichts passiert
+        wochenpost_mod._wochenpost_channel_id = 0
+        fake_channel2.threads = []
+        run_async(wochenpost_mod._catchup_missed())
+        check('Catchup ohne Channel → kein Thread', len(fake_channel2.threads) == 0)
+
         # Aufraumen
         wochenpost_mod._bot = old_bot
         wochenpost_mod._wochenpost_channel_id = old_channel_id

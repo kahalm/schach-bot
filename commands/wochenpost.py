@@ -277,6 +277,43 @@ def setup(bot, wochenpost_channel_id: int = 0):
     async def _start_wochenpost_loop():
         if not _wochenpost_loop.is_running():
             _wochenpost_loop.start()
+        # Verpasste Posts der letzten 7 Tage nachholen
+        await _catchup_missed()
+
+
+_CATCHUP_DAYS = 7
+
+
+async def _catchup_missed():
+    """Postet verpasste Wochenposts der letzten _CATCHUP_DAYS Tage beim Start."""
+    if not _wochenpost_channel_id:
+        return
+    channel = _bot.get_channel(_wochenpost_channel_id)
+    if not channel:
+        return
+
+    today = date.today()
+    cutoff = (today - timedelta(days=_CATCHUP_DAYS)).strftime('%Y-%m-%d')
+    today_str = today.strftime('%Y-%m-%d')
+
+    entries = atomic_read(WOCHENPOST_FILE, default=list)
+    if not isinstance(entries, list):
+        return
+
+    missed = [
+        e for e in entries
+        if not e.get('posted')
+        and cutoff <= e.get('datum', '') <= today_str
+    ]
+    missed.sort(key=lambda e: e.get('datum', ''))
+
+    for entry in missed:
+        try:
+            await _post_entry(channel, entry)
+            log.info('Wochenpost #%d nachgeholt (Datum: %s)',
+                     entry.get('id', 0), entry.get('datum', ''))
+        except Exception:
+            log.exception('Wochenpost-Catchup #%d fehlgeschlagen', entry.get('id', 0))
 
 
 async def _post_entry(channel, entry: dict):

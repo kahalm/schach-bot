@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.4.5] - 2026-04-26
+### Added
+- Wochenpost Startup-Catchup: verpasste Posts der letzten 7 Tage werden beim Bot-Start automatisch nachgeholt
+- Aeltere verpasste Posts (>7 Tage) werden ignoriert
+
 ## [2.4.4] - 2026-04-26
 ### Added
 - Warnung bei allen 3 Wochenpost-Commands wenn `WOCHENPOST_CHANNEL_ID` nicht gesetzt ist
