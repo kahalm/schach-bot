@@ -396,12 +396,17 @@ async def cmd_greeted(interaction: discord.Interaction):
 
     await interaction.response.defer(ephemeral=True)
 
-    async def _fetch(uid):
-        name = await _display_name(uid, interaction.guild)
-        return f'• **{name}** (`{uid}`)'
-
-    results = await asyncio.gather(*[_fetch(uid) for uid in greeted], return_exceptions=True)
-    lines = [r for r in results if isinstance(r, str)]
+    lines = []
+    for uid in greeted:
+        uid_int = int(uid)
+        member = (interaction.guild.get_member(uid_int)
+                  if interaction.guild else None)
+        if member:
+            name = member.display_name
+        else:
+            u = bot.get_user(uid_int)
+            name = u.display_name if u else f'User {uid}'
+        lines.append(f'• **{name}** (`{uid}`)')
     header = f'**Begrüßte User ({len(greeted)}):**\n'
     embeds = _paginate_lines(header, lines)
     await interaction.followup.send(embeds=embeds, ephemeral=True)
@@ -427,15 +432,18 @@ async def cmd_dm_log(interaction: discord.Interaction, user: discord.User = None
         await interaction.followup.send('Noch keine DMs protokolliert.', ephemeral=True)
         return
 
-    # User-Namen parallel fetchen
+    # User-Namen aus Cache (kein API-Call, verhindert Rate-Limit-Schleife)
     uids = list(subset.keys())
-
-    async def _fetch_name(uid):
-        return uid, await _display_name(uid, interaction.guild)
-
-    results = await asyncio.gather(*[_fetch_name(uid) for uid in uids],
-                                   return_exceptions=True)
-    names = dict(r for r in results if isinstance(r, tuple))
+    names = {}
+    for uid in uids:
+        uid_int = int(uid)
+        member = (interaction.guild.get_member(uid_int)
+                  if interaction.guild else None)
+        if member:
+            names[uid] = member.display_name
+        else:
+            u = bot.get_user(uid_int)
+            names[uid] = u.display_name if u else f'User {uid}'
 
     lines = []
     for uid, entries in subset.items():
@@ -500,14 +508,18 @@ async def cmd_stats(interaction: discord.Interaction):
 
     await interaction.response.defer(ephemeral=True)
 
-    # User-Infos parallel fetchen statt sequentiell
+    # User-Namen aus Cache (kein API-Call, verhindert Rate-Limit-Schleife)
     uids = list(all_stats.keys())
-
-    async def _fetch_name(uid):
-        return uid, await _display_name(uid, interaction.guild)
-
-    results = await asyncio.gather(*[_fetch_name(uid) for uid in uids], return_exceptions=True)
-    names = dict(r for r in results if isinstance(r, tuple))
+    names = {}
+    for uid in uids:
+        uid_int = int(uid)
+        member = (interaction.guild.get_member(uid_int)
+                  if interaction.guild else None)
+        if member:
+            names[uid] = member.display_name
+        else:
+            u = bot.get_user(uid_int)
+            names[uid] = u.display_name if u else f'User {uid}'
 
     lines = []
     for uid, data in all_stats.items():
