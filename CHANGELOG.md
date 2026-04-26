@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.41.1] - 2026-04-26
+### Added
+- `tests/test_state.py`: 36 Unit-Tests fuer `puzzle/state.py` — Msg-Registry, Ignore, Chapter-Ignore, Endless, Persistence
+
 ## [1.41.0] - 2026-04-26
 ### Added
 - `tests/test_json_store.py`: 22 Unit-Tests fuer `core/json_store.py` — lock_for, atomic_read/write/update, Thread-Safety
