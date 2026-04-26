@@ -1,0 +1,449 @@
+"""Tests fuer Admin Commands: /daily, /ignore_kapitel, /test, /announce, /greeted, /stats, /dm-log, admin enforcement."""
+
+import os
+import io as _io
+from unittest.mock import MagicMock
+
+import test_helpers as h
+from test_helpers import (
+    check, run_async, setup_temp_config, teardown_temp_config,
+    make_interaction, _captured_commands, _CapturingBot, _discord,
+    FakeUser, FakeMember, FakeChannel, FakeRole,
+    bot_mod, atomic_write, atomic_read,
+)
+
+
+def test_daily():
+    """Smoke-Tests fuer /daily Command."""
+    print('[/daily]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('daily')
+        check('cmd_daily gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        import bot as bot_mod
+        import puzzle as puzzle_mod
+
+        old_bot = bot_mod.bot
+        old_channel_id = bot_mod.CHANNEL_ID
+        orig_post = puzzle_mod.post_puzzle
+
+        call_log = []
+        async def fake_post(channel, **kw):
+            call_log.append(True)
+            return 1
+
+        puzzle_mod.post_puzzle = fake_post
+
+        try:
+            # Test: Channel nicht gefunden
+            bot_mod.CHANNEL_ID = 0
+
+            class NullBot:
+                def get_channel(self, cid):
+                    return None
+
+            bot_mod.bot = NullBot()
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia))
+            content = (ia.response.calls[0].get('content') or '').lower()
+            check('Channel nicht gefunden → Fehler', 'nicht gefunden' in content)
+
+            # Test: Erfolg
+            bot_mod.CHANNEL_ID = 99999
+            bot_mod.bot = _CapturingBot()
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia))
+            check('defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
+            check('post_puzzle aufgerufen', len(call_log) > 0)
+            check('followup gesendet', len(ia.followup.calls) > 0)
+        finally:
+            bot_mod.bot = old_bot
+            bot_mod.CHANNEL_ID = old_channel_id
+            puzzle_mod.post_puzzle = orig_post
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_ignore_kapitel():
+    """Smoke-Tests fuer /ignore_kapitel Command."""
+    print('[/ignore_kapitel]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('ignore_kapitel')
+        check('cmd_ignore_kapitel gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        import puzzle as leg
+
+        orig_load_ign = leg._load_chapter_ignore_list
+        orig_ignore = leg.ignore_chapter
+        orig_unignore = leg.unignore_chapter
+        orig_list = leg._list_pgn_files
+        orig_find_prefix = leg._find_chapter_prefix
+        orig_list_chapters = leg._list_chapters
+
+        _ignored = set()
+
+        leg._load_chapter_ignore_list = lambda: _ignored
+        leg.ignore_chapter = lambda b, p: _ignored.add(f'{b}:{p}')
+        leg.unignore_chapter = lambda b, p: _ignored.discard(f'{b}:{p}')
+        leg._list_pgn_files = lambda: ['book1.pgn']
+        leg._find_chapter_prefix = lambda b, k: str(k) if k <= 5 else None
+        leg._list_chapters = lambda b: {'1': 10, '2': 8, '3': 5}
+        leg._clean_book_name = lambda fn: fn.replace('.pgn', '')
+
+        try:
+            # Test: Liste leer
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, buch=0, kapitel=0, aktion=None))
+            content = (ia.followup.calls[0].get('content') or '').lower()
+            check('Liste leer → Hinweis', 'keine kapitel' in content)
+
+            # Test: ignore
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, buch=1, kapitel=3, aktion=None))
+            content = ia.followup.calls[0].get('content') or ''
+            check('ignore → Bestaetigung', 'ignoriert' in content.lower())
+            check('Kapitel in Liste', 'book1.pgn:3' in _ignored)
+
+            # Test: unignore
+            aktion_mock = MagicMock()
+            aktion_mock.value = 'unignore'
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, buch=1, kapitel=3, aktion=aktion_mock))
+            content = ia.followup.calls[0].get('content') or ''
+            check('unignore → Bestaetigung', 'aktiviert' in content.lower())
+        finally:
+            leg._load_chapter_ignore_list = orig_load_ign
+            leg.ignore_chapter = orig_ignore
+            leg.unignore_chapter = orig_unignore
+            leg._list_pgn_files = orig_list
+            leg._find_chapter_prefix = orig_find_prefix
+            leg._list_chapters = orig_list_chapters
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_test_cmd():
+    """Smoke-Tests fuer /test Command."""
+    print('[/test]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('test')
+        check('cmd_test gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        import commands.test as test_mod
+
+        orig_load = test_mod._load_snapshots
+        orig_find = test_mod._find_game
+
+        # Minimaler Snapshot
+        fake_snap = {
+            'filename': 'book1_firstkey.pgn',
+            'round': '001.001',
+            'trimmed': False,
+            'fen': 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+            'side': 'w',
+            'first_move_uci': 'e2e4',
+        }
+        test_mod._load_snapshots = lambda: [fake_snap]
+
+        # _find_game muss ein Game-Objekt zurueckgeben
+        import chess.pgn
+
+        def fake_find_game(filename, round_id):
+            pgn = _io.StringIO('1. e4 e5 *')
+            return chess.pgn.read_game(pgn)
+
+        test_mod._find_game = fake_find_game
+
+        # _trim_to_training_position muss importierbar sein
+        try:
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, kurs=0, puzzle=0, lichess=0))
+            check('defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
+            check('followup gesendet', len(ia.followup.calls) > 0)
+        finally:
+            test_mod._load_snapshots = orig_load
+            test_mod._find_game = orig_find
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_announce():
+    """Tests fuer /announce Command."""
+    print('[/announce]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('announce')
+        check('cmd_announce gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        # Test: Erfolg
+        target = FakeUser(uid=54321, name='Empfaenger')
+        ia = make_interaction(admin=True)
+        run_async(cmd(ia, user=target))
+        content = ia.response.calls[0].get('content') or ''
+        check('Erfolg → Bestaetigung',
+              'Empfaenger' in content and '✅' in content)
+
+        # Test: Forbidden
+        class ForbiddenUser:
+            id = 99
+            display_name = 'Gesperrt'
+            name = 'Gesperrt'
+            mention = '<@99>'
+            bot = False
+            async def create_dm(self):
+                raise _discord.Forbidden(MagicMock(), 'DMs disabled')
+
+        ia = make_interaction(admin=True)
+        run_async(cmd(ia, user=ForbiddenUser()))
+        content = ia.response.calls[0].get('content') or ''
+        check('Forbidden → Fehlermeldung', '❌' in content)
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_greeted():
+    """Tests fuer /greeted Command."""
+    print('[/greeted]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('greeted')
+        check('cmd_greeted gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        # DM_STATE_FILE patchen
+        import bot as bot_mod
+        old_dm_state = bot_mod.DM_STATE_FILE
+        bot_mod.DM_STATE_FILE = os.path.join(tmpdir, 'dm_state.json')
+
+        # bot-Variable in bot_mod patchen (greeted nutzt bot.fetch_user)
+        old_bot = bot_mod.bot
+        bot_mod.bot = _CapturingBot()
+
+        try:
+            # Test: leer
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia))
+            content = (ia.response.calls[0].get('content') or '').lower()
+            check('leer → Hinweis', 'niemand' in content)
+
+            # Test: mit Eintraegen
+            atomic_write(bot_mod.DM_STATE_FILE,
+                         {'greeted': [12345, 67890]})
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia))
+            # greeted defers, dann followup.send
+            check('defer aufgerufen',
+                  ia.response.calls[0].get('type') == 'defer')
+            check('followup.send aufgerufen', len(ia.followup.calls) > 0)
+            if ia.followup.calls:
+                embeds = ia.followup.calls[0].get('embeds', [])
+                embed = ia.followup.calls[0].get('embed') or (embeds[0] if embeds else None)
+                check('mit Eintraegen → Embed',
+                      embed is not None and '2' in (embed.description or ''))
+        finally:
+            bot_mod.DM_STATE_FILE = old_dm_state
+            bot_mod.bot = old_bot
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_stats():
+    """Tests fuer /stats Command."""
+    print('[/stats]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('stats')
+        check('cmd_stats gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        # bot-Variable patchen (stats nutzt bot.fetch_user)
+        import bot as bot_mod
+        old_bot = bot_mod.bot
+        bot_mod.bot = _CapturingBot()
+
+        try:
+            # Test: leer
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia))
+            content = (ia.response.calls[0].get('content') or '').lower()
+            check('leer → Hinweis', 'keine statistiken' in content)
+
+            # Test: mit Daten
+            import core.stats as stats_mod
+            atomic_write(stats_mod.STATS_FILE, {
+                '12345': {'puzzles': 10, 'downloads': 5,
+                          'reaction_✅': 8, 'reaction_❌': 2},
+            })
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia))
+            check('defer aufgerufen',
+                  ia.response.calls[0].get('type') == 'defer')
+            check('followup.send aufgerufen', len(ia.followup.calls) > 0)
+            if ia.followup.calls:
+                embeds = ia.followup.calls[0].get('embeds', [])
+                embed = ia.followup.calls[0].get('embed') or (embeds[0] if embeds else None)
+                check('mit Daten → Embed mit Stats',
+                      embed is not None and embed.description is not None
+                      and '10' in embed.description)
+        finally:
+            bot_mod.bot = old_bot
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_dm_log():
+    """Tests fuer /dm-log Command."""
+    print('[/dm-log]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('dm-log')
+        check('cmd_dm_log gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        # DM_LOG_FILE patchen
+        import core.dm_log as dm_log_mod
+        import bot as bot_mod
+        old_dm_log_file = dm_log_mod.DM_LOG_FILE
+        dm_log_mod.DM_LOG_FILE = os.path.join(tmpdir, 'dm_log.json')
+        old_bot = bot_mod.bot
+        bot_mod.bot = _CapturingBot()
+
+        try:
+            # Test: leer
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, user=None))
+            check('defer aufgerufen (leer)',
+                  ia.response.calls[0].get('type') == 'defer')
+            content = (ia.followup.calls[0].get('content') or '').lower()
+            check('leer → Hinweis', 'keine dms' in content)
+
+            # Test: mit Eintraegen
+            atomic_write(dm_log_mod.DM_LOG_FILE, {
+                '12345': [
+                    {'ts': '2026-04-25T18:00:00+00:00', 'text': 'Hallo!'},
+                    {'ts': '2026-04-25T19:00:00+00:00', 'text': 'Puzzle gesendet'},
+                ],
+                '67890': [
+                    {'ts': '2026-04-26T10:00:00+00:00', 'text': 'Willkommen'},
+                ],
+            })
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, user=None))
+            check('defer aufgerufen (Daten)',
+                  ia.response.calls[0].get('type') == 'defer')
+            check('followup.send aufgerufen', len(ia.followup.calls) > 0)
+            if ia.followup.calls:
+                embeds = ia.followup.calls[0].get('embeds', [])
+                embed = embeds[0] if embeds else None
+                desc = embed.description if embed else ''
+                # Uebersicht: eine Zeile pro User, kein DM-Inhalt
+                check('Uebersicht enthaelt DM-Anzahl', '2 DMs' in desc)
+                check('Uebersicht enthaelt Letzte', 'Letzte:' in desc)
+                check('Uebersicht enthaelt KEINEN Inhalt', 'Hallo' not in desc)
+        finally:
+            dm_log_mod.DM_LOG_FILE = old_dm_log_file
+            bot_mod.bot = old_bot
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_admin_enforcement():
+    """Tests dass Admin-Commands von Nicht-Admins abgelehnt werden."""
+    print('[Admin-Enforcement]')
+
+    # /puzzle user:@X als Nicht-Admin
+    tmpdir = setup_temp_config()
+    try:
+        import puzzle.commands
+        cmd = getattr(puzzle.commands, '_cmd_puzzle', None)
+        if cmd is None:
+            for attr in dir(puzzle.commands):
+                obj = getattr(puzzle.commands, attr)
+                if callable(obj) and getattr(obj, '__name__', '') == '_cmd_puzzle':
+                    cmd = obj
+                    break
+
+        if cmd:
+            other_user = FakeMember(admin=False)
+            other_user.id = 999
+            other_user.mention = '<@999>'
+            ia = make_interaction(admin=False)
+            ia.user.id = 111
+            run_async(cmd(ia, anzahl=1, buch=0, id=None, user=other_user))
+            content = (ia.response.calls[0].get('content') or '').lower()
+            check('/puzzle user:@X non-admin → Fehler', 'admin' in content)
+        else:
+            check('/puzzle user:@X non-admin → Fehler', False, 'cmd nicht gefunden')
+    finally:
+        teardown_temp_config(tmpdir)
+
+    # /blind Validierungen (anzahl, buch)
+    cmd = _captured_commands.get('blind')
+    if cmd:
+        tmpdir = setup_temp_config()
+        try:
+            ia = make_interaction()
+            run_async(cmd(ia, moves=4, anzahl=25, buch=0, user=None))
+            content = (ia.response.calls[0].get('content') or '').lower()
+            check('/blind anzahl > 20 → Fehler', 'zwischen 1 und 20' in content)
+
+            ia = make_interaction()
+            run_async(cmd(ia, moves=4, anzahl=1, buch=-1, user=None))
+            content = (ia.response.calls[0].get('content') or '').lower()
+            check('/blind buch:-1 → Fehler', 'negativ' in content)
+        finally:
+            teardown_temp_config(tmpdir)
+    else:
+        check('/blind Validierungen', False, 'cmd nicht gefunden')
+
+    # /reminder buch:-1 → Fehler
+    cmd = _captured_commands.get('reminder')
+    if cmd:
+        tmpdir = setup_temp_config()
+        try:
+            ia = make_interaction()
+            run_async(cmd(ia, hours=4, puzzle_count=1, buch=-1))
+            content = (ia.response.calls[0].get('content') or '').lower()
+            check('/reminder buch:-1 → Fehler', 'negativ' in content)
+        finally:
+            teardown_temp_config(tmpdir)
+    else:
+        check('/reminder buch:-1', False, 'cmd nicht gefunden')
+
+    # Moderator-Rolle wird wie Admin behandelt
+    from core.permissions import is_privileged
+    mod_user = FakeMember(admin=False, roles=[FakeRole('Moderator')])
+    mod_ia = make_interaction(user=mod_user)
+    check('Moderator → is_privileged', is_privileged(mod_ia))
+
+    # Normaler User ohne Mod/Admin → kein Zugriff
+    normal_user = FakeMember(admin=False, roles=[FakeRole('member')])
+    normal_ia = make_interaction(user=normal_user)
+    check('normaler User → nicht privileged', not is_privileged(normal_ia))
+
+    # Admin ohne Mod-Rolle → weiterhin Zugriff
+    admin_user = FakeMember(admin=True, roles=[])
+    admin_ia = make_interaction(user=admin_user)
+    check('Admin → is_privileged', is_privileged(admin_ia))
+    print()

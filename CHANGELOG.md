@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.7.1] - 2026-04-26
+### Changed
+- `tests/test_commands.py` (3.318 Zeilen) aufgeteilt in 8 Dateien: `test_helpers.py` (Shared Infrastructure), 6 Domain-Dateien (`test_cmd_puzzle.py`, `test_cmd_community.py`, `test_cmd_events.py`, `test_cmd_library.py`, `test_cmd_admin.py`, `test_cmd_info.py`) und minimaler Runner
+- `python tests/test_commands.py` funktioniert weiterhin identisch (395 checks, gleiche Reihenfolge)
+
 ## [2.7.0] - 2026-04-26
 ### Added
 - Docker HEALTHCHECK: Bot schreibt alle 60s `config/health.json` (Version, Latency, Guilds, Timestamp)
