@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.41.2] - 2026-04-26
+### Added
+- `tests/test_selection.py`: 27 Unit-Tests fuer `puzzle/selection.py` — PGN-Listing, Linien-Cache, Chapter-Helpers, Random/Blind-Books, find_line_by_id, pick_sequential
+
 ## [1.41.1] - 2026-04-26
 ### Added
 - `tests/test_state.py`: 36 Unit-Tests fuer `puzzle/state.py` — Msg-Registry, Ignore, Chapter-Ignore, Endless, Persistence
