@@ -35,6 +35,10 @@ try:
 except ValueError:
     raise SystemExit(f"TOURNAMENT_CHANNEL_ID ungültig: {os.getenv('TOURNAMENT_CHANNEL_ID')!r} — muss eine Zahl sein")
 try:
+    WOCHENPOST_CHANNEL_ID = int(os.getenv('WOCHENPOST_CHANNEL_ID', '0'))
+except ValueError:
+    raise SystemExit(f"WOCHENPOST_CHANNEL_ID ungültig: {os.getenv('WOCHENPOST_CHANNEL_ID')!r} — muss eine Zahl sein")
+try:
     PUZZLE_HOUR = int(os.getenv('PUZZLE_HOUR', '9'))
     PUZZLE_MINUTE = int(os.getenv('PUZZLE_MINUTE', '0'))
 except ValueError:
@@ -79,7 +83,7 @@ tree = bot.tree
 # Module laden
 import puzzle
 import library
-from commands import reminder, resourcen, youtube, elo, release_notes, blind, test, wanted, schachrallye
+from commands import reminder, resourcen, youtube, elo, release_notes, blind, test, wanted, schachrallye, wochenpost
 
 puzzle.setup(bot)
 library.setup(bot)
@@ -92,6 +96,7 @@ blind.setup(bot)
 test.setup(bot)
 wanted.setup(bot)
 schachrallye.setup(bot, tournament_channel_id=TOURNAMENT_CHANNEL_ID)
+wochenpost.setup(bot, wochenpost_channel_id=WOCHENPOST_CHANNEL_ID)
 
 
 _ready_done = False
@@ -316,6 +321,9 @@ def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str
             ('/schachrallye_add <datum> <ort>', 'Rallye-Termin anlegen (TT.MM.JJJJ).'),
             ('/schachrallye_del <id>', 'Rallye-Termin löschen.'),
             ('/turnier_parse', 'Termine von tirol.chess.at importieren.'),
+            ('/wochenpost', 'Geplante Wochenposts anzeigen.'),
+            ('/wochenpost_add <datum> <titel>', 'Wochenpost anlegen (Freitags).'),
+            ('/wochenpost_del <id>', 'Wochenpost löschen.'),
         ]
     return '', []
 
@@ -357,7 +365,7 @@ async def cmd_help(interaction: discord.Interaction, bereich: str = ''):
                         inline=False)
         if is_admin:
             embed.add_field(name='🔧 admin',
-                            value='`/daily` `/stats` `/announce` `/dm-log` `/ignore_kapitel` `/test` `/wanted_delete` `/schachrallye_add` `/schachrallye_del`',
+                            value='`/daily` `/stats` `/announce` `/dm-log` `/ignore_kapitel` `/test` `/wanted_delete` `/schachrallye_add` `/schachrallye_del` `/wochenpost`',
                             inline=False)
 
     embed.set_footer(text=f'Schach-Bot v{VERSION}')

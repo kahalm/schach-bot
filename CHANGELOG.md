@@ -4,6 +4,17 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.4.0] - 2026-04-26
+### Added
+- Wochenpost-Feature: woechentliche Link/PDF-Posts als Thread (Freitag 18:00 UTC)
+- `/wochenpost` — Alle geplanten und vergangenen Wochenposts anzeigen (Admin)
+- `/wochenpost_add` — Neuen Wochenpost anlegen mit Datum, Titel, Text, URL, PDF (Admin)
+- `/wochenpost_del` — Wochenpost loeschen (Admin)
+- Scheduled Loop: postet automatisch freitags 18:00 UTC in konfigurierten Channel als Thread
+- PDF-Attachments werden beim Add gespeichert und beim Posten als Datei angehaengt
+- ENV-Variable `WOCHENPOST_CHANNEL_ID` fuer den Ziel-Channel
+- Tests: Wochenpost add/del/list, Loop-Logik, Admin-Enforcement, Validierung
+
 ## [2.3.0] - 2026-04-26
 ### Fixed
 - `pick_random_lines` resettet jetzt nur den eigenen Pool statt alle Buecher (#20)

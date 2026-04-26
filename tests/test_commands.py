@@ -94,6 +94,8 @@ _discord.Interaction = type('Interaction', (), {})
 _discord.ButtonStyle = MagicMock()
 _discord.SelectOption = MagicMock
 _discord.Intents.default.return_value = MagicMock()
+_discord.ChannelType = MagicMock()
+_discord.Attachment = type('Attachment', (), {'url': '', 'filename': ''})
 
 # app_commands: alle Decorators als passthrough
 _app_commands = sys.modules['discord.app_commands']
@@ -267,15 +269,33 @@ class _FakeGuild:
         return FakeUser(uid=uid, name=f'User_{uid}')
 
 
-class FakeChannel:
-    def __init__(self, channel_id=99999):
-        self.id = channel_id
+class FakeThread:
+    """Fake-Thread fuer create_thread (Wochenpost etc.)."""
+    def __init__(self, name='thread'):
+        self.name = name
         self.sent = []
 
     async def send(self, content=None, **kwargs):
         msg = FakeMessage(content=content, **kwargs)
         self.sent.append(msg)
         return msg
+
+
+class FakeChannel:
+    def __init__(self, channel_id=99999):
+        self.id = channel_id
+        self.sent = []
+        self.threads = []
+
+    async def send(self, content=None, **kwargs):
+        msg = FakeMessage(content=content, **kwargs)
+        self.sent.append(msg)
+        return msg
+
+    async def create_thread(self, name='thread', **kwargs):
+        thread = FakeThread(name=name)
+        self.threads.append(thread)
+        return thread
 
 
 class FakeMessage:
@@ -324,6 +344,7 @@ def setup_temp_config():
     _patch_file_constant('commands.wanted', 'WANTED_FILE', tmpdir)
     _patch_file_constant('commands.reminder', 'REMINDER_FILE', tmpdir)
     _patch_file_constant('commands.schachrallye', 'TURNIER_FILE', tmpdir)
+    _patch_file_constant('commands.wochenpost', 'WOCHENPOST_FILE', tmpdir)
     _patch_file_constant('core.stats', 'STATS_FILE', tmpdir)
 
     return tmpdir
@@ -402,6 +423,7 @@ import commands.wanted as wanted_mod
 import commands.release_notes as release_notes_mod
 import commands.reminder as reminder_mod
 import commands.schachrallye as schachrallye_mod
+import commands.wochenpost as wochenpost_mod
 
 # bot.py importieren (ruft am Ende bot.run() auf, was jetzt ein no-op ist)
 import bot as bot_mod
@@ -411,9 +433,11 @@ import bot as bot_mod
 # _CapturingTree registriert)
 _cap_bot = _CapturingBot()
 for mod in (elo_mod, resourcen_mod, youtube_mod, wanted_mod,
-            release_notes_mod, reminder_mod, schachrallye_mod):
+            release_notes_mod, reminder_mod, schachrallye_mod, wochenpost_mod):
     if mod is schachrallye_mod:
         mod.setup(_cap_bot, tournament_channel_id=0)
+    elif mod is wochenpost_mod:
+        mod.setup(_cap_bot, wochenpost_channel_id=0)
     else:
         mod.setup(_cap_bot)
 
@@ -2683,6 +2707,194 @@ def test_posted_reset_per_pool():
     print()
 
 
+def test_wochenpost():
+    """Tests fuer /wochenpost, /wochenpost_add, /wochenpost_del + Loop."""
+    print('[/wochenpost]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd_list = _captured_commands.get('wochenpost')
+        cmd_add = _captured_commands.get('wochenpost_add')
+        cmd_del = _captured_commands.get('wochenpost_del')
+
+        check('cmd_wochenpost gefunden', cmd_list is not None)
+        check('cmd_wochenpost_add gefunden', cmd_add is not None)
+        check('cmd_wochenpost_del gefunden', cmd_del is not None)
+        if not all([cmd_list, cmd_add, cmd_del]):
+            return
+
+        # Test: Leere Liste → Hinweis
+        ia = make_interaction(admin=True)
+        run_async(cmd_list(ia))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('leere Liste → Hinweis', 'keine' in content or 'noch keine' in content)
+
+        # Test: Nicht-Admin darf nicht adden
+        ia = make_interaction(admin=False)
+        run_async(cmd_add(ia, datum='02.05.2026', titel='Test'))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('add ohne Admin → abgelehnt', 'admin' in content)
+
+        # Test: Ungueltiges Datum
+        ia = make_interaction(admin=True)
+        run_async(cmd_add(ia, datum='falsch', titel='Test'))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('ungueltiges Datum → Fehler', 'ungueltig' in content)
+
+        # Test: Kein Freitag (04.05.2026 = Montag)
+        ia = make_interaction(admin=True)
+        run_async(cmd_add(ia, datum='04.05.2026', titel='Test'))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('kein Freitag → Fehler', 'freitag' in content)
+
+        # Test: Eintrag anlegen (01.05.2026 = Freitag)
+        ia = make_interaction(admin=True)
+        run_async(cmd_add(ia, datum='01.05.2026', titel='Endspiel-Training',
+                          text='Beschreibung', url='https://example.com'))
+        content = ia.response.calls[0].get('content') or ''
+        check('add → Bestaetigung', '#1' in content and '01.05.2026' in content)
+        check('add → Titel im Text', 'Endspiel-Training' in content)
+
+        # Test: JSON gespeichert
+        entries = atomic_read(wochenpost_mod.WOCHENPOST_FILE, default=list)
+        check('JSON hat 1 Eintrag', len(entries) == 1)
+        check('Eintrag Datum korrekt', entries[0]['datum'] == '2026-05-01')
+        check('Eintrag posted=false', entries[0]['posted'] is False)
+        check('Eintrag Titel', entries[0]['titel'] == 'Endspiel-Training')
+        check('Eintrag URL', entries[0]['url'] == 'https://example.com')
+
+        # Test: Zweiter Eintrag mit PDF-Attachment (08.05.2026 = Freitag)
+        fake_pdf = MagicMock()
+        fake_pdf.url = 'https://cdn.discord.com/test.pdf'
+        fake_pdf.filename = 'test.pdf'
+        ia = make_interaction(admin=True)
+        run_async(cmd_add(ia, datum='08.05.2026', titel='PDF-Post',
+                          pdf=fake_pdf))
+        content = ia.response.calls[0].get('content') or ''
+        check('add mit PDF → Bestaetigung', '#2' in content)
+        check('add mit PDF → Name im Text', 'test.pdf' in content)
+        entries = atomic_read(wochenpost_mod.WOCHENPOST_FILE, default=list)
+        check('JSON hat 2 Eintraege', len(entries) == 2)
+        check('PDF-URL gespeichert', entries[1]['pdf_url'] == 'https://cdn.discord.com/test.pdf')
+        check('PDF-Name gespeichert', entries[1]['pdf_name'] == 'test.pdf')
+
+        # Test: Liste anzeigen
+        ia = make_interaction(admin=True)
+        run_async(cmd_list(ia))
+        call = ia.response.calls[0]
+        embed = call.get('embed')
+        check('Liste → Embed', embed is not None)
+        check('Liste enthaelt #1', embed is not None and '#1' in (embed.description or ''))
+        check('Liste enthaelt #2', embed is not None and '#2' in (embed.description or ''))
+        check('Liste enthaelt Titel', embed is not None and 'Endspiel-Training' in (embed.description or ''))
+
+        # Test: Eintrag loeschen
+        ia = make_interaction(admin=True)
+        run_async(cmd_del(ia, id=1))
+        content = ia.response.calls[0].get('content') or ''
+        check('del → Bestaetigung', '#1' in content)
+        entries = atomic_read(wochenpost_mod.WOCHENPOST_FILE, default=list)
+        check('nach del → 1 Eintrag', len(entries) == 1)
+        check('verbleibender Eintrag ist #2', entries[0]['id'] == 2)
+
+        # Test: Loeschen nicht gefunden
+        ia = make_interaction(admin=True)
+        run_async(cmd_del(ia, id=999))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('del nicht gefunden', 'nicht gefunden' in content)
+
+        # Test: Nicht-Admin darf nicht loeschen
+        ia = make_interaction(admin=False)
+        run_async(cmd_del(ia, id=2))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('del ohne Admin → abgelehnt', 'admin' in content)
+
+        # Test: Ungueltige URL wird abgelehnt (15.05.2026 = Freitag)
+        ia = make_interaction(admin=True)
+        run_async(cmd_add(ia, datum='15.05.2026', titel='Bad',
+                          url='not-a-url'))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('ungueltige URL → Fehler', 'url' in content)
+
+        # Test: Loop-Logik (run_wochenpost)
+        # Eintrag fuer "heute" anlegen (muss Freitag sein)
+        from datetime import date
+        # Simulieren: Wir patchen date.today() auf einen Freitag
+        friday = date(2026, 5, 1)  # Freitag? Nein. Suche einen echten Freitag.
+        # 2026-05-01 = Freitag pruefen
+        # date(2026, 5, 1).weekday() = 4 → JA Freitag!
+
+        # Wochenpost-Eintrag fuer 2026-05-01 anlegen
+        test_entry = {
+            'id': 10,
+            'datum': '2026-05-01',
+            'titel': 'Loop-Test',
+            'text': 'Testbeschreibung',
+            'url': 'https://example.com/loop',
+            'pdf_url': '',
+            'pdf_name': '',
+            'posted': False,
+            'user': 'Admin',
+        }
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [test_entry])
+
+        # Channel + Bot vorbereiten
+        fake_channel = FakeChannel(channel_id=88888)
+        old_bot = wochenpost_mod._bot
+        old_channel_id = wochenpost_mod._wochenpost_channel_id
+        fake_bot = MagicMock()
+        fake_bot.get_channel = lambda cid: fake_channel if cid == 88888 else None
+        wochenpost_mod._bot = fake_bot
+        wochenpost_mod._wochenpost_channel_id = 88888
+
+        # date.today() auf Freitag 2026-05-01 patchen
+        import unittest.mock
+        with unittest.mock.patch('commands.wochenpost.date') as mock_date:
+            mock_date.today.return_value = date(2026, 5, 1)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            run_async(wochenpost_mod.run_wochenpost())
+
+        # Pruefen: Thread erstellt, posted=true
+        check('Loop → Thread erstellt', len(fake_channel.threads) == 1)
+        if fake_channel.threads:
+            check('Thread-Name = 01.05.2026', fake_channel.threads[0].name == '01.05.2026')
+            check('Thread hat 1 Nachricht', len(fake_channel.threads[0].sent) == 1)
+            sent_kwargs = fake_channel.threads[0].sent[0].kwargs
+            check('Nachricht hat Embed', 'embed' in sent_kwargs)
+
+        entries_after = atomic_read(wochenpost_mod.WOCHENPOST_FILE, default=list)
+        check('Loop → posted=true', entries_after[0].get('posted') is True)
+
+        # Test: Loop ignoriert Nicht-Freitag
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [
+            {**test_entry, 'datum': '2026-05-02', 'posted': False}
+        ])
+        fake_channel.threads = []
+        with unittest.mock.patch('commands.wochenpost.date') as mock_date:
+            mock_date.today.return_value = date(2026, 5, 2)  # Samstag
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            run_async(wochenpost_mod.run_wochenpost())
+        check('Nicht-Freitag → kein Thread', len(fake_channel.threads) == 0)
+
+        # Test: Loop ignoriert bereits gepostete
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [
+            {**test_entry, 'posted': True}
+        ])
+        fake_channel.threads = []
+        with unittest.mock.patch('commands.wochenpost.date') as mock_date:
+            mock_date.today.return_value = date(2026, 5, 1)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            run_async(wochenpost_mod.run_wochenpost())
+        check('bereits gepostet → kein Thread', len(fake_channel.threads) == 0)
+
+        # Aufraumen
+        wochenpost_mod._bot = old_bot
+        wochenpost_mod._wochenpost_channel_id = old_channel_id
+
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
 # ===================================================================
 # MAIN
 # ===================================================================
@@ -2730,6 +2942,7 @@ def main():
     test_collection_duplicate_url()
     test_turnier_prune()
     test_posted_reset_per_pool()
+    test_wochenpost()
 
     print(f'---\n{total - failed}/{total} checks passed.')
     if failed:
