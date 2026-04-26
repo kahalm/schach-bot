@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import threading
+from collections import deque
 from datetime import datetime, timezone
 
 from core.paths import CONFIG_DIR
@@ -81,7 +82,7 @@ _MAX_LOG_LINES = 50_000
 
 def read_all(limit: int = _MAX_LOG_LINES) -> list[dict]:
     """Liest das JSONL-Log (neueste `limit` Eintraege)."""
-    entries: list[dict] = []
+    entries: deque[dict] = deque(maxlen=limit)
     try:
         with open(REACTION_LOG_FILE, encoding='utf-8') as f:
             for line in f:
@@ -94,22 +95,20 @@ def read_all(limit: int = _MAX_LOG_LINES) -> list[dict]:
                     continue
     except FileNotFoundError:
         pass
-    if len(entries) > limit:
-        entries = entries[-limit:]
-    return entries
+    return list(entries)
 
 
 def rotate_log():
     """Kuerzt das JSONL-Log auf die neuesten _MAX_LOG_LINES Eintraege."""
-    try:
-        with open(REACTION_LOG_FILE, encoding='utf-8') as f:
-            lines = f.readlines()
-    except FileNotFoundError:
-        return
-    if len(lines) <= _MAX_LOG_LINES:
-        return
-    trimmed = lines[-_MAX_LOG_LINES:]
     with _log_lock:
+        try:
+            with open(REACTION_LOG_FILE, encoding='utf-8') as f:
+                lines = f.readlines()
+        except FileNotFoundError:
+            return
+        if len(lines) <= _MAX_LOG_LINES:
+            return
+        trimmed = lines[-_MAX_LOG_LINES:]
         with open(REACTION_LOG_FILE, 'w', encoding='utf-8') as f:
             f.writelines(trimmed)
     log.info('Reaction-Log rotiert: %d → %d Zeilen', len(lines), len(trimmed))

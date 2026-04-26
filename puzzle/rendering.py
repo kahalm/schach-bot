@@ -7,6 +7,8 @@ import logging
 
 import chess
 import requests
+
+_session = requests.Session()
 from PIL import Image, ImageDraw, ImageFont, ImageChops, ImageOps
 from svglib.svglib import svg2rlg
 from reportlab.graphics import renderPM
@@ -76,7 +78,7 @@ def _get_piece(code: str, size: int) -> Image.Image:
         url = f'https://lichess1.org/assets/piece/cburnett/{code}.svg'
         for attempt in range(2):
             try:
-                resp = requests.get(url, timeout=_PIECE_DOWNLOAD_TIMEOUT)
+                resp = _session.get(url, timeout=_PIECE_DOWNLOAD_TIMEOUT)
                 resp.raise_for_status()
                 _piece_cache[code] = _svg_to_pil(resp.content, size)
                 log.info('Figur geladen: %s', code)

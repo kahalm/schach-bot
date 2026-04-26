@@ -291,8 +291,7 @@ def setup(bot, tournament_channel_id: int = 0):
         today = date.today()
         future = [e for e in events
                   if 'schachrallye' in e.get('tags', [])
-                  and _parse_stored(e['datum'])
-                  and _parse_stored(e['datum']) >= today]
+                  and (_parse_stored(e['datum']) or date.min) >= today]
         future.sort(key=lambda e: e['datum'])
 
         if not future:
@@ -626,9 +625,9 @@ def setup(bot, tournament_channel_id: int = 0):
         def _merge(data):
             if not isinstance(data, dict) or 'events' not in data:
                 data = _DEFAULT.copy()
-            existing = {e['datum'] for e in data['events']}
+            existing = {(e['datum'], e.get('name', '')) for e in data['events']}
             for t in new_events:
-                if t['datum'] in existing:
+                if (t['datum'], t['name']) in existing:
                     continue
                 new_id = data.get('next_id', 1)
                 entry = {
@@ -735,7 +734,7 @@ def setup(bot, tournament_channel_id: int = 0):
         events = data.get('events', [])
 
         today = date.today()
-        future = [e for e in events if _parse_stored(e['datum']) and _parse_stored(e['datum']) >= today]
+        future = [e for e in events if (_parse_stored(e['datum']) or date.min) >= today]
         future.sort(key=lambda e: e['datum'])
 
         if not future:

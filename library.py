@@ -9,6 +9,7 @@ import re
 from collections import defaultdict
 
 from core import stats
+from core.json_store import atomic_write
 from core.version import EMBED_COLOR
 
 import discord
@@ -280,8 +281,7 @@ def _load_library() -> list[dict]:
         return []
 
 def _save_library(catalog: list[dict]):
-    with open(LIBRARY_FILE, 'w', encoding='utf-8') as f:
-        json.dump(catalog, f, indent=2, ensure_ascii=False)
+    atomic_write(LIBRARY_FILE, catalog)
 
 _FILE_PRIO = {'pdf': 0, 'epub': 1, 'djvu': 2, 'pgn': 3}
 

@@ -18,6 +18,14 @@ REMINDER_FILE = os.path.join(CONFIG_DIR, 'reminder.json')
 _bot = None
 
 
+def _parse_utc(ts: str) -> datetime:
+    """Parsed ISO-Timestamp und stellt UTC sicher."""
+    dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 @tasks.loop(minutes=1)
 async def _reminder_loop():
     data = atomic_read(REMINDER_FILE)
@@ -25,11 +33,14 @@ async def _reminder_loop():
     updated_nexts: dict[str, str] = {}
 
     for uid_str, entry in list(data.items()):
-        next_time = datetime.fromisoformat(entry['next']).replace(tzinfo=timezone.utc)
+        next_time = _parse_utc(entry['next'])
         if now < next_time:
             continue
 
         hours = entry['hours']
+        if not hours or hours < 1:
+            log.warning('Reminder: ungueltiger hours-Wert %r fuer User %s, uebersprungen.', hours, uid_str)
+            continue
         missed = int((now - next_time).total_seconds() // (hours * 3600))
 
         uid = int(uid_str)
@@ -103,7 +114,7 @@ def setup(bot):
                     ephemeral=True,
                 )
                 return
-            next_ts = datetime.fromisoformat(entry['next']).replace(tzinfo=timezone.utc)
+            next_ts = _parse_utc(entry['next'])
             buch_txt = f"Buch {entry['buch']}" if entry.get('buch') else 'alle Bücher'
             await interaction.response.send_message(
                 f"**Dein Reminder:**\n"

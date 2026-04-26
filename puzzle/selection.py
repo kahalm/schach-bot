@@ -189,11 +189,18 @@ def _parse_all_lines() -> list[tuple[str, chess.pgn.Game]]:
             continue
         pgn_text = _flatten_null_move_variations(pgn_text)
         stream = io.StringIO(pgn_text)
+        consecutive_errors = 0
+        _MAX_CONSECUTIVE_ERRORS = 50
         while True:
             try:
                 game = chess.pgn.read_game(stream)
+                consecutive_errors = 0
             except Exception as e:
+                consecutive_errors += 1
                 log.debug('Malformierter PGN-Eintrag in %s: %s', filename, e)
+                if consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
+                    log.warning('Zu viele aufeinanderfolgende Parse-Fehler in %s, abgebrochen.', filename)
+                    break
                 continue
             if game is None:
                 break

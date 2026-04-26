@@ -671,6 +671,29 @@ def test_reminder():
         run_async(cmd(ia, hours=4, puzzle_count=25, buch=0))
         content = (ia.response.calls[0].get('content') or '').lower()
         check('puzzle_count > 20 → Fehler', '20' in content)
+
+        # Test: _parse_utc robust mit verschiedenen Formaten
+        from commands.reminder import _parse_utc
+        dt1 = _parse_utc('2026-04-25T18:00:00+00:00')
+        check('_parse_utc +00:00', dt1.tzinfo is not None)
+        dt2 = _parse_utc('2026-04-25T18:00:00Z')
+        check('_parse_utc Z-Suffix', dt2.tzinfo is not None)
+        dt3 = _parse_utc('2026-04-25T18:00:00')
+        check('_parse_utc naive → UTC', dt3.tzinfo is not None)
+
+        # Test: _reminder_loop ueberlebt hours:0 in JSON (korrupter Eintrag)
+        from commands.reminder import _reminder_loop, REMINDER_FILE as RF
+        past = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+        atomic_write(RF, {
+            '11111': {'hours': 0, 'puzzle': 1, 'buch': 0, 'next': past},
+            '22222': {'hours': 4, 'puzzle': 1, 'buch': 0, 'next': past},
+        })
+        # Darf keinen ZeroDivisionError werfen
+        try:
+            run_async(_reminder_loop())
+            check('reminder_loop ueberlebt hours:0', True)
+        except ZeroDivisionError:
+            check('reminder_loop ueberlebt hours:0', False)
     finally:
         teardown_temp_config(tmpdir)
     print()
@@ -1824,6 +1847,15 @@ def test_schachrallye():
         check('Termin hat schachrallye-Tag',
               'schachrallye' in tdata['events'][0].get('tags', []))
 
+        # Test: Zweiter Termin am selben Datum aber anderem Ort → muss akzeptiert werden
+        ia = make_interaction(admin=True)
+        run_async(cmd_add(ia, datum=datum_str, ort='Wien'))
+        content = ia.response.calls[0].get('content') or ''
+        check('Zweiter Termin selbes Datum → Bestaetigung',
+              '#2' in content and 'Wien' in content)
+        tdata = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+        check('Zwei Termine am selben Datum', len(tdata.get('events', [])) == 2)
+
         # Test: Termine anzeigen → Embed mit Termin
         ia = make_interaction()
         run_async(cmd_rallye(ia))
@@ -2026,11 +2058,30 @@ def test_schachrallye():
                 check('parse → kein Link wenn keiner da',
                       len(mannschaft) == 1 and mannschaft[0].get('link', '') == '')
 
-                # Nochmal parsen → keine Duplikate
+                # Nochmal parsen → keine Duplikate (gleiche Events)
                 ia = make_interaction(admin=True)
                 run_async(cmd_parse(ia))
                 fu_content = (ia.followup.calls[0].get('content') or '').lower()
                 check('parse erneut → keine Duplikate', 'bereits vorhanden' in fu_content)
+
+                # Neues Event am selben Datum wie bestehendes → muss trotzdem importiert werden
+                future3_iso = (date.today() + timedelta(days=90)).strftime('%Y-%m-%d')
+                events_before = len(atomic_read(schachrallye_mod.TURNIER_FILE, default=dict).get('events', []))
+                new_html = (
+                    '<table>'
+                    '<tr><th>Datum</th><th>Veranstaltung</th><th>Ort</th></tr>'
+                    f'<tr><td>{future3}</td><td>Neues Abendturnier</td>'
+                    '<td>Hall</td></tr>'
+                    '</table>'
+                )
+                fake_resp2 = MagicMock()
+                fake_resp2.text = new_html
+                fake_resp2.raise_for_status = MagicMock()
+                schachrallye_mod.requests.get = MagicMock(return_value=fake_resp2)
+                ia = make_interaction(admin=True)
+                run_async(cmd_parse(ia))
+                events_after = len(atomic_read(schachrallye_mod.TURNIER_FILE, default=dict).get('events', []))
+                check('neues Event selbes Datum → importiert', events_after == events_before + 1)
 
                 # /turnier zeigt Turniere mit Link
                 ia = make_interaction()
@@ -2171,6 +2222,76 @@ def test_turnier_sub():
     print()
 
 
+def test_pgn_parse_max_errors():
+    """Test dass _parse_all_lines bei korruptem PGN nicht endlos loopt."""
+    print('[pgn_parse_max_errors]')
+    import puzzle.selection as sel
+    old_dir = sel.BOOKS_DIR
+    tmpdir = tempfile.mkdtemp()
+    try:
+        sel.BOOKS_DIR = tmpdir
+        # PGN das immer Exceptions wirft (ungueltiges Encoding-Pattern)
+        corrupt = '[Event "X"]\n[Round "1"]\n\n{' + 'x' * 5000 + '}\n' * 200
+        with open(os.path.join(tmpdir, 'corrupt.pgn'), 'w') as f:
+            f.write(corrupt)
+        # Muss terminieren (nicht endlos loopen)
+        import signal
+        timed_out = [False]
+        if hasattr(signal, 'SIGALRM'):
+            def _handler(sig, frame):
+                timed_out[0] = True
+                raise TimeoutError
+            signal.signal(signal.SIGALRM, _handler)
+            signal.alarm(10)
+        try:
+            sel._parse_all_lines()
+        except TimeoutError:
+            pass
+        finally:
+            if hasattr(signal, 'SIGALRM'):
+                signal.alarm(0)
+        check('PGN-Parser terminiert', not timed_out[0])
+    finally:
+        sel.BOOKS_DIR = old_dir
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    print()
+
+
+def test_event_log():
+    """Tests fuer core/event_log.py rotate_log Atomizitaet."""
+    print('[event_log]')
+    tmpdir = setup_temp_config()
+    try:
+        import core.event_log as elog
+        old_file = elog.REACTION_LOG_FILE
+        elog.REACTION_LOG_FILE = os.path.join(tmpdir, 'reaction_log.jsonl')
+        old_max = elog._MAX_LOG_LINES
+        elog._MAX_LOG_LINES = 5  # klein halten
+
+        try:
+            # 8 Zeilen schreiben → rotate soll auf 5 kuerzen
+            for i in range(8):
+                elog.log_reaction(user_id=i, line_id=f'test:{i}',
+                                 mode='normal', emoji='✅', delta=1)
+            elog.rotate_log()
+
+            with open(elog.REACTION_LOG_FILE, encoding='utf-8') as f:
+                after = [l for l in f if l.strip()]
+            check('rotate kuerzt auf MAX', len(after) == 5)
+
+            # Pruefe dass die neuesten 5 erhalten sind (line_id test:3..test:7)
+            import json
+            ids = [json.loads(l)['line_id'] for l in after]
+            check('rotate behaelt neueste', ids[0] == 'test:3')
+            check('rotate behaelt letzte', ids[-1] == 'test:7')
+        finally:
+            elog.REACTION_LOG_FILE = old_file
+            elog._MAX_LOG_LINES = old_max
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_admin_enforcement():
     """Tests dass Admin-Commands von Nicht-Admins abgelehnt werden."""
     print('[Admin-Enforcement]')
@@ -2273,6 +2394,8 @@ def main():
     test_dm_log()
     test_schachrallye()
     test_turnier_sub()
+    test_pgn_parse_max_errors()
+    test_event_log()
     test_admin_enforcement()
 
     print(f'---\n{total - failed}/{total} checks passed.')

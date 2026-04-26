@@ -4,6 +4,21 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.1.0] - 2026-04-26
+### Fixed
+- Reminder-Loop crashte bei korruptem `hours: 0` in JSON (ZeroDivisionError fuer alle User)
+- DM-Log: redundanter asyncio.Lock entfernt, der alle DM-Sends serialisierte
+- Event-Log `rotate_log`: Read+Write jetzt komplett im Lock (keine verlorenen Eintraege mehr)
+- Turnier-Import Dedup jetzt nach (Datum, Name) statt nur Datum (zwei Turniere am selben Tag moeglich)
+- `_parse_utc` robust gegen Z-Suffix und naive Timestamps in Reminder-Daten
+- Doppelter `_parse_stored`-Aufruf in Schachrallye/Turnier-Listen eliminiert
+
+### Changed
+- `library.py` nutzt jetzt `atomic_write` statt direktem File-Write (crash-sicher)
+- `event_log.read_all` nutzt `deque(maxlen=...)` statt komplettes File in Memory
+- PGN-Parser bricht nach 50 aufeinanderfolgenden Parse-Fehlern pro Datei ab (kein Endlos-Loop)
+- Piece-Download nutzt `requests.Session` fuer TCP-Connection-Reuse
+
 ## [2.0.6] - 2026-04-26
 ### Fixed
 - `_display_name()` findet Server-Nicks auch aus DM-Kontext (iteriert ueber alle Bot-Guilds statt nur interaction.guild)

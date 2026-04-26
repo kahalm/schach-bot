@@ -26,7 +26,6 @@ from core.paths import CONFIG_DIR
 log = logging.getLogger('schach-bot')
 
 DM_LOG_FILE = os.path.join(CONFIG_DIR, 'dm_log.json')
-_lock = None  # asyncio.Lock, wird in install() gesetzt
 
 _DM_LOG_MAX_AGE_DAYS = 30
 
@@ -79,11 +78,10 @@ def install():
     """Monkey-patcht discord.DMChannel.send einmalig beim Bot-Start."""
     import asyncio
 
-    global _lock, _installed
+    global _installed
     if _installed:
         return
     _installed = True
-    _lock = asyncio.Lock()
 
     _original_send = discord.DMChannel.send
 
@@ -93,8 +91,7 @@ def install():
             user_id   = recipient.id if recipient else None
             if user_id:
                 text = _describe(*args, **kwargs)
-                async with _lock:
-                    await asyncio.to_thread(_append, user_id, text)
+                await asyncio.to_thread(_append, user_id, text)
         except Exception as e:
             log.warning('DM-Log fehlgeschlagen: %s', e)
         return await _original_send(self, *args, **kwargs)
