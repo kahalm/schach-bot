@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.41.0] - 2026-04-26
+### Added
+- `tests/test_json_store.py`: 22 Unit-Tests fuer `core/json_store.py` — lock_for, atomic_read/write/update, Thread-Safety
+
 ## [1.40.6] - 2026-04-26
 ### Fixed
 - /greeted + /stats: Embed-Paginierung bei >4096 Zeichen statt stiller Truncation (8.1/8.2)
