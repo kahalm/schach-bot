@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.0.5] - 2026-04-26
+### Changed
+- `/dm-log` ohne Parameter zeigt kompakte Uebersicht (eine Zeile pro User) statt alle DM-Inhalte
+- PGN-Dateien aus Git-History entfernt und in `.gitignore` aufgenommen
+
 ## [2.0.4] - 2026-04-26
 ### Changed
 - Admin-Commands `/greeted`, `/dm-log`, `/stats` zeigen Server-Nickname statt globalem Display-Name

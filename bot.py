@@ -415,16 +415,28 @@ async def cmd_dm_log(interaction: discord.Interaction, user: discord.User = None
     lines = []
     for uid, entries in subset.items():
         name = names.get(uid, f'User {uid}')
-        lines.append(f'**{name}** ({len(entries)} DMs):')
-        for entry in entries[-10:]:
-            ts = entry.get('ts', '')
-            text = entry.get('text', '')
+        if user:
+            # Detailansicht: letzte 10 DMs mit Inhalt
+            lines.append(f'**{name}** ({len(entries)} DMs):')
+            for entry in entries[-10:]:
+                ts = entry.get('ts', '')
+                text = entry.get('text', '')
+                try:
+                    dt = datetime.fromisoformat(ts)
+                    unix = int(dt.timestamp())
+                    lines.append(f'  <t:{unix}:f> {text}')
+                except (ValueError, TypeError):
+                    lines.append(f'  {ts} {text}')
+        else:
+            # Uebersicht: eine Zeile pro User
+            last = entries[-1]
             try:
-                dt = datetime.fromisoformat(ts)
+                dt = datetime.fromisoformat(last.get('ts', ''))
                 unix = int(dt.timestamp())
-                lines.append(f'  <t:{unix}:f> {text}')
+                ts_fmt = f'<t:{unix}:f>'
             except (ValueError, TypeError):
-                lines.append(f'  {ts} {text}')
+                ts_fmt = last.get('ts', '?')
+            lines.append(f'**{name}** — {len(entries)} DMs · Letzte: {ts_fmt}')
 
     embeds = _paginate_lines('', lines)
     await interaction.followup.send(embeds=embeds, ephemeral=True)

@@ -1771,7 +1771,10 @@ def test_dm_log():
                 embeds = ia.followup.calls[0].get('embeds', [])
                 embed = embeds[0] if embeds else None
                 desc = embed.description if embed else ''
-                check('Embed enthaelt DM-Inhalt', 'Hallo' in desc)
+                # Uebersicht: eine Zeile pro User, kein DM-Inhalt
+                check('Uebersicht enthaelt DM-Anzahl', '2 DMs' in desc)
+                check('Uebersicht enthaelt Letzte', 'Letzte:' in desc)
+                check('Uebersicht enthaelt KEINEN Inhalt', 'Hallo' not in desc)
         finally:
             dm_log_mod.DM_LOG_FILE = old_dm_log_file
             bot_mod.bot = old_bot
