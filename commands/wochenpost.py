@@ -124,14 +124,12 @@ def setup(bot, wochenpost_channel_id: int = 0):
                   description='Neuen Wochenpost anlegen (Admin)')
     @discord.app_commands.describe(
         datum='Datum TT.MM.JJJJ (Freitag). Ohne Angabe: naechster freier Freitag',
-        titel='Titel des Posts',
         text='Optionaler Beschreibungstext',
         url='Optionaler Link',
         pdf='Optionale PDF-Datei als Attachment',
     )
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_wochenpost_add(interaction: discord.Interaction,
-                                  titel: str,
                                   datum: str = '',
                                   text: str = '',
                                   url: str = '',
@@ -175,10 +173,12 @@ def setup(bot, wochenpost_channel_id: int = 0):
             pdf_url = pdf.url
             pdf_name = pdf.filename
 
+        d_fmt = d.strftime('%d.%m.%Y')
+
         entry = {
             'id': 0,  # wird in _add gesetzt
             'datum': d.strftime('%Y-%m-%d'),
-            'titel': titel[:500],
+            'titel': d_fmt,
             'text': text[:2000],
             'url': url[:500],
             'pdf_url': pdf_url,
@@ -199,8 +199,7 @@ def setup(bot, wochenpost_channel_id: int = 0):
 
         atomic_update(WOCHENPOST_FILE, _add, default=list)
 
-        d_fmt = d.strftime('%d.%m.%Y')
-        msg = f"\u2705 Wochenpost #{result['id']} angelegt fuer **{d_fmt}**:\n**{titel}**"
+        msg = f"\u2705 Wochenpost #{result['id']} angelegt fuer **{d_fmt}**"
         if url:
             msg += f'\n{url}'
         if pdf_name:

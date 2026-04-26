@@ -2730,36 +2730,35 @@ def test_wochenpost():
 
         # Test: Nicht-Admin darf nicht adden
         ia = make_interaction(admin=False)
-        run_async(cmd_add(ia, datum='02.05.2026', titel='Test'))
+        run_async(cmd_add(ia, datum='02.05.2026'))
         content = (ia.response.calls[0].get('content') or '').lower()
         check('add ohne Admin → abgelehnt', 'admin' in content)
 
         # Test: Ungueltiges Datum
         ia = make_interaction(admin=True)
-        run_async(cmd_add(ia, datum='falsch', titel='Test'))
+        run_async(cmd_add(ia, datum='falsch'))
         content = (ia.response.calls[0].get('content') or '').lower()
         check('ungueltiges Datum → Fehler', 'ungueltig' in content)
 
         # Test: Kein Freitag (04.05.2026 = Montag)
         ia = make_interaction(admin=True)
-        run_async(cmd_add(ia, datum='04.05.2026', titel='Test'))
+        run_async(cmd_add(ia, datum='04.05.2026'))
         content = (ia.response.calls[0].get('content') or '').lower()
         check('kein Freitag → Fehler', 'freitag' in content)
 
         # Test: Eintrag anlegen (01.05.2026 = Freitag)
         ia = make_interaction(admin=True)
-        run_async(cmd_add(ia, datum='01.05.2026', titel='Endspiel-Training',
+        run_async(cmd_add(ia, datum='01.05.2026',
                           text='Beschreibung', url='https://example.com'))
         content = ia.response.calls[0].get('content') or ''
         check('add → Bestaetigung', '#1' in content and '01.05.2026' in content)
-        check('add → Titel im Text', 'Endspiel-Training' in content)
 
-        # Test: JSON gespeichert
+        # Test: JSON gespeichert — Titel = Datum
         entries = atomic_read(wochenpost_mod.WOCHENPOST_FILE, default=list)
         check('JSON hat 1 Eintrag', len(entries) == 1)
         check('Eintrag Datum korrekt', entries[0]['datum'] == '2026-05-01')
         check('Eintrag posted=false', entries[0]['posted'] is False)
-        check('Eintrag Titel', entries[0]['titel'] == 'Endspiel-Training')
+        check('Eintrag Titel = Datum', entries[0]['titel'] == '01.05.2026')
         check('Eintrag URL', entries[0]['url'] == 'https://example.com')
 
         # Test: Zweiter Eintrag mit PDF-Attachment (08.05.2026 = Freitag)
@@ -2767,8 +2766,7 @@ def test_wochenpost():
         fake_pdf.url = 'https://cdn.discord.com/test.pdf'
         fake_pdf.filename = 'test.pdf'
         ia = make_interaction(admin=True)
-        run_async(cmd_add(ia, datum='08.05.2026', titel='PDF-Post',
-                          pdf=fake_pdf))
+        run_async(cmd_add(ia, datum='08.05.2026', pdf=fake_pdf))
         content = ia.response.calls[0].get('content') or ''
         check('add mit PDF → Bestaetigung', '#2' in content)
         check('add mit PDF → Name im Text', 'test.pdf' in content)
@@ -2785,7 +2783,8 @@ def test_wochenpost():
         check('Liste → Embed', embed is not None)
         check('Liste enthaelt #1', embed is not None and '#1' in (embed.description or ''))
         check('Liste enthaelt #2', embed is not None and '#2' in (embed.description or ''))
-        check('Liste enthaelt Titel', embed is not None and 'Endspiel-Training' in (embed.description or ''))
+        check('Liste enthaelt Datum als Titel',
+              embed is not None and '01.05.2026' in (embed.description or ''))
 
         # Test: Eintrag loeschen
         ia = make_interaction(admin=True)
@@ -2810,8 +2809,7 @@ def test_wochenpost():
 
         # Test: Ungueltige URL wird abgelehnt (15.05.2026 = Freitag)
         ia = make_interaction(admin=True)
-        run_async(cmd_add(ia, datum='15.05.2026', titel='Bad',
-                          url='not-a-url'))
+        run_async(cmd_add(ia, datum='15.05.2026', url='not-a-url'))
         content = (ia.response.calls[0].get('content') or '').lower()
         check('ungueltige URL → Fehler', 'url' in content)
 
@@ -2845,7 +2843,7 @@ def test_wochenpost():
         with unittest.mock.patch('commands.wochenpost.date') as mock_date:
             mock_date.today.return_value = date(2026, 4, 27)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            run_async(cmd_add(ia, titel='Auto-Datum'))
+            run_async(cmd_add(ia))
         content = ia.response.calls[0].get('content') or ''
         check('add ohne Datum → Bestaetigung', '01.05.2026' in content)
         entries = atomic_read(wochenpost_mod.WOCHENPOST_FILE, default=list)
@@ -2857,7 +2855,7 @@ def test_wochenpost():
         with unittest.mock.patch('commands.wochenpost.date') as mock_date:
             mock_date.today.return_value = date(2026, 4, 27)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            run_async(cmd_add(ia, titel='Auto-Datum-2'))
+            run_async(cmd_add(ia))
         content = ia.response.calls[0].get('content') or ''
         check('zweiter add ohne Datum → 08.05', '08.05.2026' in content)
 
