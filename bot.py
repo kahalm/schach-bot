@@ -118,19 +118,21 @@ async def on_message(message: discord.Message):
 
     # Erste DM → Bot stellt sich vor
     user_id = message.author.id
+    should_greet = False
 
     def _check_and_greet(data):
+        nonlocal should_greet
         greeted = data.get('greeted', [])
         if user_id in greeted:
             return data  # bereits begrüßt
+        should_greet = True
         greeted.append(user_id)
         data['greeted'] = greeted
         return data
 
-    from core.json_store import atomic_read, atomic_update
-    old = await asyncio.to_thread(atomic_read, DM_STATE_FILE, dict)
-    if user_id not in old.get('greeted', []):
-        await asyncio.to_thread(atomic_update, DM_STATE_FILE, _check_and_greet, dict)
+    from core.json_store import atomic_update
+    await asyncio.to_thread(atomic_update, DM_STATE_FILE, _check_and_greet, dict)
+    if should_greet:
         await message.channel.send(WELCOME_MESSAGE)
 
     await bot.process_commands(message)
@@ -325,7 +327,8 @@ async def cmd_greeted(interaction: discord.Interaction):
         except Exception:
             return f'• User `{uid}` (nicht auflösbar)'
 
-    lines = await asyncio.gather(*[_fetch(uid) for uid in greeted])
+    results = await asyncio.gather(*[_fetch(uid) for uid in greeted], return_exceptions=True)
+    lines = [r for r in results if isinstance(r, str)]
     text = f'**Begrüßte User ({len(greeted)}):**\n' + '\n'.join(lines)
     if len(text) > 4096:
         text = text[:4093] + '...'
@@ -372,7 +375,8 @@ async def cmd_stats(interaction: discord.Interaction):
         except Exception:
             return uid, f'User {uid}'
 
-    names = dict(await asyncio.gather(*[_fetch_name(uid) for uid in uids]))
+    results = await asyncio.gather(*[_fetch_name(uid) for uid in uids], return_exceptions=True)
+    names = dict(r for r in results if isinstance(r, tuple))
 
     embed = discord.Embed(title='📊 Statistiken', color=EMBED_COLOR)
     lines = []
@@ -431,7 +435,7 @@ async def puzzle_task():
     try:
         await puzzle.post_puzzle(channel)
     except Exception as e:
-        log.exception('puzzle_task: %s', e)
+        log.exception('puzzle_task fehlgeschlagen')
 
 # ---------------------------------------------------------------------------
 

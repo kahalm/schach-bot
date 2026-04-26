@@ -4,6 +4,17 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.40.3] - 2026-04-26
+### Fixed
+- TOCTOU in Greeting: nur `atomic_update` mit `nonlocal`-Flag — doppelte Begruessung unmoeglich (1.3)
+- `log.exception('puzzle_task')` ohne redundantes `%s` (1.6)
+- `asyncio.gather` mit `return_exceptions=True` in /greeted und /stats (2.4)
+- `_get_piece()` mit Retry bei Netzwerk-Fehler (2.5)
+- `svg2rlg` None-Check — kaputter SVG gibt klare Fehlermeldung (2.6)
+- `_load_library()` loggt Warning bei korrupter JSON statt stiller Rueckgabe (2.7)
+- Sidecar-Author: `str()` Typeguard gegen int/None in `join()` (2.8)
+- `fromisoformat` in /elo mit try-except gegen korrupte Timestamps (2.9)
+
 ## [1.40.2] - 2026-04-26
 ### Fixed
 - `CHANNEL_ID`, `PUZZLE_HOUR`, `PUZZLE_MINUTE`: try-except um int-Konvertierung — klare Fehlermeldung statt ValueError-Crash (2.1/2.2)

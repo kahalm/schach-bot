@@ -49,6 +49,8 @@ def _svg_to_pil(svg_bytes: bytes, size: int) -> Image.Image:
         drawing = svg2rlg(tmp)
     finally:
         os.unlink(tmp)
+    if drawing is None:
+        raise ValueError('svg2rlg konnte SVG nicht parsen')
     sx = size / drawing.width
     sy = size / drawing.height
     drawing.width  = size
@@ -71,11 +73,18 @@ def _svg_to_pil(svg_bytes: bytes, size: int) -> Image.Image:
 
 def _get_piece(code: str, size: int) -> Image.Image:
     if code not in _piece_cache:
-        url  = f'https://lichess1.org/assets/piece/cburnett/{code}.svg'
-        resp = requests.get(url, timeout=_PIECE_DOWNLOAD_TIMEOUT)
-        resp.raise_for_status()
-        _piece_cache[code] = _svg_to_pil(resp.content, size)
-        log.info('Figur geladen: %s', code)
+        url = f'https://lichess1.org/assets/piece/cburnett/{code}.svg'
+        for attempt in range(2):
+            try:
+                resp = requests.get(url, timeout=_PIECE_DOWNLOAD_TIMEOUT)
+                resp.raise_for_status()
+                _piece_cache[code] = _svg_to_pil(resp.content, size)
+                log.info('Figur geladen: %s', code)
+                break
+            except (requests.RequestException, ValueError) as e:
+                if attempt == 1:
+                    raise
+                log.warning('Figur %s laden fehlgeschlagen (Retry): %s', code, e)
     return _piece_cache[code]
 
 _FONT_PATHS = [

@@ -68,8 +68,11 @@ def setup(bot):
                 lines.append('')
                 lines.append('**Historie:**')
                 for entry in history[-10:]:
-                    ts = datetime.fromisoformat(entry['ts'])
-                    lines.append(f"• {entry['elo']} — <t:{int(ts.timestamp())}:d>")
+                    try:
+                        ts = datetime.fromisoformat(entry['ts'])
+                        lines.append(f"• {entry['elo']} — <t:{int(ts.timestamp())}:d>")
+                    except (ValueError, KeyError):
+                        lines.append(f"• {entry.get('elo', '?')}")
                 if len(history) > 10:
                     lines.insert(2, f'_(zeige letzte 10 von {len(history)} Einträgen)_')
             await interaction.response.send_message('\n'.join(lines), ephemeral=True)

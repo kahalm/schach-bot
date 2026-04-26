@@ -273,7 +273,10 @@ def _load_library() -> list[dict]:
     try:
         with open(LIBRARY_FILE, encoding='utf-8') as f:
             return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+    except FileNotFoundError:
+        return []
+    except json.JSONDecodeError as e:
+        log.warning('library.json korrupt: %s', e)
         return []
 
 def _save_library(catalog: list[dict]):
@@ -354,10 +357,11 @@ def build_library_catalog() -> tuple[int, int, int, int, int]:
         author, title, year, ext, path, stem = best
         sidecar = _load_sidecar(path)
         if sidecar:
-            sc_author = sidecar.get('author', author)
-            if isinstance(sc_author, list):
-                sc_author = ', '.join(sc_author)
-            author = sc_author
+            raw_sc = sidecar.get('author', author)
+            if isinstance(raw_sc, list):
+                author = ', '.join(str(a) for a in raw_sc)
+            else:
+                author = str(raw_sc or author)
         entry_id = _normalize_for_dedup(author) + '--' + _normalize_for_dedup(stem)
         index_ids[entry_id] = (key, entries)
 
@@ -374,7 +378,8 @@ def build_library_catalog() -> tuple[int, int, int, int, int]:
         sidecar = _load_sidecar(path)
 
         if sidecar:
-            sc_author = ', '.join(sidecar['author']) if isinstance(sidecar.get('author'), list) else sidecar.get('author', author)
+            raw_author = sidecar.get('author', author)
+            sc_author = ', '.join(str(a) for a in raw_author) if isinstance(raw_author, list) else str(raw_author or author)
             sc_title  = sidecar.get('title', stem or title)
             sc_year   = sidecar.get('year')
             sc_tags   = sidecar.get('tags', [])
