@@ -1100,7 +1100,7 @@ def test_blind():
             ia = make_interaction()
             run_async(cmd(ia, moves=0, anzahl=1, buch=0, user=None))
             content = (ia.response.calls[0].get('content') or '').lower()
-            check('moves < 1 → Fehler', 'mindestens 1' in content)
+            check('moves < 1 → Fehler', 'zwischen 1 und 50' in content)
 
             # Test: Standard-Aufruf
             ia = make_interaction()

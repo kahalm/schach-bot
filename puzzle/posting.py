@@ -354,7 +354,7 @@ async def post_blind_puzzle(channel,
         thread_name = thread_name[:_DISCORD_THREAD_NAME_MAX - 3] + '...'
 
     is_dm = isinstance(channel, discord.DMChannel)
-    if is_dm:
+    if is_dm or isinstance(channel, discord.Thread):
         target = channel
     else:
         target = await channel.create_thread(

@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.37.0] - 2026-04-26
+### Fixed
+- `_find_game()` (test.py): Endlosschleife bei Parse-Fehlern verhindert (max 50 Fehler)
+- `_load_snapshots()` (test.py): Klare Fehlermeldungen bei fehlender/korrupter Datei
+- `/blind`: Validierung fuer `moves` (1–50), `anzahl` (1–20) und `buch` (nicht negativ)
+- `/reminder`: `buch`-Parameter darf nicht negativ sein
+- `_collection.py`: Discord-25-Felder-Limit bei >25 Eintraegen (Multi-Embed)
+- `dm_log.install()`: Idempotent-Guard verhindert rekursive Monkey-Patch-Kette
+- `post_blind_puzzle`: Thread-Channel-Check (kein `create_thread` auf bestehenden Thread)
+
 ## [1.36.0] - 2026-04-26
 ### Changed
 - **Duplikation**: `resourcen.py` und `youtube.py` nutzen jetzt generisches

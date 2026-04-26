@@ -82,12 +82,23 @@ def setup_collection(bot, *,
             await interaction.response.send_message(msg, ephemeral=True)
             return
 
-        embed = discord.Embed(title=embed_title, color=embed_color)
-        for i, e in enumerate(entries, 1):
-            name = f'{i}. {e["beschreibung"]}'
-            if len(name) > 256:
-                name = name[:253] + '...'
-            value = f'{e["url"]}\n_von {e["user"]} am {e["datum"]}_'
-            embed.add_field(name=name, value=value, inline=False)
+        _MAX_FIELDS = 25
+        embeds = []
+        for i in range(0, len(entries), _MAX_FIELDS):
+            chunk = entries[i:i + _MAX_FIELDS]
+            em = discord.Embed(
+                title=embed_title if i == 0 else None,
+                color=embed_color,
+            )
+            for j, e in enumerate(chunk, i + 1):
+                name = f'{j}. {e["beschreibung"]}'
+                if len(name) > 256:
+                    name = name[:253] + '...'
+                value = f'{e["url"]}\n_von {e["user"]} am {e["datum"]}_'
+                em.add_field(name=name, value=value, inline=False)
+            embeds.append(em)
 
-        await interaction.response.send_message(embed=embed)
+        if len(embeds) == 1:
+            await interaction.response.send_message(embed=embeds[0])
+        else:
+            await interaction.response.send_message(embeds=embeds)

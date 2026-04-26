@@ -138,6 +138,10 @@ def setup(bot):
             await interaction.response.send_message(
                 'Puzzle-Anzahl muss zwischen 1 und 20 liegen.', ephemeral=True)
             return
+        if buch < 0:
+            await interaction.response.send_message(
+                '⚠️ `buch` darf nicht negativ sein.', ephemeral=True)
+            return
 
         # Reminder aktivieren
         next_time = datetime.now(timezone.utc) + timedelta(hours=hours)

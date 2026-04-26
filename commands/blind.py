@@ -36,9 +36,17 @@ def setup(bot: commands.Bot):
         target_user = user or interaction.user
         log.info('/blind von %s: moves=%d anzahl=%d buch=%d user=%s',
                  interaction.user, moves, anzahl, buch, target_user)
-        if moves < 1:
+        if not 1 <= moves <= 50:
             await interaction.response.send_message(
-                '⚠️ `moves` muss mindestens 1 sein.', ephemeral=True)
+                '⚠️ `moves` muss zwischen 1 und 50 liegen.', ephemeral=True)
+            return
+        if not 1 <= anzahl <= 20:
+            await interaction.response.send_message(
+                '⚠️ `anzahl` muss zwischen 1 und 20 liegen.', ephemeral=True)
+            return
+        if buch < 0:
+            await interaction.response.send_message(
+                '⚠️ `buch` darf nicht negativ sein.', ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True)
         try:

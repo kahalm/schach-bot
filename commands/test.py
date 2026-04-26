@@ -29,8 +29,16 @@ SNAPSHOTS_FILE = os.path.join(_ROOT, 'tests', 'trim_snapshots.json')
 
 
 def _load_snapshots():
-    with open(SNAPSHOTS_FILE, encoding='utf-8') as f:
-        return json.load(f)
+    try:
+        with open(SNAPSHOTS_FILE, encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        raise FileNotFoundError(f'Snapshot-Datei nicht gefunden: {SNAPSHOTS_FILE}')
+    except json.JSONDecodeError as e:
+        raise ValueError(f'Snapshot-Datei fehlerhaft: {e}')
+
+
+_MAX_PARSE_ERRORS = 50
 
 
 def _find_game(filename, round_id):
@@ -39,10 +47,16 @@ def _find_game(filename, round_id):
     with open(path, encoding='utf-8') as f:
         pgn_text = _flatten_null_move_variations(f.read())
     stream = io.StringIO(pgn_text)
+    errors = 0
     while True:
         try:
             game = chess.pgn.read_game(stream)
         except Exception:
+            errors += 1
+            if errors >= _MAX_PARSE_ERRORS:
+                raise ValueError(
+                    f'Zu viele Parse-Fehler ({errors}) in {filename}, '
+                    f'Round {round_id!r} nicht gefunden')
             continue
         if game is None:
             raise ValueError(f'Round {round_id!r} nicht gefunden in {filename}')

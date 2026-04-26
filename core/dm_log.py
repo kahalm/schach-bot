@@ -72,11 +72,17 @@ def _append(user_id: int, text: str):
     atomic_update(DM_LOG_FILE, _update)
 
 
+_installed = False
+
+
 def install():
     """Monkey-patcht discord.DMChannel.send einmalig beim Bot-Start."""
     import asyncio
 
-    global _lock
+    global _lock, _installed
+    if _installed:
+        return
+    _installed = True
     _lock = asyncio.Lock()
 
     _original_send = discord.DMChannel.send
