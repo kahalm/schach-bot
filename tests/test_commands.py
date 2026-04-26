@@ -313,16 +313,13 @@ def setup_temp_config():
 
 
 def _patch_file_constant(module_path, attr_name, tmpdir):
-    try:
-        mod = sys.modules.get(module_path)
-        if mod is None:
-            __import__(module_path)
-            mod = sys.modules[module_path]
-        old = getattr(mod, attr_name, '')
-        basename = os.path.basename(old) if old else attr_name.lower() + '.json'
-        setattr(mod, attr_name, os.path.join(tmpdir, basename))
-    except Exception:
-        pass
+    mod = sys.modules.get(module_path)
+    if mod is None:
+        __import__(module_path)
+        mod = sys.modules[module_path]
+    old = getattr(mod, attr_name, '')
+    basename = os.path.basename(old) if old else attr_name.lower() + '.json'
+    setattr(mod, attr_name, os.path.join(tmpdir, basename))
 
 
 def teardown_temp_config(tmpdir):
@@ -1602,6 +1599,179 @@ def test_release_notes():
 
 
 # ===================================================================
+# 8) Library-Unit-Tests (parse, auto-tag, catalog)
+# ===================================================================
+
+def test_parse_index_entry():
+    """Tests fuer _parse_index_entry (library.py)."""
+    print('[_parse_index_entry]')
+    from library import _parse_index_entry
+
+    # Normaler Eintrag
+    result = _parse_index_entry('/data/schach/Kasparov/My Great Predecessors (2003).pdf')
+    check('normaler Eintrag', result is not None)
+    check('Autor', result[0] == 'Kasparov')
+    check('Jahr extrahiert', result[2] == 2003)
+    check('Extension', result[3] == 'pdf')
+
+    # Eintrag mit Bracket-Jahr
+    result = _parse_index_entry('/data/schach/Author/Title [Other, 1999].epub')
+    check('Bracket-Jahr', result is not None and result[2] == 1999)
+
+    # Leere Zeile
+    check('leere Zeile → None', _parse_index_entry('') is None)
+
+    # Kein /schach/ Pfad
+    check('ohne schach → None', _parse_index_entry('/data/music/file.mp3') is None)
+
+    # Zu wenig Pfadteile
+    check('zu kurz → None', _parse_index_entry('/data/schach/file.pdf') is None)
+
+    # Ohne Extension
+    check('ohne Ext → None', _parse_index_entry('/data/schach/Author/NoExt') is None)
+    print()
+
+
+def test_auto_tag():
+    """Tests fuer _auto_tag (library.py)."""
+    print('[_auto_tag]')
+    from library import _auto_tag
+
+    # Taktik-Buch
+    tags = _auto_tag('1001 Tactical Puzzles', 'Author', 'pdf')
+    check('Taktik-Tag', 'Taktik' in tags)
+    check('eBook-Tag', 'eBook' in tags)
+
+    # Eroeffnungsbuch
+    tags = _auto_tag('The Sicilian Defense', 'Kasparov', 'pgn')
+    check('Sizilianisch-Tag', 'Sizilianisch' in tags)
+    check('PGN-Tag', 'PGN' in tags)
+
+    # Endspiel (Regex \bendgame\b matcht Singular)
+    tags = _auto_tag('Endgame Strategy', 'Mueller', 'epub')
+    check('Endspiel-Tag', 'Endspiel' in tags)
+
+    # Ohne Matches
+    tags = _auto_tag('Untitled', 'Nobody', 'xyz')
+    check('Keine Tags', len(tags) == 0)
+
+    # Deutsche Sprach-Erkennung
+    tags = _auto_tag('Chess Book (german)', 'Author', 'pdf')
+    check('Deutsch-Tag', 'Deutsch' in tags)
+    print()
+
+
+def test_build_library_catalog():
+    """Tests fuer build_library_catalog (library.py)."""
+    print('[build_library_catalog]')
+    import library
+
+    tmpdir = tempfile.mkdtemp(prefix='lib_test_')
+    try:
+        index_file = os.path.join(tmpdir, 'index.txt')
+        lib_file = os.path.join(tmpdir, 'library.json')
+
+        # Speichere original-Werte
+        orig_index = library.LIBRARY_INDEX
+        orig_file = library.LIBRARY_FILE
+
+        library.LIBRARY_INDEX = index_file
+        library.LIBRARY_FILE = lib_file
+
+        # Ohne index.txt → (0,0,0,0,0)
+        library.LIBRARY_INDEX = ''
+        result = library.build_library_catalog()
+        check('ohne Index → alles 0', result == (0, 0, 0, 0, 0))
+
+        # Mit index.txt
+        library.LIBRARY_INDEX = index_file
+        with open(index_file, 'w', encoding='utf-8') as f:
+            f.write('/data/schach/Kasparov/My Great Predecessors (2003).pdf\n')
+            f.write('/data/schach/Mueller/Basic Endgames.epub\n')
+
+        result = library.build_library_catalog()
+        check('Dateien gezaehlt', result[0] == 2)
+        check('Buecher erstellt', result[1] == 2)
+        check('Neue Eintraege', result[2] == 2)
+
+        # Nochmal aufrufen → updates statt neu
+        result2 = library.build_library_catalog()
+        check('Wiederholung → 0 neue', result2[2] == 0)
+        check('Wiederholung → 2 aktualisiert', result2[3] == 2)
+
+    finally:
+        library.LIBRARY_INDEX = orig_index
+        library.LIBRARY_FILE = orig_file
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    print()
+
+
+def test_admin_enforcement():
+    """Tests dass Admin-Commands von Nicht-Admins abgelehnt werden."""
+    print('[Admin-Enforcement]')
+
+    # /puzzle user:@X als Nicht-Admin
+    tmpdir = setup_temp_config()
+    try:
+        import puzzle.commands
+        cmd = getattr(puzzle.commands, '_cmd_puzzle', None)
+        if cmd is None:
+            for attr in dir(puzzle.commands):
+                obj = getattr(puzzle.commands, attr)
+                if callable(obj) and getattr(obj, '__name__', '') == '_cmd_puzzle':
+                    cmd = obj
+                    break
+
+        if cmd:
+            other_user = FakeMember(admin=False)
+            other_user.id = 999
+            other_user.mention = '<@999>'
+            ia = make_interaction(admin=False)
+            ia.user.id = 111
+            run_async(cmd(ia, anzahl=1, buch=0, id=None, user=other_user))
+            content = (ia.response.calls[0].get('content') or '').lower()
+            check('/puzzle user:@X non-admin → Fehler', 'admin' in content)
+        else:
+            check('/puzzle user:@X non-admin → Fehler', False, 'cmd nicht gefunden')
+    finally:
+        teardown_temp_config(tmpdir)
+
+    # /blind Validierungen (anzahl, buch)
+    cmd = _captured_commands.get('blind')
+    if cmd:
+        tmpdir = setup_temp_config()
+        try:
+            ia = make_interaction()
+            run_async(cmd(ia, moves=4, anzahl=25, buch=0, user=None))
+            content = (ia.response.calls[0].get('content') or '').lower()
+            check('/blind anzahl > 20 → Fehler', 'zwischen 1 und 20' in content)
+
+            ia = make_interaction()
+            run_async(cmd(ia, moves=4, anzahl=1, buch=-1, user=None))
+            content = (ia.response.calls[0].get('content') or '').lower()
+            check('/blind buch:-1 → Fehler', 'negativ' in content)
+        finally:
+            teardown_temp_config(tmpdir)
+    else:
+        check('/blind Validierungen', False, 'cmd nicht gefunden')
+
+    # /reminder buch:-1 → Fehler
+    cmd = _captured_commands.get('reminder')
+    if cmd:
+        tmpdir = setup_temp_config()
+        try:
+            ia = make_interaction()
+            run_async(cmd(ia, hours=4, puzzle_count=1, buch=-1))
+            content = (ia.response.calls[0].get('content') or '').lower()
+            check('/reminder buch:-1 → Fehler', 'negativ' in content)
+        finally:
+            teardown_temp_config(tmpdir)
+    else:
+        check('/reminder buch:-1', False, 'cmd nicht gefunden')
+    print()
+
+
+# ===================================================================
 # MAIN
 # ===================================================================
 
@@ -1632,6 +1802,10 @@ def main():
     test_stats()
     test_wanted()
     test_release_notes()
+    test_parse_index_entry()
+    test_auto_tag()
+    test_build_library_catalog()
+    test_admin_enforcement()
 
     print(f'---\n{total - failed}/{total} checks passed.')
     if failed:

@@ -4,6 +4,15 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.39.0] - 2026-04-26
+### Added
+- Tests fuer `_parse_index_entry` (6 Checks), `_auto_tag` (7 Checks),
+  `build_library_catalog` (6 Checks) in `test_commands.py`
+- Admin-Enforcement-Tests: `/puzzle user:@X` non-admin, `/blind` Validierung
+  (anzahl/buch), `/reminder buch:-1`
+### Changed
+- `_patch_file_constant` schlaegt jetzt laut fehl statt Fehler zu verschlucken
+
 ## [1.38.0] - 2026-04-26
 ### Changed
 - **Performance**: Regex in `processing.py` auf Modul-Ebene vorkompiliert (6.6)
