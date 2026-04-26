@@ -18,6 +18,7 @@ import discord
 import requests
 from discord.ext import tasks
 
+from commands.wochenpost_buttons import fresh_view as _fresh_button_view
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 from core.version import EMBED_COLOR
@@ -355,7 +356,13 @@ async def _post_entry(channel, entry: dict):
     kwargs = {'embed': embed}
     if file:
         kwargs['file'] = file
-    await thread.send(**kwargs)
+    msg = await thread.send(**kwargs)
+
+    # Buttons anfuegen (geschafft/nicht geschafft, gut/schlecht)
+    try:
+        await msg.edit(view=_fresh_button_view())
+    except Exception as e:
+        log.warning('Wochenpost-Button-View fehlgeschlagen: %s', e)
 
     # posted = true setzen
     def _mark_posted(entries, eid=entry['id']):

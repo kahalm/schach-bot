@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.5.0] - 2026-04-26
+### Added
+- Wochenpost-Buttons: 4 Reaktions-Buttons unter jedem Wochenpost (geschafft/nicht geschafft + gut/schlecht)
+- Mutex-Paare wie beim Puzzle: nur eins pro Paar, Toggle bei erneutem Klick
+- JSONL-Logging aller Button-Klicks in `config/wochenpost_log.jsonl` fuer spaetere Auswertung pro User
+- Persistente Views: Buttons funktionieren auch nach Bot-Neustart
+
 ## [2.4.5] - 2026-04-26
 ### Added
 - Wochenpost Startup-Catchup: verpasste Posts der letzten 7 Tage werden beim Bot-Start automatisch nachgeholt

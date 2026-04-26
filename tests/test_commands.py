@@ -109,19 +109,29 @@ _discord.app_commands = _app_commands
 
 # discord.ui
 _ui = sys.modules['discord.ui']
+_discord.ui = _ui
 
 class FakeView:
     def __init__(self, **kw):
-        pass
+        self.children = []
     def add_item(self, item):
-        pass
+        self.children.append(item)
 
 class FakeSelect(FakeView):
     pass
 
+class FakeButton:
+    def __init__(self, **kw):
+        self.style = kw.get('style')
+        self.emoji = kw.get('emoji')
+        self.label = kw.get('label', '')
+        self.custom_id = kw.get('custom_id', '')
+        self.row = kw.get('row')
+        self.callback = None
+
 _ui.View = FakeView
 _ui.Select = FakeSelect
-_ui.Button = MagicMock
+_ui.Button = FakeButton
 _ui.button = lambda **kw: _passthrough_single
 
 # discord.ext.commands
@@ -424,6 +434,7 @@ import commands.release_notes as release_notes_mod
 import commands.reminder as reminder_mod
 import commands.schachrallye as schachrallye_mod
 import commands.wochenpost as wochenpost_mod
+import commands.wochenpost_buttons as wp_buttons_mod
 
 # bot.py importieren (ruft am Ende bot.run() auf, was jetzt ein no-op ist)
 import bot as bot_mod
@@ -3017,6 +3028,139 @@ def test_wochenpost():
     print()
 
 
+def test_wochenpost_buttons():
+    """Tests fuer commands/wochenpost_buttons.py Klick-Logik + Logging."""
+    print('[wochenpost_buttons]')
+
+    # State zuruecksetzen
+    wp_buttons_mod._clicks.clear()
+
+    # --- Einfacher Klick: hinzufuegen ---
+    delta, removed = wp_buttons_mod._apply_click(1, '\u2705', user_id=100)
+    check('wp click add → delta=+1', delta == 1)
+    check('wp click add → removed=None', removed is None)
+    check('wp click add → count=1', wp_buttons_mod._count(1, '\u2705') == 1)
+
+    # --- Toggle-off: gleicher Klick entfernt ---
+    delta, removed = wp_buttons_mod._apply_click(1, '\u2705', user_id=100)
+    check('wp toggle-off → delta=-1', delta == -1)
+    check('wp toggle-off → count=0', wp_buttons_mod._count(1, '\u2705') == 0)
+
+    # --- Mutex: ✅ dann ❌ entfernt ✅ ---
+    wp_buttons_mod._clicks.clear()
+    wp_buttons_mod._apply_click(1, '\u2705', user_id=200)
+    check('wp mutex pre → \u2705=1', wp_buttons_mod._count(1, '\u2705') == 1)
+    delta, removed = wp_buttons_mod._apply_click(1, '\u274c', user_id=200)
+    check('wp mutex → delta=+1', delta == 1)
+    check('wp mutex → removed=\u2705', removed == '\u2705')
+    check('wp mutex → \u2705=0', wp_buttons_mod._count(1, '\u2705') == 0)
+    check('wp mutex → \u274c=1', wp_buttons_mod._count(1, '\u274c') == 1)
+
+    # --- Mutex 👍↔👎 ---
+    wp_buttons_mod._clicks.clear()
+    wp_buttons_mod._apply_click(2, '\U0001f44d', user_id=300)
+    delta, removed = wp_buttons_mod._apply_click(2, '\U0001f44e', user_id=300)
+    check('wp mutex \U0001f44d→\U0001f44e → removed=\U0001f44d', removed == '\U0001f44d')
+    check('wp mutex → \U0001f44d=0', wp_buttons_mod._count(2, '\U0001f44d') == 0)
+    check('wp mutex → \U0001f44e=1', wp_buttons_mod._count(2, '\U0001f44e') == 1)
+
+    # --- Mehrere User auf gleichem Emoji ---
+    wp_buttons_mod._clicks.clear()
+    wp_buttons_mod._apply_click(3, '\u2705', user_id=501)
+    wp_buttons_mod._apply_click(3, '\u2705', user_id=502)
+    wp_buttons_mod._apply_click(3, '\u2705', user_id=503)
+    check('wp multi-user → count=3', wp_buttons_mod._count(3, '\u2705') == 3)
+    wp_buttons_mod._apply_click(3, '\u2705', user_id=502)  # toggle-off
+    check('wp multi-user toggle-off → count=2', wp_buttons_mod._count(3, '\u2705') == 2)
+
+    # --- Kein Mutex-Crosstalk zwischen Paaren ---
+    wp_buttons_mod._clicks.clear()
+    wp_buttons_mod._apply_click(4, '\u2705', user_id=400)
+    wp_buttons_mod._apply_click(4, '\U0001f44d', user_id=400)
+    check('wp kein Crosstalk → \u2705 bleibt', wp_buttons_mod._count(4, '\u2705') == 1)
+    check('wp kein Crosstalk → \U0001f44d bleibt', wp_buttons_mod._count(4, '\U0001f44d') == 1)
+
+    # --- Eviction bei Cap-Ueberlauf ---
+    wp_buttons_mod._clicks.clear()
+    old_cap = wp_buttons_mod._CLICKS_CAP
+    wp_buttons_mod._CLICKS_CAP = 5
+    try:
+        for i in range(6):
+            wp_buttons_mod._apply_click(i, '\u2705', user_id=600)
+        check('wp eviction → max entries <= cap+1',
+              len(wp_buttons_mod._clicks) <= wp_buttons_mod._CLICKS_CAP + 1)
+        check('wp eviction → msg 0 entfernt', 0 not in wp_buttons_mod._clicks)
+    finally:
+        wp_buttons_mod._CLICKS_CAP = old_cap
+
+    # --- _count bei unbekannter msg_id ---
+    check('wp count unknown msg → 0', wp_buttons_mod._count(99999, '\u2705') == 0)
+    check('wp count unknown emoji → 0', wp_buttons_mod._count(1, '\U0001f480') == 0)
+
+    # --- _log_click schreibt JSONL ---
+    tmpdir = tempfile.mkdtemp()
+    try:
+        log_path = os.path.join(tmpdir, 'wochenpost_log.jsonl')
+        old_log_file = wp_buttons_mod.WOCHENPOST_LOG_FILE
+        wp_buttons_mod.WOCHENPOST_LOG_FILE = log_path
+
+        wp_buttons_mod._log_click(user_id=42, post_id=100, emoji='\u2705', delta=1)
+        wp_buttons_mod._log_click(user_id=42, post_id=100, emoji='\u274c', delta=-1)
+
+        check('wp log file erstellt', os.path.exists(log_path))
+
+        with open(log_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        check('wp log 2 Zeilen', len(lines) == 2)
+
+        entry1 = json.loads(lines[0])
+        check('wp log user korrekt', entry1['user'] == 42)
+        check('wp log post_id korrekt', entry1['post_id'] == 100)
+        check('wp log emoji korrekt', entry1['emoji'] == '\u2705')
+        check('wp log delta korrekt', entry1['delta'] == 1)
+        check('wp log hat ts', 'ts' in entry1)
+
+        entry2 = json.loads(lines[1])
+        check('wp log zweiter Eintrag delta=-1', entry2['delta'] == -1)
+
+        wp_buttons_mod.WOCHENPOST_LOG_FILE = old_log_file
+    finally:
+        shutil.rmtree(tmpdir)
+
+    # --- WochenpostView hat 4 Buttons ---
+    view = wp_buttons_mod.WochenpostView()
+    buttons = [c for c in view.children if hasattr(c, 'emoji')]
+    check('wp View hat 4 Buttons', len(buttons) == 4)
+    custom_ids = {str(b.custom_id) for b in buttons}
+    check('wp custom_id fuer \u2705', 'wochenpost:\u2705' in custom_ids)
+    check('wp custom_id fuer \u274c', 'wochenpost:\u274c' in custom_ids)
+    check('wp custom_id fuer \U0001f44d', 'wochenpost:\U0001f44d' in custom_ids)
+    check('wp custom_id fuer \U0001f44e', 'wochenpost:\U0001f44e' in custom_ids)
+
+    # --- fresh_view liefert Counter auf 0 ---
+    fv = wp_buttons_mod.fresh_view()
+    for child in fv.children:
+        if hasattr(child, 'label'):
+            check(f'wp fresh_view label=0 ({child.emoji})', child.label == '0')
+
+    # --- _build_view mit Clicks zeigt Counter ---
+    wp_buttons_mod._clicks.clear()
+    wp_buttons_mod._apply_click(50, '\u2705', user_id=1)
+    wp_buttons_mod._apply_click(50, '\u2705', user_id=2)
+    wp_buttons_mod._apply_click(50, '\U0001f44e', user_id=3)
+    bv = wp_buttons_mod._build_view(50)
+    for child in bv.children:
+        if hasattr(child, 'emoji') and str(child.emoji) == '\u2705':
+            check('wp build_view \u2705 counter=2', child.label == '2')
+        if hasattr(child, 'emoji') and str(child.emoji) == '\U0001f44e':
+            check('wp build_view \U0001f44e counter=1', child.label == '1')
+        if hasattr(child, 'emoji') and str(child.emoji) == '\u274c':
+            check('wp build_view \u274c counter=0', child.label == '0')
+
+    wp_buttons_mod._clicks.clear()  # Aufraumen
+    print()
+
+
 # ===================================================================
 # MAIN
 # ===================================================================
@@ -3065,6 +3209,7 @@ def main():
     test_turnier_prune()
     test_posted_reset_per_pool()
     test_wochenpost()
+    test_wochenpost_buttons()
 
     print(f'---\n{total - failed}/{total} checks passed.')
     if failed:

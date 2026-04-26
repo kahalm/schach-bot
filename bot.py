@@ -108,8 +108,10 @@ async def on_ready():
         log.info('Reconnect als %s (on_ready übersprungen)', bot.user)
         return
     _ready_done = True
-    # Persistente Button-View für Puzzle-Reaktionen registrieren
+    # Persistente Button-Views registrieren
     bot.add_view(puzzle.PuzzleView())
+    from commands.wochenpost_buttons import WochenpostView
+    bot.add_view(WochenpostView())
     for attempt, delay in enumerate([0, 5, 15, 30], 1):
         try:
             if delay:
