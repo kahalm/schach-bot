@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.4.4] - 2026-04-26
+### Added
+- Warnung bei allen 3 Wochenpost-Commands wenn `WOCHENPOST_CHANNEL_ID` nicht gesetzt ist
+
 ## [2.4.3] - 2026-04-26
 ### Added
 - `/wochenpost_add` mit vergangenem Datum postet sofort in den Channel (Thread + Embed)

@@ -77,6 +77,9 @@ def setup(bot, wochenpost_channel_id: int = 0):
     _wochenpost_channel_id = wochenpost_channel_id
     tree = bot.tree
 
+    _NO_CHANNEL_HINT = ('\n\u26a0\ufe0f `WOCHENPOST_CHANNEL_ID` nicht gesetzt '
+                        '\u2014 Posts werden nicht gesendet!')
+
     # --- /wochenpost (Liste) ------------------------------------------------
 
     @tree.command(name='wochenpost',
@@ -110,6 +113,9 @@ def setup(bot, wochenpost_channel_id: int = 0):
         desc = '\n'.join(lines)
         if len(desc) > 4096:
             desc = desc[:4093] + '...'
+
+        if not _wochenpost_channel_id:
+            desc += _NO_CHANNEL_HINT
 
         embed = discord.Embed(
             title='\U0001f4e8 Wochenposts',
@@ -223,6 +229,8 @@ def setup(bot, wochenpost_channel_id: int = 0):
             msg += f'\n{url}'
         if pdf_name:
             msg += f'\nPDF: {pdf_name}'
+        if not _wochenpost_channel_id:
+            msg += _NO_CHANNEL_HINT
         await interaction.response.send_message(msg, ephemeral=True)
 
     # --- /wochenpost_del ----------------------------------------------------
@@ -251,8 +259,10 @@ def setup(bot, wochenpost_channel_id: int = 0):
         atomic_update(WOCHENPOST_FILE, _del, default=list)
 
         if result['found']:
-            await interaction.response.send_message(
-                f'\u2705 Wochenpost #{id} geloescht.', ephemeral=True)
+            msg = f'\u2705 Wochenpost #{id} geloescht.'
+            if not _wochenpost_channel_id:
+                msg += _NO_CHANNEL_HINT
+            await interaction.response.send_message(msg, ephemeral=True)
         else:
             await interaction.response.send_message(
                 f'\u274c Wochenpost #{id} nicht gefunden.', ephemeral=True)
