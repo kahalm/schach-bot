@@ -29,22 +29,24 @@ _ELO_CACHE_TTL = 60.0  # Sekunden
 
 
 def _current_elo(user_id: int) -> int | None:
-    """Aktuelle Elo des Users (oder None). Gecached fuer 60s."""
+    """Aktuelle Elo des Users (oder None). Gecached fuer 60s, thread-safe."""
     import time
     global _elo_cache, _elo_cache_ts
-    now = time.monotonic()
-    if now - _elo_cache_ts > _ELO_CACHE_TTL:
-        _elo_cache.clear()
-        _elo_cache_ts = now
-    if user_id in _elo_cache:
-        return _elo_cache[user_id]
+    with _log_lock:
+        now = time.monotonic()
+        if now - _elo_cache_ts > _ELO_CACHE_TTL:
+            _elo_cache.clear()
+            _elo_cache_ts = now
+        if user_id in _elo_cache:
+            return _elo_cache[user_id]
     try:
         from commands.elo import get_current
         val = get_current(user_id)
     except Exception as e:
         log.debug('Elo-Lookup fehlgeschlagen: %s', e)
         val = None
-    _elo_cache[user_id] = val
+    with _log_lock:
+        _elo_cache[user_id] = val
     return val
 
 

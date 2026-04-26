@@ -38,7 +38,9 @@ def setup_collection(bot, *,
         json_file = _json_path(json_filename)
 
         if url:
-            if not url.startswith(('http://', 'https://')):
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            if parsed.scheme not in ('http', 'https') or not parsed.netloc:
                 await interaction.response.send_message(
                     '⚠️ Bitte eine gueltige URL angeben (http:// oder https://).',
                     ephemeral=True)

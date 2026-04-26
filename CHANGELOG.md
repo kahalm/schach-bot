@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.40.4] - 2026-04-26
+### Fixed
+- Elo-Cache Zugriff unter `_log_lock` — Race-Condition bei parallelen Reactions behoben (3.1)
+- Pickle-Cache in `selection.py` unter File-Lock via `_lock_for` (3.2)
+- `find_line_by_id` Laengenlimit (200 Zeichen) gegen DoS-artige Suchen (4.2)
+- URL-Validierung in `_collection.py` mit `urlparse` statt nur Prefix-Check (4.3)
+
 ## [1.40.3] - 2026-04-26
 ### Fixed
 - TOCTOU in Greeting: nur `atomic_update` mit `nonlocal`-Flag — doppelte Begruessung unmoeglich (1.3)
