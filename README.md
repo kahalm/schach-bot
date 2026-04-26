@@ -32,23 +32,44 @@ Ein Discord-Bot für tägliche Schach-Puzzles aus Chessable-PGN-Büchern.
 | `/autor <autor>` | Alle Bücher eines Autors |
 | `/tag <tag>` | Bücher nach Tag filtern |
 
-### Sonstiges
+### Turniere & Schachrallye
+| Befehl | Beschreibung |
+|--------|-------------|
+| `/turnier` | Kommende Turniere anzeigen |
+| `/turnier_sub [tag]` | Turnier-Tag abonnieren (z.B. blitz, schnellschach, 960, jugend, senioren, klassisch) — ohne Tag: eigene Abos anzeigen |
+| `/turnier_unsub <tag>` | Turnier-Tag-Abo abbestellen |
+| `/schachrallye` | Kommende Schachrallye-Termine anzeigen |
+| `/schachrallye_add <name> <datum>` | Rallye-Termin hinzufügen |
+| `/schachrallye_del <nummer>` | Rallye-Termin löschen |
+| `/schachrallye_sub [user]` | Rallye-Erinnerungen abonnieren (Ping + 7-Tage-Reminder) |
+| `/schachrallye_unsub [user]` | Rallye-Erinnerungen abbestellen |
+
+### Community
 | Befehl | Beschreibung |
 |--------|-------------|
 | `/resourcen [url] [beschreibung]` | Lernressourcen anzeigen oder hinzufügen |
 | `/youtube [url] [beschreibung]` | YouTube-Links anzeigen oder hinzufügen |
+| `/wanted [feature]` | Feature-Wunsch einreichen oder Liste anzeigen |
 | `/elo [wert]` | Eigene Elo angeben oder anzeigen |
+
+### Info
+| Befehl | Beschreibung |
+|--------|-------------|
 | `/version` | Bot-Version und Uptime |
 | `/release-notes [version] [anzahl]` | Changelog anzeigen |
-| `/help` | Alle Befehle anzeigen |
+| `/help [bereich]` | Alle Befehle anzeigen (optional nach Bereich filtern) |
 
 ### Admin-only
 | Befehl | Beschreibung |
 |--------|-------------|
 | `/daily` | Tägliches Puzzle manuell auslösen |
+| `/turnier_parse` | Turniere von tirol.chess.at importieren |
 | `/stats` | Nutzungsstatistiken aller User |
 | `/announce <user>` | Begrüßungsnachricht per DM an einen User senden |
+| `/greeted` | Bereits begrüßte User anzeigen |
+| `/dm-log` | Ausgehende DMs anzeigen |
 | `/ignore_kapitel [buch] [kapitel] [aktion]` | Kapitel aus dem Puzzle-Pool ausschließen |
+| `/reindex` | Bibliothek-Index neu einlesen |
 | `/test` | Snapshot-Regressionstests ausführen |
 
 ## Projektstruktur
@@ -66,7 +87,9 @@ schach-bot/
 │   ├── reminder.py         # /reminder
 │   ├── release_notes.py    # /release-notes
 │   ├── resourcen.py        # /resourcen
+│   ├── schachrallye.py     # /schachrallye*, /turnier*, Turnier-Import
 │   ├── test.py             # /test (Snapshot-Tests)
+│   ├── wanted.py           # /wanted
 │   └── youtube.py          # /youtube
 ├── core/
 │   ├── dm_log.py           # DM-Logging (config/dm_log.json)
@@ -77,7 +100,10 @@ schach-bot/
 ├── library.py              # /bibliothek, /autor, /tag
 ├── books/                  # PGN-Dateien + books.json (Metadaten)
 ├── assets/                 # Figur-Icons (cburnett)
-├── tests/                  # test_trim.py, trim_snapshots.json
+├── tests/                  # test_trim.py, test_commands.py
+├── Dockerfile
+├── docker-compose.yml
+├── .dockerignore
 ├── requirements.txt
 ├── .env.example
 ├── CHANGELOG.md
@@ -137,11 +163,40 @@ python bot.py
 | `PUZZLE_HOUR` | Nein | Stunde des täglichen Puzzles (UTC, Standard: 9) |
 | `PUZZLE_MINUTE` | Nein | Minute des täglichen Puzzles (Standard: 0) |
 | `LICHESS_TOKEN` | Ja* | OAuth-Token mit `study:write` für Puzzle-Upload |
+| `PUZZLE_STUDY_ID` | Nein | Lichess-Studie für alle Puzzle-Kapitel (empfohlen) |
 | `BOOKS_DIR` | Nein | Ordner mit PGN-Dateien (Standard: `books`) |
+| `TOURNAMENT_CHANNEL_ID` | Nein | Channel für Turnier-Posts und Rallye-Erinnerungen (0 = deaktiviert) |
+| `LIBRARY_INDEX` | Nein | Pfad zur `index.txt` für `/bibliothek` |
 
 *Ohne `LICHESS_TOKEN` kein interaktives Lichess-Gamebook.
 
-## Als systemd-Service (Linux)
+## Docker (empfohlen)
+
+Der Bot läuft isoliert in einem Container — ideal wenn auf der VM noch andere Dienste laufen.
+
+```bash
+# .env anlegen (siehe .env.example)
+cp .env.example .env
+# Token, Channel-ID etc. eintragen
+
+# Starten
+docker compose up -d
+
+# Logs verfolgen
+docker compose logs -f
+
+# Update deployen
+git pull
+docker compose down && docker compose up -d --build
+
+# Stoppen
+docker compose down
+```
+
+`config/` und `books/` werden als Volumes gemountet und bleiben beim Rebuild erhalten.
+Ressourcen sind auf 512 MB RAM und 0.5 CPU begrenzt (anpassbar in `docker-compose.yml`).
+
+## Als systemd-Service (Linux, ohne Docker)
 
 ```ini
 [Unit]
@@ -166,10 +221,11 @@ sudo systemctl enable --now schach-bot
 ## Tests
 
 ```bash
-python tests/test_trim.py
+python tests/test_trim.py       # 171 Snapshot-Tests (Trim-Regression)
+python tests/test_commands.py   # 234 Command-Tests (alle Slash-Commands)
 ```
 
-Prüft Trim-Snapshots für alle PGN-Bücher. Snapshots in `tests/trim_snapshots.json` — nie automatisch aktualisieren, immer manuell prüfen.
+Snapshots in `tests/trim_snapshots.json` — nie automatisch aktualisieren, immer manuell prüfen.
 
 ## Bot-Berechtigungen (Discord)
 

@@ -1,0 +1,10 @@
+services:
+  schach-bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./config:/app/config
+      - ./books:/app/books
+    mem_limit: 512m
+    cpus: 0.5

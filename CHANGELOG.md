@@ -4,6 +4,125 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.0.0] - 2026-04-26
+### Added
+- Dockerfile, docker-compose.yml und .dockerignore fuer Container-Deployment
+- README um Docker-Sektion, alle aktuellen Commands und Konfigurationsvariablen erweitert
+
+## [1.45.8] - 2026-04-26
+### Changed
+- `RALLYE_CHANNEL_ID` in `.env` umbenannt zu `TOURNAMENT_CHANNEL_ID` (Fallback auf alten Namen fuer bestehende Configs)
+
+## [1.45.7] - 2026-04-26
+### Changed
+- Willkommensnachricht um `/turnier`, `/turnier_sub`, `/schachrallye` und `/wanted` erweitert
+
+## [1.45.6] - 2026-04-26
+### Added
+- Automatischer Turnier-Import taeglich um 18:00 UTC (neue Turniere werden im Channel gepostet mit Subscriber-Mentions)
+
+## [1.45.5] - 2026-04-26
+### Added
+- `/turnier_sub` ohne Parameter zeigt die eigenen abonnierten Tags an
+
+## [1.45.4] - 2026-04-26
+### Added
+- Neuer Tag beim Turnier-Import: `klassisch` (matcht "Open" im Turniernamen)
+
+## [1.45.3] - 2026-04-26
+### Added
+- Neue Tags beim Turnier-Import: `jugend` (Jugend*, U08-U18) und `senioren` (Senior*)
+
+## [1.45.2] - 2026-04-26
+### Fixed
+- Turnier-Channel-Post: ungueltige URLs (z.B. `http://Rallye Jenbach: ...`) werden nicht mehr als Embed-URL gesetzt (Discord 400 Bad Request)
+- `/turnier` Listenansicht: ungueltige Links werden nicht mehr als Markdown-Link gerendert
+- HTML-Parser: `<br>`-Tags erzeugen jetzt ein Leerzeichen (verhindert Verkettungen wie "ZirlZirl")
+- Name-Cleanup beim Import: "Start: HH Uhr", "HH:MM Uhr Turnierbeginn" und "auf Chess-Results" werden automatisch entfernt
+
+## [1.45.1] - 2026-04-26
+### Fixed
+- Neue Rallye-Turniere werden jetzt auch im Channel gepostet (vorher nur Nicht-Rallye-Events)
+
+## [1.45.0] - 2026-04-26
+### Added
+- `/turnier_sub <tag>` — Fuer Turnier-Tags subscriben (z.B. schnellschach, blitz, 960, schachrallye); bei neuen Turnieren mit passendem Tag wird man im Channel gepingt
+- `/turnier_unsub <tag>` — Turnier-Tag-Abo abbestellen
+- Channel-Posts bei neuen Turnieren enthalten jetzt Mentions fuer alle passenden Tag-Subscriber
+
+### Changed
+- `/schachrallye_sub` Bestaetigungs-Nachricht und DM erwaehnen jetzt beide Features (Ping bei neuen Turnieren + 7-Tage-Erinnerung)
+
+## [1.44.3] - 2026-04-26
+### Changed
+- `/schachrallye_parse` umbenannt zu `/turnier_parse` (passt besser, da beide Kategorien importiert werden)
+
+## [1.44.2] - 2026-04-26
+### Changed
+- Neue Turniere werden einzeln im Channel gepostet (je ein Embed pro Turnier statt eine Sammel-Nachricht)
+- Turnier-Embed: Name als klickbarer Titel (Link), Datum + Ort + Tags in der Beschreibung
+
+## [1.44.1] - 2026-04-26
+### Added
+- Neue Tags beim Turnier-Import: `schnellschach`, `blitz`, `960` (automatisch aus Turniernamen erkannt)
+
+## [1.44.0] - 2026-04-26
+### Changed
+- Rallye- und Turnier-Daten in einer einzigen `turnier.json` zusammengefuehrt (statt getrennte `schachrallye.json` + `turniere.json`)
+- Events haben jetzt ein `tags`-Feld — erster Tag: `schachrallye` (weitere koennen folgen)
+- Subscribers sind jetzt tag-basiert: `subscribers.schachrallye` statt flache Liste
+- `/turnier` Display komplett ueberarbeitet: einzeilig, kompakt, gut scannbar (`Datum` **Name** · Ort)
+- Lange Ort-Beschreibungen werden automatisch gekuerzt
+- HTML-Parser: Space vor `<a>`-Text verhindert "NameAusschreibung"-Verkettung
+- "Ausschreibung"/"Anmeldung"-Artefakte werden aus Turniernamen entfernt
+
+### Fixed
+- `/schachrallye_parse` Followup nutzt jetzt Embed statt Content (Discord 2000-Zeichen-Limit, 400 Bad Request)
+- Embed-Beschreibung bei Channel-Post und Followup auf 4096 Zeichen begrenzt
+
+### Added
+- Test: DM-Fehler bei Subscribe wird korrekt als Warning geloggt (kein Crash)
+- Test: Tags-System und einheitliche JSON-Struktur geprueft
+- CLAUDE.md: Bug-First-Test-Regel (bei gemeldeten Bugs erst Test, dann Fix)
+
+## [1.43.1] - 2026-04-26
+### Added
+- Links aus tirol.chess.at werden beim Import erfasst und in `/turnier` als klickbare Markdown-Links angezeigt
+- Neue Turniere werden beim Parse automatisch im Rallye-Channel gepostet
+
+### Changed
+- OeM U08/U10 und U12/U14 werden beim Import automatisch gefiltert (neben Training)
+
+## [1.43.0] - 2026-04-26
+### Added
+- `/turnier` — Alle zukuenftigen Turniere anzeigen (aus tirol.chess.at/termine/)
+- `/schachrallye_parse` importiert jetzt auch Turniere in `config/turniere.json`
+- Datumsbereich-Parsing fuer mehrtaegige Turniere (z.B. `20.-24.05.2026`)
+- Eintraege mit "training" im Titel werden beim Import automatisch gefiltert
+
+## [1.42.2] - 2026-04-26
+### Added
+- DM-Benachrichtigung bei Schachrallye-Subscribe: User erhaelt Info ueber Termine, Unsub-Moeglichkeit und 7-Tage-Erinnerung
+
+## [1.42.1] - 2026-04-26
+### Added
+- `/schachrallye_parse` — Rallye-Termine automatisch von tirol.chess.at/termine/ importieren (Admin)
+  - HTML-Parser filtert Eintraege mit "Rallye" im Titel
+  - Duplikat-Erkennung ueber Datum, kein doppeltes Importieren
+
+## [1.42.0] - 2026-04-26
+### Added
+- `/schachrallye` — Alle zukuenftigen Schachrallye-Termine anzeigen
+- `/schachrallye_add` — Neuen Termin anlegen (Admin, Datum als TT.MM.JJJJ)
+- `/schachrallye_del` — Termin loeschen (Admin)
+- `/schachrallye_sub` — Fuer Rallye-Erinnerungen subscriben (mit optionalem User-Param fuer Admins)
+- `/schachrallye_unsub` — Rallye-Erinnerungen abbestellen
+- Automatische Erinnerung 7 Tage vor jedem Termin im konfigurierten Channel (RALLYE_CHANNEL_ID)
+
+## [1.41.6] - 2026-04-26
+### Added
+- `/dm-log` Admin-Command: DM-Log ephemeral im Discord anzeigen (alle User oder gefiltert nach User)
+
 ## [1.41.5] - 2026-04-26
 ### Added
 - `tests/test_stats.py`: 12 Unit-Tests fuer `core/stats.py` — inc, get, get_all, negatives Delta, Multi-User

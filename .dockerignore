@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+config/
+venv/
+.git/
+.github/
+*.log
+tests/
+screenshot/
