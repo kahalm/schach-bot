@@ -12,7 +12,7 @@ import asyncio
 import io
 import logging
 import os
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 import discord
 import requests
@@ -51,6 +51,20 @@ def _next_id(entries: list) -> int:
     if not entries:
         return 1
     return max(e.get('id', 0) for e in entries) + 1
+
+
+def _next_free_friday(entries: list) -> date:
+    """Gibt den naechsten Freitag zurueck, der noch nicht belegt ist."""
+    today = date.today()
+    days_until_friday = (4 - today.weekday()) % 7
+    if days_until_friday == 0:
+        days_until_friday = 7  # heute ist Freitag → naechste Woche
+    friday = today + timedelta(days=days_until_friday)
+
+    used = {e.get('datum') for e in entries if isinstance(e, dict)}
+    while friday.strftime('%Y-%m-%d') in used:
+        friday += timedelta(days=7)
+    return friday
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +123,7 @@ def setup(bot, wochenpost_channel_id: int = 0):
     @tree.command(name='wochenpost_add',
                   description='Neuen Wochenpost anlegen (Admin)')
     @discord.app_commands.describe(
-        datum='Datum im Format TT.MM.JJJJ (muss ein Freitag sein)',
+        datum='Datum TT.MM.JJJJ (Freitag). Ohne Angabe: naechster freier Freitag',
         titel='Titel des Posts',
         text='Optionaler Beschreibungstext',
         url='Optionaler Link',
@@ -117,8 +131,8 @@ def setup(bot, wochenpost_channel_id: int = 0):
     )
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_wochenpost_add(interaction: discord.Interaction,
-                                  datum: str,
                                   titel: str,
+                                  datum: str = '',
                                   text: str = '',
                                   url: str = '',
                                   pdf: discord.Attachment = None):
@@ -127,18 +141,23 @@ def setup(bot, wochenpost_channel_id: int = 0):
                 '\u26a0\ufe0f Nur fuer Admins.', ephemeral=True)
             return
 
-        d = _parse_datum(datum)
-        if d is None:
-            await interaction.response.send_message(
-                '\u26a0\ufe0f Ungueltiges Datum. Format: `TT.MM.JJJJ` (z.B. 02.05.2026)',
-                ephemeral=True)
-            return
-
-        if d.weekday() != 4:
-            await interaction.response.send_message(
-                '\u26a0\ufe0f Das Datum muss ein Freitag sein.',
-                ephemeral=True)
-            return
+        if datum:
+            d = _parse_datum(datum)
+            if d is None:
+                await interaction.response.send_message(
+                    '\u26a0\ufe0f Ungueltiges Datum. Format: `TT.MM.JJJJ` (z.B. 02.05.2026)',
+                    ephemeral=True)
+                return
+            if d.weekday() != 4:
+                await interaction.response.send_message(
+                    '\u26a0\ufe0f Das Datum muss ein Freitag sein.',
+                    ephemeral=True)
+                return
+        else:
+            entries = atomic_read(WOCHENPOST_FILE, default=list)
+            if not isinstance(entries, list):
+                entries = []
+            d = _next_free_friday(entries)
 
         # URL validieren falls angegeben
         if url:

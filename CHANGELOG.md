@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.4.1] - 2026-04-26
+### Changed
+- `/wochenpost_add` Datum ist jetzt optional — ohne Angabe wird automatisch der naechste freie Freitag gewaehlt
+- Mehrere Posts hintereinander ohne Datum belegen aufeinander folgende Freitage (1.5, 8.5, 15.5 usw.)
+
 ## [2.4.0] - 2026-04-26
 ### Added
 - Wochenpost-Feature: woechentliche Link/PDF-Posts als Thread (Freitag 18:00 UTC)

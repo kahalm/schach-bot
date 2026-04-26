@@ -2815,13 +2815,56 @@ def test_wochenpost():
         content = (ia.response.calls[0].get('content') or '').lower()
         check('ungueltige URL → Fehler', 'url' in content)
 
+        # Test: _next_free_friday Hilfsfunktion
+        import unittest.mock
+        # Montag 2026-04-27 → naechster Freitag = 01.05.2026
+        with unittest.mock.patch('commands.wochenpost.date') as mock_date:
+            mock_date.today.return_value = date(2026, 4, 27)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            nf = wochenpost_mod._next_free_friday([])
+        check('next_free_friday leer → 01.05', nf == date(2026, 5, 1))
+
+        # Mit belegtem 01.05 → 08.05
+        with unittest.mock.patch('commands.wochenpost.date') as mock_date:
+            mock_date.today.return_value = date(2026, 4, 27)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            nf = wochenpost_mod._next_free_friday([{'datum': '2026-05-01'}])
+        check('next_free_friday belegt → 08.05', nf == date(2026, 5, 8))
+
+        # Freitag selbst → naechste Woche
+        with unittest.mock.patch('commands.wochenpost.date') as mock_date:
+            mock_date.today.return_value = date(2026, 5, 1)  # Freitag
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            nf = wochenpost_mod._next_free_friday([])
+        check('next_free_friday heute=Freitag → naechste Woche', nf == date(2026, 5, 8))
+
+        # Test: Add ohne Datum → automatischer naechster Freitag
+        # Erst JSON leeren
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [])
+        ia = make_interaction(admin=True)
+        with unittest.mock.patch('commands.wochenpost.date') as mock_date:
+            mock_date.today.return_value = date(2026, 4, 27)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            run_async(cmd_add(ia, titel='Auto-Datum'))
+        content = ia.response.calls[0].get('content') or ''
+        check('add ohne Datum → Bestaetigung', '01.05.2026' in content)
+        entries = atomic_read(wochenpost_mod.WOCHENPOST_FILE, default=list)
+        check('add ohne Datum → korrekt gespeichert',
+              len(entries) == 1 and entries[0]['datum'] == '2026-05-01')
+
+        # Zweiter Add ohne Datum → 08.05
+        ia = make_interaction(admin=True)
+        with unittest.mock.patch('commands.wochenpost.date') as mock_date:
+            mock_date.today.return_value = date(2026, 4, 27)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            run_async(cmd_add(ia, titel='Auto-Datum-2'))
+        content = ia.response.calls[0].get('content') or ''
+        check('zweiter add ohne Datum → 08.05', '08.05.2026' in content)
+
+        # JSON fuer nachfolgende Tests aufraumen
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [])
+
         # Test: Loop-Logik (run_wochenpost)
-        # Eintrag fuer "heute" anlegen (muss Freitag sein)
-        from datetime import date
-        # Simulieren: Wir patchen date.today() auf einen Freitag
-        friday = date(2026, 5, 1)  # Freitag? Nein. Suche einen echten Freitag.
-        # 2026-05-01 = Freitag pruefen
-        # date(2026, 5, 1).weekday() = 4 → JA Freitag!
 
         # Wochenpost-Eintrag fuer 2026-05-01 anlegen
         test_entry = {
