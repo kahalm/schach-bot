@@ -353,16 +353,10 @@ async def _post_entry(channel, entry: dict):
         except Exception as e:
             log.warning('Wochenpost PDF-Download fehlgeschlagen: %s', e)
 
-    kwargs = {'embed': embed}
+    kwargs = {'embed': embed, 'view': _fresh_button_view()}
     if file:
         kwargs['file'] = file
     msg = await thread.send(**kwargs)
-
-    # Buttons anfuegen (geschafft/nicht geschafft, gut/schlecht)
-    try:
-        await msg.edit(view=_fresh_button_view())
-    except Exception as e:
-        log.warning('Wochenpost-Button-View fehlgeschlagen: %s', e)
 
     # posted = true setzen
     def _mark_posted(entries, eid=entry['id']):

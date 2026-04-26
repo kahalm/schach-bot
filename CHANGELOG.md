@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.5.1] - 2026-04-26
+### Fixed
+- Wochenpost-Buttons werden jetzt direkt mit der Nachricht gesendet statt per nachtraeglichem Edit (behebt fehlende Buttons)
+
 ## [2.5.0] - 2026-04-26
 ### Added
 - Wochenpost-Buttons: 4 Reaktions-Buttons unter jedem Wochenpost (geschafft/nicht geschafft + gut/schlecht)
