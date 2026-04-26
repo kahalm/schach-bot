@@ -31,7 +31,8 @@ def atomic_read(path: str, default=None):
         try:
             with open(path, encoding='utf-8') as f:
                 return json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError, ValueError):
+        except (FileNotFoundError, PermissionError, OSError,
+                json.JSONDecodeError, ValueError):
             return default() if callable(default) else (default if default is not None else {})
 
 
@@ -50,6 +51,10 @@ def _write_unlocked(path: str, data):
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        try:
+            os.chmod(tmp, 0o644)
+        except OSError:
+            pass
         os.replace(tmp, path)
     except BaseException:
         try:
@@ -69,7 +74,8 @@ def atomic_update(path: str, fn: Callable, default=None):
         try:
             with open(path, encoding='utf-8') as f:
                 data = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError, ValueError):
+        except (FileNotFoundError, PermissionError, OSError,
+                json.JSONDecodeError, ValueError):
             data = default() if callable(default) else (default if default is not None else {})
         data = fn(data)
         _write_unlocked(path, data)

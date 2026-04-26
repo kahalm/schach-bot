@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.5.3] - 2026-04-26
+### Fixed
+- `json_store`: `PermissionError`/`OSError` wird jetzt in `atomic_read` und `atomic_update` abgefangen (verhindert Crash bei gesperrten Dateien)
+- `json_store`: Temp-Dateien erhalten `chmod 644` vor `os.replace` (behebt restriktive Permissions durch `mkstemp` im Docker-Container)
+
 ## [2.5.2] - 2026-04-26
 ### Fixed
 - `/dm-log`, `/stats`, `/greeted`: User-Namen nur noch aus Cache statt per API-Call (behebt Dauerschleife durch Discord-Rate-Limiting bei vielen Usern)
