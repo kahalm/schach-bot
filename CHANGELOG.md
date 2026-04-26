@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.41.5] - 2026-04-26
+### Added
+- `tests/test_stats.py`: 12 Unit-Tests fuer `core/stats.py` — inc, get, get_all, negatives Delta, Multi-User
+
 ## [1.41.4] - 2026-04-26
 ### Added
 - `tests/test_event_log.py`: 18 Unit-Tests fuer `core/event_log.py` — log_reaction, read_all, Limit, Rotation, Elo-Cache mit TTL
