@@ -37,7 +37,7 @@ def setup(bot: commands.Bot):
             return
 
         new_entry = {
-            'text': beschreibung,
+            'text': beschreibung[:500],
             'user': interaction.user.display_name,
             'user_id': interaction.user.id,
             'datum': str(date.today()),
@@ -102,6 +102,10 @@ def setup(bot: commands.Bot):
     @discord.app_commands.describe(id='Nummer des Feature-Wunsches')
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_wanted_delete(interaction: discord.Interaction, id: int):
+        if not (isinstance(interaction.user, discord.Member)
+                and interaction.user.guild_permissions.administrator):
+            await interaction.response.send_message('⚠️ Nur für Admins.', ephemeral=True)
+            return
         result = {'found': False}
 
         def _delete(entries):

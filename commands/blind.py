@@ -28,11 +28,20 @@ def setup(bot: commands.Bot):
         buch='Buchnummer aus /kurs (Standard: zufälliges Blind-Buch)',
         user='Puzzle an diesen User schicken (Standard: an dich selbst)',
     )
+    @discord.app_commands.checks.cooldown(1, 10.0)
     async def cmd_blind(interaction: discord.Interaction,
                         moves: int = 4,
                         anzahl: int = 1,
                         buch: int = 0,
                         user: discord.Member | None = None):
+        # Admin-Check fuer user:-Parameter
+        if user is not None and user.id != interaction.user.id:
+            if not (isinstance(interaction.user, discord.Member)
+                    and interaction.user.guild_permissions.administrator):
+                await interaction.response.send_message(
+                    '⚠️ Nur Admins dürfen Puzzles an andere User senden.',
+                    ephemeral=True)
+                return
         target_user = user or interaction.user
         log.info('/blind von %s: moves=%d anzahl=%d buch=%d user=%s',
                  interaction.user, moves, anzahl, buch, target_user)
@@ -66,4 +75,4 @@ def setup(bot: commands.Bot):
                 ephemeral=True)
         except Exception as e:
             log.exception('/blind fehlgeschlagen')
-            await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
+            await interaction.followup.send('❌ Ein Fehler ist aufgetreten.', ephemeral=True)

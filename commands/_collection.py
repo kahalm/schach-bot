@@ -52,8 +52,8 @@ def setup_collection(bot, *,
                 return
 
             new_entry = {
-                'url': url,
-                'beschreibung': beschreibung,
+                'url': url[:500],
+                'beschreibung': beschreibung[:500],
                 'user': interaction.user.display_name,
                 'datum': str(date.today()),
             }

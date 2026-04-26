@@ -167,6 +167,10 @@ def setup(bot):
     )
     async def test_cmd(interaction: discord.Interaction, kurs: int = 0,
                        puzzle: int = 0, lichess: int = 0):
+        if not (isinstance(interaction.user, discord.Member)
+                and interaction.user.guild_permissions.administrator):
+            await interaction.response.send_message('⚠️ Nur für Admins.', ephemeral=True)
+            return
         await interaction.response.defer(ephemeral=True)
 
         snapshots = _load_snapshots()

@@ -214,6 +214,15 @@ def _is_admin(interaction: discord.Interaction) -> bool:
     )
 
 
+async def _require_admin(interaction: discord.Interaction) -> bool:
+    """Prueft Admin-Rechte und antwortet bei Fehlen. Returns True wenn Admin."""
+    if _is_admin(interaction):
+        return True
+    await interaction.response.send_message(
+        '⚠️ Nur für Admins.', ephemeral=True)
+    return False
+
+
 def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str]]]:
     """Gibt (Titel, [(name, value), ...]) für den gewünschten Bereich zurück."""
     if bereich == 'puzzle':
@@ -367,6 +376,8 @@ async def cmd_version(interaction: discord.Interaction):
 @tree.command(name='greeted', description='Zeigt alle User, die die Begrüßungs-DM erhalten haben (Admin)')
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_greeted(interaction: discord.Interaction):
+    if not await _require_admin(interaction):
+        return
     data = await asyncio.to_thread(atomic_read, DM_STATE_FILE, dict)
     greeted = data.get('greeted', [])
     if not greeted:
@@ -390,6 +401,9 @@ async def cmd_greeted(interaction: discord.Interaction):
 @discord.app_commands.describe(user='Nur DMs dieses Users anzeigen')
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_dm_log(interaction: discord.Interaction, user: discord.User = None):
+    if not _is_admin(interaction):
+        await interaction.response.send_message('⚠️ Nur für Admins.', ephemeral=True)
+        return
     await interaction.response.defer(ephemeral=True)
     data = await asyncio.to_thread(atomic_read, dm_log.DM_LOG_FILE, dict)
 
@@ -447,6 +461,8 @@ async def cmd_dm_log(interaction: discord.Interaction, user: discord.User = None
 @discord.app_commands.describe(user='Der User, der die Nachricht erhalten soll')
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_announce(interaction: discord.Interaction, user: discord.User):
+    if not await _require_admin(interaction):
+        return
     try:
         dm = await user.create_dm()
         await dm.send(WELCOME_MESSAGE)
@@ -465,6 +481,8 @@ async def cmd_announce(interaction: discord.Interaction, user: discord.User):
 @tree.command(name='stats', description='Nutzungsstatistiken aller User anzeigen (Admin)')
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_stats(interaction: discord.Interaction):
+    if not await _require_admin(interaction):
+        return
     all_stats = await asyncio.to_thread(stats.get_all)
     if not all_stats:
         await interaction.response.send_message('Noch keine Statistiken vorhanden.', ephemeral=True)
@@ -509,6 +527,8 @@ async def cmd_stats(interaction: discord.Interaction):
 @tree.command(name='daily', description='Tägliches Puzzle manuell auslösen (Admin)')
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_daily(interaction: discord.Interaction):
+    if not await _require_admin(interaction):
+        return
     channel = bot.get_channel(CHANNEL_ID)
     if not channel:
         await interaction.response.send_message('Puzzle-Channel nicht gefunden.', ephemeral=True)
@@ -534,6 +554,22 @@ async def puzzle_task():
         await puzzle.post_puzzle(channel)
     except Exception as e:
         log.exception('puzzle_task fehlgeschlagen')
+    # Reaction-Log rotieren
+    try:
+        from core.event_log import rotate_log
+        await asyncio.to_thread(rotate_log)
+    except Exception as e:
+        log.warning('Reaction-Log Rotation fehlgeschlagen: %s', e)
+
+# --- Cooldown-Error-Handler ---
+
+@tree.error
+async def on_app_command_error(interaction: discord.Interaction, error):
+    if isinstance(error, discord.app_commands.CommandOnCooldown):
+        await interaction.response.send_message(
+            f'⏳ Bitte warte {error.retry_after:.0f}s.', ephemeral=True)
+    else:
+        log.exception('Unbehandelter Command-Fehler: %s', error)
 
 # ---------------------------------------------------------------------------
 

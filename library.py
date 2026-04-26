@@ -600,11 +600,11 @@ def _sftpgo_message(entry: dict, path: str, fmt: str) -> str:
                   f'{_SFTPGO_SHARE_ID}/browse?path={encoded}')
     size       = os.path.getsize(path)
     mb         = size / (1024 * 1024)
-    return (
-        f'📥 **{entry["title"]}** `[{fmt.upper()} · {mb:.1f} MB]`\n\n'
-        f'🔗 {browse_url}\n\n'
-        f'🔑 Passwort: `{_SFTPGO_SHARE_PASSWORD}`'
-    )
+    msg = (f'📥 **{entry["title"]}** `[{fmt.upper()} · {mb:.1f} MB]`\n\n'
+           f'🔗 {browse_url}')
+    if _SFTPGO_SHARE_PASSWORD:
+        msg += f'\n\n🔑 Passwort: ||`{_SFTPGO_SHARE_PASSWORD}`|| *(bitte nicht weitergeben)*'
+    return msg
 
 
 async def _send_book(interaction: discord.Interaction,

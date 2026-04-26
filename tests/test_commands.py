@@ -101,6 +101,7 @@ _app_commands.describe = _passthrough_decorator
 _app_commands.default_permissions = _passthrough_decorator
 _app_commands.choices = _passthrough_decorator
 _app_commands.Choice = MagicMock
+_app_commands.checks.cooldown = lambda *a, **kw: (lambda fn: fn)
 # Muss auch auf discord.app_commands gesetzt werden
 _discord.app_commands = _app_commands
 
@@ -249,7 +250,7 @@ class FakeUser:
         return FakeChannel()
 
 
-class FakeMember(FakeUser):
+class FakeMember(FakeUser, _discord.Member):
     pass
 
 
@@ -1186,7 +1187,7 @@ def test_daily():
                     return None
 
             bot_mod.bot = NullBot()
-            ia = make_interaction()
+            ia = make_interaction(admin=True)
             run_async(cmd(ia))
             content = (ia.response.calls[0].get('content') or '').lower()
             check('Channel nicht gefunden → Fehler', 'nicht gefunden' in content)
@@ -1194,7 +1195,7 @@ def test_daily():
             # Test: Erfolg
             bot_mod.CHANNEL_ID = 99999
             bot_mod.bot = _CapturingBot()
-            ia = make_interaction()
+            ia = make_interaction(admin=True)
             run_async(cmd(ia))
             check('defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
             check('post_puzzle aufgerufen', len(call_log) > 0)

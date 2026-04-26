@@ -4,6 +4,20 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.2.0] - 2026-04-26
+### Security
+- Pickle-Cache (`puzzle_lines.pkl`) komplett entfernt — keine unsichere Deserialization mehr
+- Runtime Admin-Checks auf allen Admin-Commands (schuetzt gegen Server-Integrations-Override)
+- `/blind user:` erfordert jetzt Admin-Rechte (verhindert DM-Spam an andere User)
+- Exception-Details werden nicht mehr an User geleakt (nur noch generische Fehlermeldung)
+- User-Input in `/wanted`, `/resourcen`, `/youtube` auf 500 Zeichen begrenzt
+- Dockerfile: Bot laeuft als non-root User (`botuser`)
+- Cooldowns (10s) auf `/puzzle`, `/blind`, `/endless`
+- SFTPGo-Passwort in Spoiler-Tags versteckt
+- Books-Pfad wird nicht mehr in Fehlermeldungen an User angezeigt
+- Reaction-Log wird automatisch taeglich rotiert
+- Cooldown-Error-Handler zeigt freundliche Wartezeit-Meldung
+
 ## [2.1.0] - 2026-04-26
 ### Fixed
 - Reminder-Loop crashte bei korruptem `hours: 0` in JSON (ZeroDivisionError fuer alle User)

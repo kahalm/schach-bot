@@ -36,7 +36,7 @@ from .rendering import _svg_to_pil, _get_piece, _label_font, _render_board  # no
 # --- Auswahl/Caching ---
 from .selection import (  # noqa: F401
     _find_chapter_prefix, _list_chapters, _list_pgn_files,
-    _FATAL_STATUS, PUZZLE_CACHE_FILE, _lines_cache, _lines_cache_fp,
+    _FATAL_STATUS, _lines_cache, _lines_cache_fp,
     _books_fingerprint, clear_lines_cache, load_all_lines, _parse_all_lines,
     pick_sequential_lines, get_random_books,
     pick_random_lines, pick_random_line, find_line_by_id,

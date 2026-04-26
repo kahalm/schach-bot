@@ -170,7 +170,7 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
         await interaction.followup.send(msg, ephemeral=True)
     except Exception as e:
         log.exception('/puzzle fehlgeschlagen: %s', e)
-        await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
+        await interaction.followup.send('❌ Ein Fehler ist aufgetreten.', ephemeral=True)
 
 
 async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
@@ -313,7 +313,7 @@ async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
         embed.set_footer(text=footer)
         await interaction.followup.send(embed=embed, ephemeral=True)
     except Exception as e:
-        await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
+        await interaction.followup.send('❌ Ein Fehler ist aufgetreten.', ephemeral=True)
 
 
 async def _cmd_train(interaction: discord.Interaction, buch: int = None):
@@ -564,7 +564,7 @@ async def _cmd_endless(bot, interaction: discord.Interaction, buch: int = 0):
             ephemeral=True)
     except Exception as e:
         _pkg.stop_endless(user_id)
-        await interaction.followup.send(f'❌ Fehler: {e}', ephemeral=True)
+        await interaction.followup.send('❌ Ein Fehler ist aufgetreten.', ephemeral=True)
 
 
 async def _cmd_ignore_kapitel(
@@ -573,6 +573,10 @@ async def _cmd_ignore_kapitel(
     kapitel: int = 0,
     aktion: discord.app_commands.Choice[str] = None,
 ):
+    if not (isinstance(interaction.user, discord.Member)
+            and interaction.user.guild_permissions.administrator):
+        await interaction.response.send_message('⚠️ Nur für Admins.', ephemeral=True)
+        return
     await interaction.response.defer(ephemeral=True)
 
     # Ohne Parameter → Liste aller ignorierten Kapitel
@@ -599,7 +603,7 @@ async def _cmd_ignore_kapitel(
     books = _pkg._list_pgn_files()
     if not books:
         await interaction.followup.send(
-            f'⚠️ Books-Verzeichnis fehlt: `{_pkg.BOOKS_DIR}`', ephemeral=True)
+            '⚠️ Books-Verzeichnis nicht gefunden.', ephemeral=True)
         return
     if not 1 <= buch <= len(books):
         await interaction.followup.send(
@@ -651,6 +655,7 @@ def setup(bot: discord.ext.commands.Bot):
         id='Puzzle-ID (z.B. datei.pgn:123) – zeigt genau dieses Puzzle',
         user='Puzzle an diesen User schicken (Standard: an dich selbst)',
     )
+    @discord.app_commands.checks.cooldown(1, 10.0)
     async def cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: int = 0,
                          id: str = '', user: discord.Member | None = None):
         await _cmd_puzzle(interaction, anzahl, buch, id, user)
@@ -680,6 +685,7 @@ def setup(bot: discord.ext.commands.Bot):
     @discord.app_commands.describe(
         buch='Buchnummer aus /kurs (Standard: alle Bücher)',
     )
+    @discord.app_commands.checks.cooldown(1, 10.0)
     async def cmd_endless(interaction: discord.Interaction, buch: int = 0):
         await _cmd_endless(bot, interaction, buch)
 

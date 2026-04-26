@@ -335,6 +335,9 @@ def setup(bot, tournament_channel_id: int = 0):
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_schachrallye_add(interaction: discord.Interaction,
                                    datum: str, ort: str):
+        if not _is_admin(interaction):
+            await interaction.response.send_message('⚠️ Nur für Admins.', ephemeral=True)
+            return
         d = _parse_datum(datum)
         if d is None:
             await interaction.response.send_message(
@@ -377,6 +380,9 @@ def setup(bot, tournament_channel_id: int = 0):
     @discord.app_commands.describe(id='ID des Termins (aus /schachrallye)')
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_schachrallye_del(interaction: discord.Interaction, id: int):
+        if not _is_admin(interaction):
+            await interaction.response.send_message('⚠️ Nur für Admins.', ephemeral=True)
+            return
         result = {'found': False}
 
         def _del(data):
@@ -690,6 +696,9 @@ def setup(bot, tournament_channel_id: int = 0):
                   description='Termine von tirol.chess.at importieren (Admin)')
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_turnier_parse(interaction: discord.Interaction):
+        if not _is_admin(interaction):
+            await interaction.response.send_message('⚠️ Nur für Admins.', ephemeral=True)
+            return
         await interaction.response.defer(ephemeral=True)
         try:
             added = await _parse_and_post()

@@ -2,7 +2,6 @@
 
 import io
 import os
-import pickle
 import random
 import logging
 
@@ -19,7 +18,6 @@ from puzzle.state import (
 )
 from puzzle.processing import _flatten_null_move_variations, _has_training_comment, _split_for_blind
 from core.paths import CONFIG_DIR
-from core.json_store import _lock_for
 
 log = logging.getLogger('schach-bot')
 
@@ -84,8 +82,6 @@ _FATAL_STATUS = (
     | chess.STATUS_TOO_MANY_CHECKERS
 )
 
-PUZZLE_CACHE_FILE = os.path.join(CONFIG_DIR, 'puzzle_lines.pkl')
-
 _lines_cache: list[tuple[str, chess.pgn.Game]] | None = None
 _lines_cache_fp: tuple | None = None
 
@@ -111,19 +107,13 @@ def _books_fingerprint() -> tuple:
 
 
 def clear_lines_cache() -> None:
-    """In-Memory- und Disk-Cache löschen. Nächster ``load_all_lines()`` parst neu."""
+    """In-Memory-Cache löschen. Nächster ``load_all_lines()`` parst neu."""
     global _lines_cache, _lines_cache_fp
     _lines_cache = None
     _lines_cache_fp = None
     _invalidate_books_config_cache()
     _invalidate_ignore_cache()
     _invalidate_chapter_ignore_cache()
-    try:
-        os.remove(PUZZLE_CACHE_FILE)
-    except FileNotFoundError:
-        pass
-    except OSError as e:
-        log.warning('Pickle-Cache löschen fehlgeschlagen: %s', e)
 
 
 def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
@@ -136,36 +126,12 @@ def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
     if _lines_cache is not None and _lines_cache_fp == fp:
         return _lines_cache
 
-    # 2) Disk-Cache (nur einmal pro Restart relevant)
-    pkl_lock = _lock_for(PUZZLE_CACHE_FILE)
-    with pkl_lock:
-        if os.path.exists(PUZZLE_CACHE_FILE):
-            try:
-                with open(PUZZLE_CACHE_FILE, 'rb') as f:
-                    blob = pickle.load(f)
-                if isinstance(blob, dict) and blob.get('fp') == fp:
-                    _lines_cache = blob['lines']
-                    _lines_cache_fp = fp
-                    log.info('Puzzle-Cache geladen (%d Linien aus %s)',
-                             len(_lines_cache), PUZZLE_CACHE_FILE)
-                    return _lines_cache
-            except Exception as e:
-                log.warning('Puzzle-Cache nicht ladbar (%s) – parse neu.', e)
-
-    # 3) Volles Re-Parse
+    # 2) Volles Re-Parse
     lines = _parse_all_lines()
 
     _lines_cache = lines
     _lines_cache_fp = fp
-    with pkl_lock:
-        try:
-            os.makedirs(os.path.dirname(PUZZLE_CACHE_FILE), exist_ok=True)
-            with open(PUZZLE_CACHE_FILE, 'wb') as f:
-                pickle.dump({'fp': fp, 'lines': lines}, f, protocol=pickle.HIGHEST_PROTOCOL)
-            log.info('Puzzle-Cache geschrieben (%d Linien → %s)',
-                     len(lines), PUZZLE_CACHE_FILE)
-        except Exception as e:
-            log.warning('Puzzle-Cache schreiben fehlgeschlagen: %s', e)
+    log.info('Puzzle-Linien geparst: %d Linien', len(lines))
 
     return lines
 

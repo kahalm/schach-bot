@@ -151,8 +151,6 @@ def setup():
     state_mod.IGNORE_FILE = os.path.join(_tmpdir, 'puzzle_ignore.json')
     state_mod.CHAPTER_IGNORE_FILE = os.path.join(_tmpdir, 'chapter_ignore.json')
     state_mod.PUZZLE_STATE_FILE = os.path.join(_tmpdir, 'puzzle_state.json')
-    sel_mod.PUZZLE_CACHE_FILE = os.path.join(_tmpdir, 'puzzle_lines.pkl')
-
     # Caches leeren
     sel_mod._lines_cache = None
     sel_mod._lines_cache_fp = None
