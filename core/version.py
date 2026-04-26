@@ -2,6 +2,6 @@
 
 from datetime import datetime, timezone
 
-VERSION = '1.40.1'
+VERSION = '1.40.2'
 START_TIME = datetime.now(timezone.utc)
 EMBED_COLOR = 0x4e9e4e

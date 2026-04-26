@@ -25,9 +25,17 @@ load_dotenv()
 DISCORD_TOKEN   = os.getenv('DISCORD_TOKEN')
 if not DISCORD_TOKEN:
     raise SystemExit('DISCORD_TOKEN fehlt in .env – siehe .env.example')
-CHANNEL_ID      = int(os.getenv('CHANNEL_ID', '0'))
-PUZZLE_HOUR     = int(os.getenv('PUZZLE_HOUR', '9'))
-PUZZLE_MINUTE   = int(os.getenv('PUZZLE_MINUTE', '0'))
+try:
+    CHANNEL_ID = int(os.getenv('CHANNEL_ID', '0'))
+except ValueError:
+    raise SystemExit(f"CHANNEL_ID ungültig: {os.getenv('CHANNEL_ID')!r} — muss eine Zahl sein")
+try:
+    PUZZLE_HOUR = int(os.getenv('PUZZLE_HOUR', '9'))
+    PUZZLE_MINUTE = int(os.getenv('PUZZLE_MINUTE', '0'))
+except ValueError:
+    raise SystemExit(
+        f"PUZZLE_HOUR/PUZZLE_MINUTE ungültig: "
+        f"{os.getenv('PUZZLE_HOUR')!r}/{os.getenv('PUZZLE_MINUTE')!r} — müssen Zahlen sein")
 if not (0 <= PUZZLE_HOUR <= 23 and 0 <= PUZZLE_MINUTE <= 59):
     raise SystemExit(f'PUZZLE_HOUR/PUZZLE_MINUTE ungültig: {PUZZLE_HOUR}:{PUZZLE_MINUTE}')
 DM_STATE_FILE   = os.path.join(CONFIG_DIR, 'dm_state.json')
@@ -87,7 +95,16 @@ async def on_ready():
     _ready_done = True
     # Persistente Button-View für Puzzle-Reaktionen registrieren
     bot.add_view(puzzle.PuzzleView())
-    await tree.sync()
+    for attempt, delay in enumerate([0, 5, 15, 30], 1):
+        try:
+            if delay:
+                await asyncio.sleep(delay)
+            await tree.sync()
+            break
+        except Exception:
+            log.warning('tree.sync() Versuch %d/4 fehlgeschlagen', attempt)
+            if attempt == 4:
+                log.error('tree.sync() endgültig fehlgeschlagen — Commands evtl. nicht verfügbar')
     log.info('Bot online als %s v%s', bot.user, VERSION)
     puzzle_task.start()
 

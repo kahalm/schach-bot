@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.40.2] - 2026-04-26
+### Fixed
+- `CHANNEL_ID`, `PUZZLE_HOUR`, `PUZZLE_MINUTE`: try-except um int-Konvertierung — klare Fehlermeldung statt ValueError-Crash (2.1/2.2)
+- `tree.sync()` mit Retry+Backoff (4 Versuche, 0/5/15/30s) — Bot startet auch bei Netzwerk-Problemen mit Commands (2.3)
+
 ## [1.40.1] - 2026-04-26
 ### Fixed
 - `find_line_by_id`: Suffix-Match nur an `:`-Grenze — `"3"` matcht nicht mehr `"book:13"` (1.1)
