@@ -78,24 +78,33 @@ def _get_piece(code: str, size: int) -> Image.Image:
         log.info('Figur geladen: %s', code)
     return _piece_cache[code]
 
+_FONT_PATHS = [
+    # Windows
+    'C:/Windows/Fonts/arialbd.ttf',
+    'C:/Windows/Fonts/arial.ttf',
+    # Linux (DejaVu, Liberation)
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+    '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+    # macOS
+    '/System/Library/Fonts/Helvetica.ttc',
+    '/Library/Fonts/Arial.ttf',
+]
+_font_cache: dict[int, ImageFont.FreeTypeFont | ImageFont.ImageFont] = {}
+
+
 def _label_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    _FONT_PATHS = [
-        # Windows
-        'C:/Windows/Fonts/arialbd.ttf',
-        'C:/Windows/Fonts/arial.ttf',
-        # Linux (DejaVu, Liberation)
-        '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-        '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
-        # macOS
-        '/System/Library/Fonts/Helvetica.ttc',
-        '/Library/Fonts/Arial.ttf',
-    ]
+    if size in _font_cache:
+        return _font_cache[size]
     for p in _FONT_PATHS:
         try:
-            return ImageFont.truetype(p, size)
+            font = ImageFont.truetype(p, size)
+            _font_cache[size] = font
+            return font
         except Exception:
             pass
-    return ImageFont.load_default()
+    font = ImageFont.load_default()
+    _font_cache[size] = font
+    return font
 
 def _render_board(board: chess.Board) -> io.BytesIO:
     """PNG einer Stellung mit Lichess-Figuren (cburnett) und Koordinaten."""

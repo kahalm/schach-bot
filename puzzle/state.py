@@ -104,8 +104,16 @@ def _invalidate_chapter_ignore_cache():
 
 def _is_chapter_ignored(line_id: str, chapter_ignored: set[str]) -> bool:
     """Prüft, ob die line_id zu einem ignorierten Kapitel gehört.
-    Match: '<filename>:<prefix>.' (Punkt nach dem Präfix verhindert False-Positives)."""
-    return any(line_id.startswith(prefix + '.') for prefix in chapter_ignored)
+    Extrahiert 'filename:chapter' aus line_id und prüft Set-Mitgliedschaft (O(1))."""
+    colon = line_id.find(':')
+    if colon < 0:
+        return False
+    rest = line_id[colon + 1:]
+    dot = rest.find('.')
+    if dot < 0:
+        return False
+    key = line_id[:colon + 1 + dot]  # "filename:chapter"
+    return key in chapter_ignored
 
 
 def ignore_chapter(book_filename: str, chapter_prefix: str):

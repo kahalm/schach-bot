@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.38.0] - 2026-04-26
+### Changed
+- **Performance**: Regex in `processing.py` auf Modul-Ebene vorkompiliert (6.6)
+- **Performance**: Font-Cache in `rendering.py` — kein Dateisystem-Scan pro Render (6.7)
+- **Performance**: `_is_chapter_ignored` O(1) Set-Lookup statt O(n) Iteration (6.9)
+- **Performance**: Elo-Wert in `event_log.py` 60s gecached (6.4)
+- **Performance**: `read_all()` begrenzt auf 50.000 Eintraege + `rotate_log()` (6.2/6.3)
+
 ## [1.37.0] - 2026-04-26
 ### Fixed
 - `_find_game()` (test.py): Endlosschleife bei Parse-Fehlern verhindert (max 50 Fehler)

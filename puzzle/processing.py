@@ -9,6 +9,15 @@ import chess.pgn
 
 log = logging.getLogger('schach-bot')
 
+# Vorkompilierte Regex-Muster (6.6: vermeidet re.compile bei jedem Aufruf)
+_RE_TQU = re.compile(r'\[%tqu\b[^\]]*\]')
+_RE_ANNOTATION = re.compile(r'\[%\w+[^\]]*\]')
+_RE_EMPTY_COMMENT = re.compile(r'\{\s*\}')
+_RE_MULTI_SPACE = re.compile(r'  +')
+_RE_FEN_HEADER = re.compile(r'^\[FEN\s+"', re.MULTILINE)
+_RE_SETUP_HEADER = re.compile(r'^\[SetUp\s+"', re.MULTILINE)
+_RE_FEN_LINE = re.compile(r'(^\[FEN\s+"[^"]*"\])', re.MULTILINE)
+
 
 def _solution_pgn(game: chess.pgn.Game) -> str:
     """Exportiert die Lösung als bereinigten PGN-String (ohne Header, mit Varianten+Kommentaren)."""
@@ -116,7 +125,7 @@ def _trim_to_training_position(game: chess.pgn.Game) -> chess.pgn.Game:
         for key, val in game.headers.items():
             if key not in ('FEN', 'SetUp'):
                 g.headers[key] = val
-        g.comment = re.sub(r'\[%tqu\b[^\]]*\]', '', src_node.comment or '').strip()
+        g.comment = _RE_TQU.sub('', src_node.comment or '').strip()
         _copy(src_node, g, brd)
         return g
 
@@ -260,12 +269,9 @@ def _strip_pgn_annotations(text: str) -> str:
     Nach dem Entfernen werden leere Kommentarblöcke ``{  }`` und
     überflüssige Leerzeichen bereinigt.
     """
-    # Alle [%...]-Blöcke entfernen
-    text = re.sub(r'\[%\w+[^\]]*\]', '', text)
-    # Leere Kommentarblöcke { } entfernen
-    text = re.sub(r'\{\s*\}', '', text)
-    # Mehrfache Leerzeichen zusammenführen
-    text = re.sub(r'  +', ' ', text)
+    text = _RE_ANNOTATION.sub('', text)
+    text = _RE_EMPTY_COMMENT.sub('', text)
+    text = _RE_MULTI_SPACE.sub(' ', text)
     return text.strip()
 
 
@@ -277,14 +283,8 @@ def _clean_pgn_for_lichess(pgn_text: str) -> str:
     interpretiert sonst die Startfarbe falsch (auto-played Black-Move,
     obwohl FEN „Black to move\" sagt).
     """
-    # [%tqu ...] entfernen
-    pgn_text = re.sub(r'\[%tqu\b[^\]]*\]', '', pgn_text)
-    # leere Kommentare {} entfernen
-    pgn_text = re.sub(r'\{\s*\}', '', pgn_text)
-    # SetUp "1" ergänzen, wenn FEN-Header vorhanden, aber SetUp fehlt
-    if re.search(r'^\[FEN\s+"', pgn_text, re.MULTILINE) and \
-       not re.search(r'^\[SetUp\s+"', pgn_text, re.MULTILINE):
-        pgn_text = re.sub(r'(^\[FEN\s+"[^"]*"\])',
-                          r'[SetUp "1"]\n\1',
-                          pgn_text, count=1, flags=re.MULTILINE)
+    pgn_text = _RE_TQU.sub('', pgn_text)
+    pgn_text = _RE_EMPTY_COMMENT.sub('', pgn_text)
+    if _RE_FEN_HEADER.search(pgn_text) and not _RE_SETUP_HEADER.search(pgn_text):
+        pgn_text = _RE_FEN_LINE.sub(r'[SetUp "1"]\n\1', pgn_text, count=1)
     return pgn_text
