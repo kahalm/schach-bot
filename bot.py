@@ -126,6 +126,15 @@ async def on_member_join(member: discord.Member):
     try:
         dm = await member.create_dm()
         await dm.send(WELCOME_MESSAGE)
+        # In greeted-Liste eintragen, damit on_message kein Doppel-Willkommen schickt
+        from core.json_store import atomic_update as _au
+        def _mark_greeted(data):
+            greeted = data.get('greeted', [])
+            if member.id not in greeted:
+                greeted.append(member.id)
+                data['greeted'] = greeted
+            return data
+        await asyncio.to_thread(_au, DM_STATE_FILE, _mark_greeted, dict)
     except discord.Forbidden:
         log.warning('Kann DM an %s nicht senden (DMs deaktiviert).', member)
     except Exception as e:
@@ -405,7 +414,7 @@ async def puzzle_task():
     try:
         await puzzle.post_puzzle(channel)
     except Exception as e:
-        log.error('puzzle_task: %s', e)
+        log.exception('puzzle_task: %s', e)
 
 # ---------------------------------------------------------------------------
 

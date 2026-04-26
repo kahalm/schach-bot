@@ -54,10 +54,12 @@ async def _reminder_loop():
                 log.info('Reminder: %d Puzzle(s) an User %s gesendet.', entry.get('puzzle', 1), uid)
         except discord.Forbidden:
             log.warning('Reminder: DM an %s nicht möglich (DMs deaktiviert).', uid)
+            continue
         except Exception as e:
-            log.info('Reminder: Fehler für User %s: %s', uid, e)
+            log.warning('Reminder: Fehler für User %s: %s', uid, e)
+            continue
 
-        # Nächsten Zeitpunkt ab jetzt setzen (verpasste Runden überspringen)
+        # Nur bei Erfolg: nächsten Zeitpunkt vorrücken
         new_next = next_time + timedelta(hours=hours) * (missed + 1)
         updated_nexts[uid_str] = new_next.isoformat()
 

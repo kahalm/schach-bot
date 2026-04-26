@@ -4,7 +4,7 @@ import io
 import logging
 import os
 import time as _time_mod
-from datetime import date as _date, datetime as _datetime
+from datetime import date as _date, datetime as _datetime, timezone as _tz
 
 import chess
 import chess.pgn
@@ -68,8 +68,8 @@ def _lichess_set_cooldown(retry_after: int | None = None):
     secs  = retry_after if retry_after and retry_after > 0 else _LICHESS_COOLDOWN_SECS
     until = _time_mod.time() + secs
     atomic_write(LICHESS_COOLDOWN_FILE, {'until': until})
-    log.warning('Lichess 429 – Cooldown bis %s gesetzt (%ds).',
-                _datetime.fromtimestamp(until).strftime('%H:%M'), secs)
+    log.warning('Lichess 429 – Cooldown bis %s UTC gesetzt (%ds).',
+                _datetime.fromtimestamp(until, tz=_tz.utc).strftime('%H:%M'), secs)
 
 
 def _lichess_request(method: str, url: str, **kwargs):
@@ -208,6 +208,8 @@ def upload_to_lichess(game: chess.pgn.Game,
         except Exception as e:
             log.error('Lichess-Study-Upload fehlgeschlagen: %s', e)
 
+    # Fallback: oeffentlicher Import (kein Study, kein Gamebook-Modus)
+    log.warning('Fallback auf oeffentlichen /api/import (kein Token oder Study-Fehler).')
     if _lichess_rate_limited():
         return None
     try:

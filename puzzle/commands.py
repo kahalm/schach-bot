@@ -151,6 +151,13 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
 
             await _pkg._send_puzzle_followups(dm, game, context, puzzle_url, line_id)
 
+            # Stats + Study-ID tracken (wie bei post_puzzle)
+            stats.inc(target_uid, 'puzzles')
+            sid = _pkg._extract_study_id(puzzle_url) if puzzle_url else None
+            if sid:
+                base_count, base_total = _pkg._get_user_puzzle_count(target_uid)
+                _pkg._set_user_study_id(target_uid, sid, base_count + 1, base_total + 1)
+
             dest = f'an {target_user.mention}' if user else 'dir'
             await interaction.followup.send(
                 f'✅ Puzzle `{line_id}` {dest} per DM gesendet.', ephemeral=True)

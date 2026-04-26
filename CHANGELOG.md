@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.35.0] - 2026-04-25
+### Fixed
+- `on_member_join` traegt User jetzt in greeted-Liste ein (kein Doppel-Willkommen mehr)
+- Reminder-next wird nur noch bei erfolgreichem Send vorgerueckt (User verpasst
+  Reminder nicht mehr still bei Fehler); Fehler-Loglevel auf WARNING erhoeht
+- `/puzzle id:X` trackt jetzt Stats und speichert User-Study-ID zurueck
+- Lichess-Fallback auf `/api/import` wird jetzt explizit geloggt
+- `lichess.py`: `fromtimestamp()` nutzt jetzt UTC statt Lokalzeit
+- `puzzle_task`: `log.exception` statt `log.error` (Traceback wird jetzt erhalten)
+
 ## [1.34.0] - 2026-04-25
 ### Fixed
 - **Blocking I/O**: `on_message` DM-Handling nutzt jetzt `asyncio.to_thread`
