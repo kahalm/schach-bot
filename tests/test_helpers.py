@@ -288,7 +288,10 @@ class _FakeGuild:
 
 class FakeThread:
     """Fake-Thread fuer create_thread (Wochenpost etc.)."""
+    _counter = 0
     def __init__(self, name='thread'):
+        FakeThread._counter += 1
+        self.id = 100000 + FakeThread._counter
         self.name = name
         self.sent = []
 
@@ -362,6 +365,7 @@ def setup_temp_config():
     _patch_file_constant('commands.reminder', 'REMINDER_FILE', tmpdir)
     _patch_file_constant('commands.schachrallye', 'TURNIER_FILE', tmpdir)
     _patch_file_constant('commands.wochenpost', 'WOCHENPOST_FILE', tmpdir)
+    _patch_file_constant('commands.wochenpost', 'WOCHENPOST_SUB_FILE', tmpdir)
     _patch_file_constant('core.stats', 'STATS_FILE', tmpdir)
 
     return tmpdir

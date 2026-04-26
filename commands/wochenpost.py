@@ -10,9 +10,11 @@ konfigurierten Channel erstellt (Thread-Name = dd.mm.yyyy).
 
 import asyncio
 import io
+import json
 import logging
 import os
 from datetime import date, datetime, time, timedelta, timezone
+from urllib.parse import urlparse
 
 import discord
 import requests
@@ -27,6 +29,12 @@ from core.version import EMBED_COLOR
 log = logging.getLogger('schach-bot')
 
 WOCHENPOST_FILE = os.path.join(CONFIG_DIR, 'wochenpost.json')
+WOCHENPOST_SUB_FILE = os.path.join(CONFIG_DIR, 'wochenpost_sub.json')
+
+
+def _sub_default():
+    return {"subscribers": {}, "resolved": {}}
+
 
 _bot = None
 _wochenpost_channel_id = 0
@@ -63,6 +71,58 @@ def _next_free_friday(entries: list) -> date:
     while friday.strftime('%Y-%m-%d') in used:
         friday += timedelta(days=7)
     return friday
+
+
+def _parse_utc(ts: str) -> datetime:
+    """Parsed ISO-Timestamp und stellt UTC sicher."""
+    dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _get_latest_posted():
+    """Juengster geposteter Eintrag (nach Datum sortiert)."""
+    entries = atomic_read(WOCHENPOST_FILE, default=list)
+    if not isinstance(entries, list):
+        return None
+    posted = [e for e in entries if e.get('posted')]
+    if not posted:
+        return None
+    return max(posted, key=lambda e: e.get('datum', ''))
+
+
+def _entry_id_for_msg(msg_id):
+    """Entry-ID anhand msg_id finden."""
+    entries = atomic_read(WOCHENPOST_FILE, default=list)
+    if not isinstance(entries, list):
+        return None
+    for e in entries:
+        if e.get('msg_id') == msg_id:
+            return e.get('id')
+    return None
+
+
+def update_resolution(entry_id, user_id, is_resolved):
+    """resolved-Dict in wochenpost_sub.json atomar updaten."""
+    eid_str = str(entry_id)
+
+    def _update(data):
+        if not isinstance(data, dict):
+            data = _sub_default()
+        resolved = data.setdefault('resolved', {})
+        users = resolved.setdefault(eid_str, [])
+        if is_resolved:
+            if user_id not in users:
+                users.append(user_id)
+        else:
+            if user_id in users:
+                users.remove(user_id)
+            if not users:
+                del resolved[eid_str]
+        return data
+
+    atomic_update(WOCHENPOST_SUB_FILE, _update, default=_sub_default)
 
 
 # ---------------------------------------------------------------------------
@@ -131,16 +191,22 @@ def setup(bot, wochenpost_channel_id: int = 0):
         text='Optionaler Beschreibungstext',
         url='Optionaler Link',
         pdf='Optionale PDF-Datei als Attachment',
+        json_input='JSON-Array: [{"datum":"TT.MM.JJJJ","text":"...","url":"..."},...]',
     )
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_wochenpost_add(interaction: discord.Interaction,
                                   datum: str = '',
                                   text: str = '',
                                   url: str = '',
-                                  pdf: discord.Attachment = None):
+                                  pdf: discord.Attachment = None,
+                                  json_input: str = ''):
         if not _is_admin(interaction):
             await interaction.response.send_message(
                 '\u26a0\ufe0f Nur fuer Admins.', ephemeral=True)
+            return
+
+        if json_input:
+            await _batch_add(interaction, json_input)
             return
 
         if datum:
@@ -163,7 +229,6 @@ def setup(bot, wochenpost_channel_id: int = 0):
 
         # URL validieren falls angegeben
         if url:
-            from urllib.parse import urlparse
             parsed = urlparse(url)
             if parsed.scheme not in ('http', 'https') or not parsed.netloc:
                 await interaction.response.send_message(
@@ -231,6 +296,103 @@ def setup(bot, wochenpost_channel_id: int = 0):
             msg += _NO_CHANNEL_HINT
         await interaction.response.send_message(msg, ephemeral=True)
 
+    # --- Batch-Add Logik -----------------------------------------------------
+
+    _BATCH_LIMIT = 52  # max 1 Jahr Freitage
+
+    async def _batch_add(interaction: discord.Interaction, raw_json: str):
+        """Legt mehrere Wochenposts aus einem JSON-Array an."""
+        try:
+            data = json.loads(raw_json)
+        except (json.JSONDecodeError, ValueError):
+            await interaction.response.send_message(
+                '\u26a0\ufe0f JSON-Syntaxfehler. Erwartet: '
+                '`[{"datum":"TT.MM.JJJJ","text":"...","url":"..."},...]`',
+                ephemeral=True)
+            return
+
+        if not isinstance(data, list):
+            await interaction.response.send_message(
+                '\u26a0\ufe0f JSON muss ein Array sein.',
+                ephemeral=True)
+            return
+
+        if len(data) == 0:
+            await interaction.response.send_message(
+                '\u26a0\ufe0f Leeres Array — keine Eintraege zum Anlegen.',
+                ephemeral=True)
+            return
+
+        if len(data) > _BATCH_LIMIT:
+            await interaction.response.send_message(
+                f'\u26a0\ufe0f Maximal {_BATCH_LIMIT} Eintraege pro Batch.',
+                ephemeral=True)
+            return
+
+        # Validierung aller Eintraege
+        errors = []
+        parsed_entries = []
+        for i, item in enumerate(data, 1):
+            if not isinstance(item, dict):
+                errors.append(f'#{i}: Kein Objekt')
+                continue
+            raw_datum = item.get('datum', '')
+            if not raw_datum:
+                errors.append(f'#{i}: `datum` fehlt')
+                continue
+            d = _parse_datum(str(raw_datum))
+            if d is None:
+                errors.append(f'#{i}: Ungueltiges Datum `{raw_datum}`')
+                continue
+            if d.weekday() != 4:
+                errors.append(f'#{i}: `{raw_datum}` ist kein Freitag')
+                continue
+            entry_url = str(item.get('url', ''))[:500]
+            if entry_url:
+                p = urlparse(entry_url)
+                if p.scheme not in ('http', 'https') or not p.netloc:
+                    errors.append(f'#{i}: Ungueltige URL `{entry_url}`')
+                    continue
+            parsed_entries.append({
+                'datum': d.strftime('%Y-%m-%d'),
+                'titel': d.strftime('%d.%m.%Y'),
+                'text': str(item.get('text', ''))[:2000],
+                'url': entry_url,
+                'pdf_url': '',
+                'pdf_name': '',
+                'posted': False,
+                'user': interaction.user.display_name,
+            })
+
+        if errors:
+            msg = '\u26a0\ufe0f Validierungsfehler:\n' + '\n'.join(errors)
+            if len(msg) > 2000:
+                msg = msg[:1997] + '...'
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
+
+        # Atomar alle Eintraege auf einmal speichern
+        ids = []
+
+        def _add_batch(entries):
+            if not isinstance(entries, list):
+                entries = []
+            next_id = _next_id(entries)
+            for pe in parsed_entries:
+                pe['id'] = next_id
+                ids.append(next_id)
+                next_id += 1
+                entries.append(pe)
+            return entries
+
+        atomic_update(WOCHENPOST_FILE, _add_batch, default=list)
+
+        id_list = ', '.join(f'#{eid}' for eid in ids)
+        msg = f'\u2705 {len(ids)} Wochenposts angelegt: {id_list}'
+        if not _wochenpost_channel_id:
+            msg += _NO_CHANNEL_HINT
+        await interaction.response.send_message(msg, ephemeral=True)
+
     # --- /wochenpost_del ----------------------------------------------------
 
     @tree.command(name='wochenpost_del',
@@ -265,16 +427,138 @@ def setup(bot, wochenpost_channel_id: int = 0):
             await interaction.response.send_message(
                 f'\u274c Wochenpost #{id} nicht gefunden.', ephemeral=True)
 
+    # --- /wochenpost_sub + /wochenpost_unsub --------------------------------
+
+    @tree.command(name='wochenpost_sub',
+                  description='Taeglich DM-Erinnerung an den aktuellen Wochenpost')
+    @discord.app_commands.describe(
+        zeit='Uhrzeit UTC (0-23, Standard: 17)',
+        user='Anderen User subscriben (Admin/Mod)')
+    async def cmd_wochenpost_sub(interaction: discord.Interaction,
+                                  zeit: int = 17,
+                                  user: discord.User = None):
+        if user and not _is_admin(interaction):
+            await interaction.response.send_message(
+                '\u26a0\ufe0f Nur Admins/Moderatoren koennen andere User subscriben.',
+                ephemeral=True)
+            return
+
+        if not 0 <= zeit <= 23:
+            await interaction.response.send_message(
+                '\u26a0\ufe0f Ungueltige Uhrzeit. Bitte 0-23 angeben.',
+                ephemeral=True)
+            return
+
+        target = user or interaction.user
+        uid = str(target.id)
+        now = datetime.now(timezone.utc)
+        next_dt = now.replace(hour=zeit, minute=0, second=0, microsecond=0)
+        if next_dt <= now:
+            next_dt += timedelta(days=1)
+
+        result = {'updated': False}
+
+        def _sub(data):
+            if not isinstance(data, dict):
+                data = _sub_default()
+            subs = data.setdefault('subscribers', {})
+            data.setdefault('resolved', {})
+            result['updated'] = uid in subs
+            subs[uid] = {'hour': zeit, 'next': next_dt.isoformat()}
+            return data
+
+        await asyncio.to_thread(atomic_update, WOCHENPOST_SUB_FILE,
+                                _sub, _sub_default)
+
+        name = f'**{target.display_name}**' if user else 'Wochenpost-Erinnerung'
+        if result['updated']:
+            if user:
+                await interaction.response.send_message(
+                    f'\u2705 {name} aktualisiert: '
+                    f'taeglich um **{zeit}:00 UTC**.',
+                    ephemeral=True)
+            else:
+                await interaction.response.send_message(
+                    f'\u2705 {name} aktualisiert: '
+                    f'taeglich um **{zeit}:00 UTC**.',
+                    ephemeral=True)
+        else:
+            if user:
+                await interaction.response.send_message(
+                    f'\u2705 {name} fuer Wochenpost-Erinnerungen subscribed: '
+                    f'taeglich um **{zeit}:00 UTC**.',
+                    ephemeral=True)
+            else:
+                await interaction.response.send_message(
+                    f'\u2705 Wochenpost-Erinnerung abonniert: '
+                    f'taeglich um **{zeit}:00 UTC**.\n'
+                    f'Du bekommst eine DM, bis du den aktuellen '
+                    f'Wochenpost als erledigt markierst.',
+                    ephemeral=True)
+
+    @tree.command(name='wochenpost_unsub',
+                  description='Wochenpost-Erinnerungen abbestellen')
+    @discord.app_commands.describe(
+        user='Anderen User unsubscriben (Admin/Mod)')
+    async def cmd_wochenpost_unsub(interaction: discord.Interaction,
+                                    user: discord.User = None):
+        if user and not _is_admin(interaction):
+            await interaction.response.send_message(
+                '\u26a0\ufe0f Nur Admins/Moderatoren koennen andere User unsubscriben.',
+                ephemeral=True)
+            return
+
+        target = user or interaction.user
+        uid = str(target.id)
+        result = {'found': False}
+
+        def _unsub(data):
+            if not isinstance(data, dict):
+                data = _sub_default()
+            subs = data.setdefault('subscribers', {})
+            if uid in subs:
+                del subs[uid]
+                result['found'] = True
+            return data
+
+        await asyncio.to_thread(atomic_update, WOCHENPOST_SUB_FILE,
+                                _unsub, _sub_default)
+
+        if result['found']:
+            if user:
+                await interaction.response.send_message(
+                    f'\u2705 **{target.display_name}** unsubscribed.',
+                    ephemeral=True)
+            else:
+                await interaction.response.send_message(
+                    '\u2705 Wochenpost-Erinnerungen abbestellt.',
+                    ephemeral=True)
+        else:
+            if user:
+                await interaction.response.send_message(
+                    f'\u26a0\ufe0f **{target.display_name}** hat kein Wochenpost-Abo.',
+                    ephemeral=True)
+            else:
+                await interaction.response.send_message(
+                    '\u26a0\ufe0f Du hast kein Wochenpost-Abo.',
+                    ephemeral=True)
+
     # --- Scheduled Loop (taeglich 18:00 UTC, postet nur freitags) -----------
 
     @tasks.loop(time=time(hour=18, minute=0))
     async def _wochenpost_loop():
         await run_wochenpost()
 
+    @tasks.loop(minutes=30)
+    async def _wochenpost_sub_loop():
+        await _run_wochenpost_reminders()
+
     @bot.listen('on_ready')
     async def _start_wochenpost_loop():
         if not _wochenpost_loop.is_running():
             _wochenpost_loop.start()
+        if not _wochenpost_sub_loop.is_running():
+            _wochenpost_sub_loop.start()
         # Verpasste Posts der letzten 7 Tage nachholen
         await _catchup_missed()
 
@@ -355,13 +639,15 @@ async def _post_entry(channel, entry: dict):
         kwargs['file'] = file
     msg = await thread.send(**kwargs)
 
-    # posted = true setzen
-    def _mark_posted(entries, eid=entry['id']):
+    # posted = true setzen + msg_id/thread_id speichern
+    def _mark_posted(entries, eid=entry['id'], mid=msg.id, tid=thread.id):
         if not isinstance(entries, list):
             return entries
         for e in entries:
             if e.get('id') == eid:
                 e['posted'] = True
+                e['msg_id'] = mid
+                e['thread_id'] = tid
         return entries
 
     await asyncio.to_thread(atomic_update, WOCHENPOST_FILE,
@@ -396,3 +682,83 @@ async def run_wochenpost():
             await _post_entry(channel, entry)
         except Exception:
             log.exception('Wochenpost #%d fehlgeschlagen', entry.get('id', 0))
+
+
+async def _run_wochenpost_reminders():
+    """Sendet DM-Erinnerungen an Wochenpost-Abonnenten."""
+    if not _wochenpost_channel_id:
+        return
+
+    entry = _get_latest_posted()
+    if entry is None or 'msg_id' not in entry:
+        return
+
+    entry_id = str(entry['id'])
+    entry_date = entry.get('datum', '')
+    thread_id = entry.get('thread_id')
+    titel = entry.get('titel', '')
+
+    # Guild-ID fuer Thread-Link
+    channel = _bot.get_channel(_wochenpost_channel_id)
+    if not channel:
+        return
+    guild_id = getattr(getattr(channel, 'guild', None), 'id', None)
+
+    thread_url = ''
+    if guild_id and thread_id:
+        thread_url = f'https://discord.com/channels/{guild_id}/{thread_id}'
+
+    now = datetime.now(timezone.utc)
+    today_str = date.today().strftime('%Y-%m-%d')
+
+    sub_data = atomic_read(WOCHENPOST_SUB_FILE, default=_sub_default)
+    subscribers = sub_data.get('subscribers', {})
+    resolved = sub_data.get('resolved', {})
+    resolved_users = set(resolved.get(entry_id, []))
+
+    updates = {}
+
+    for uid_str, info in subscribers.items():
+        next_time = _parse_utc(info['next'])
+        if now < next_time:
+            continue
+
+        hour = info.get('hour', 17)
+        tomorrow = (now + timedelta(days=1)).replace(
+            hour=hour, minute=0, second=0, microsecond=0)
+
+        # Veroeffentlichungstag → skip
+        if entry_date == today_str:
+            updates[uid_str] = tomorrow.isoformat()
+            continue
+
+        # Bereits resolved → skip
+        if int(uid_str) in resolved_users:
+            updates[uid_str] = tomorrow.isoformat()
+            continue
+
+        # DM senden
+        try:
+            user = await _bot.fetch_user(int(uid_str))
+            dm = await user.create_dm()
+            msg_text = f'\U0001f4ec Wochenpost-Erinnerung: **{titel}**'
+            if thread_url:
+                msg_text += f'\n{thread_url}'
+            await dm.send(msg_text)
+        except Exception:
+            log.warning('Wochenpost-DM an User %s fehlgeschlagen', uid_str)
+
+        updates[uid_str] = tomorrow.isoformat()
+
+    if updates:
+        def _advance(data):
+            if not isinstance(data, dict):
+                data = _sub_default()
+            subs = data.setdefault('subscribers', {})
+            for uid_str, iso in updates.items():
+                if uid_str in subs:
+                    subs[uid_str]['next'] = iso
+            return data
+
+        await asyncio.to_thread(
+            atomic_update, WOCHENPOST_SUB_FILE, _advance, _sub_default)

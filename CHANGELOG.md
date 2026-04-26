@@ -4,6 +4,21 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.9.0] - 2026-04-26
+### Added
+- `/wochenpost_sub [zeit] [user]` — Taeglich DM-Erinnerung an den aktuellen Wochenpost (Uhrzeit UTC 0-23, Standard: 17); Admins/Mods koennen andere User subscriben
+- `/wochenpost_unsub [user]` — Wochenpost-Erinnerungen abbestellen; Admins/Mods koennen andere User unsubscriben
+- Automatischer Reminder-Loop (alle 30 Min): sendet DMs an Abonnenten bis sie den Post als erledigt markieren
+- Resolution-Tracking: geschafft/nicht geschafft-Klicks auf Wochenpost-Buttons stoppen die Erinnerungen
+- `msg_id` und `thread_id` werden beim Posten eines Wochenposts gespeichert (fuer Button-Zuordnung und Thread-Links in DMs)
+
+## [2.8.0] - 2026-04-26
+### Added
+- `/wochenpost_add` neuer `json`-Parameter fuer Batch-Anlage mehrerer Wochenposts auf einmal
+- JSON-Array mit `datum` (Pflicht), `text` und `url` (optional) pro Eintrag
+- Validierung aller Eintraege vor Speicherung (Datum-Format, Freitag, URL); bei Fehlern wird keiner angelegt
+- Limit: max 52 Eintraege pro Batch (1 Jahr Freitage)
+
 ## [2.7.1] - 2026-04-26
 ### Changed
 - `tests/test_commands.py` (3.318 Zeilen) aufgeteilt in 8 Dateien: `test_helpers.py` (Shared Infrastructure), 6 Domain-Dateien (`test_cmd_puzzle.py`, `test_cmd_community.py`, `test_cmd_events.py`, `test_cmd_library.py`, `test_cmd_admin.py`, `test_cmd_info.py`) und minimaler Runner

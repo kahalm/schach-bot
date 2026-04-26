@@ -128,6 +128,21 @@ async def _run_side_effects(interaction: discord.Interaction,
         if removed:
             await asyncio.to_thread(_log_click, user_id, msg_id, removed, -1)
         await asyncio.to_thread(_log_click, user_id, msg_id, emoji, delta)
+
+        # Resolution-Tracking fuer Wochenpost-Abo
+        if emoji in ('\u2705', '\u274c'):
+            try:
+                from commands.wochenpost import _entry_id_for_msg, update_resolution
+                entry_id = await asyncio.to_thread(_entry_id_for_msg, msg_id)
+                if entry_id is not None:
+                    by_emoji = _clicks.get(msg_id, {})
+                    is_resolved = (user_id in by_emoji.get('\u2705', set())
+                                   or user_id in by_emoji.get('\u274c', set()))
+                    await asyncio.to_thread(
+                        update_resolution, entry_id, user_id, is_resolved)
+            except Exception:
+                log.warning('Wochenpost resolution-tracking fehlgeschlagen '
+                            '(user=%s, msg=%s)', user_id, msg_id)
     except Exception:
         log.exception('Wochenpost-Button side-effect crash (user=%s, emoji=%s)',
                       user_id, emoji)

@@ -6,7 +6,7 @@ import tempfile
 import shutil
 import unittest.mock as _mock
 from unittest.mock import MagicMock, AsyncMock
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import test_helpers as h
 from test_helpers import (
@@ -780,6 +780,113 @@ def test_wochenpost():
     print()
 
 
+def test_wochenpost_batch():
+    """Tests fuer /wochenpost_add mit json_input (Batch-Anlage)."""
+    print('[/wochenpost_batch]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd_add = _captured_commands.get('wochenpost_add')
+        check('cmd_wochenpost_add gefunden', cmd_add is not None)
+        if not cmd_add:
+            return
+
+        # 1) Batch Erfolg: 3 gueltige Eintraege
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [])
+        batch_json = json.dumps([
+            {"datum": "01.05.2026"},
+            {"datum": "08.05.2026", "text": "Thema"},
+            {"datum": "15.05.2026", "url": "https://example.com"},
+        ])
+        ia = make_interaction(admin=True)
+        run_async(cmd_add(ia, json_input=batch_json))
+        content = ia.response.calls[0].get('content') or ''
+        check('batch → 3 angelegt', '3 Wochenposts' in content)
+        check('batch → #1 in Antwort', '#1' in content)
+        check('batch → #2 in Antwort', '#2' in content)
+        check('batch → #3 in Antwort', '#3' in content)
+        entries = atomic_read(wochenpost_mod.WOCHENPOST_FILE, default=list)
+        check('batch → 3 in JSON', len(entries) == 3)
+        check('batch → Datum #1 korrekt', entries[0]['datum'] == '2026-05-01')
+        check('batch → Text #2 korrekt', entries[1]['text'] == 'Thema')
+        check('batch → URL #3 korrekt', entries[2]['url'] == 'https://example.com')
+        check('batch → alle posted=false',
+              all(e['posted'] is False for e in entries))
+
+        # 2) JSON Syntax-Fehler
+        ia = make_interaction(admin=True)
+        run_async(cmd_add(ia, json_input='[{kaputt'))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('batch JSON-Fehler → Meldung', 'syntaxfehler' in content)
+
+        # 3) Kein Array
+        ia = make_interaction(admin=True)
+        run_async(cmd_add(ia, json_input='{"datum":"01.05.2026"}'))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('batch kein Array → Fehler', 'array' in content)
+
+        # 4) Leeres Array
+        ia = make_interaction(admin=True)
+        run_async(cmd_add(ia, json_input='[]'))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('batch leer → Hinweis', 'leer' in content)
+
+        # 5) Validierungsfehler: ein Eintrag kein Freitag → keiner angelegt
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [])
+        batch_bad = json.dumps([
+            {"datum": "01.05.2026"},
+            {"datum": "04.05.2026"},  # Montag
+        ])
+        ia = make_interaction(admin=True)
+        run_async(cmd_add(ia, json_input=batch_bad))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('batch Validierung → Fehler', 'freitag' in content)
+        entries = atomic_read(wochenpost_mod.WOCHENPOST_FILE, default=list)
+        check('batch Validierung → keiner angelegt', len(entries) == 0)
+
+        # 6) Limit: >52 Eintraege
+        big_batch = json.dumps([{"datum": "01.05.2026"}] * 53)
+        ia = make_interaction(admin=True)
+        run_async(cmd_add(ia, json_input=big_batch))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('batch >52 → Fehler', '52' in content)
+
+        # 7) Nicht-Admin → abgelehnt
+        ia = make_interaction(admin=False)
+        run_async(cmd_add(ia, json_input=batch_json))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('batch ohne Admin → abgelehnt', 'admin' in content)
+
+        # 8) Ungueltige URL in Batch
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [])
+        batch_bad_url = json.dumps([
+            {"datum": "01.05.2026", "url": "not-a-url"},
+        ])
+        ia = make_interaction(admin=True)
+        run_async(cmd_add(ia, json_input=batch_bad_url))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('batch ungueltige URL → Fehler', 'url' in content)
+        entries = atomic_read(wochenpost_mod.WOCHENPOST_FILE, default=list)
+        check('batch ungueltige URL → keiner angelegt', len(entries) == 0)
+
+        # 9) IDs setzen korrekt fort wenn schon Eintraege existieren
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [
+            {'id': 10, 'datum': '2026-04-24', 'titel': '24.04.2026',
+             'text': '', 'url': '', 'pdf_url': '', 'pdf_name': '',
+             'posted': True, 'user': 'X'},
+        ])
+        small_batch = json.dumps([{"datum": "01.05.2026"}])
+        ia = make_interaction(admin=True)
+        run_async(cmd_add(ia, json_input=small_batch))
+        content = ia.response.calls[0].get('content') or ''
+        check('batch IDs fortlaufend → #11', '#11' in content)
+
+        # Aufraumen
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [])
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_wochenpost_buttons():
     """Tests fuer commands/wochenpost_buttons.py Klick-Logik + Logging."""
     print('[wochenpost_buttons]')
@@ -910,4 +1017,209 @@ def test_wochenpost_buttons():
             check('wp build_view \u274c counter=0', child.label == '0')
 
     wp_buttons_mod._clicks.clear()  # Aufraumen
+    print()
+
+
+def test_wochenpost_sub():
+    """Tests fuer /wochenpost_sub, /wochenpost_unsub + Reminder-Loop."""
+    print('[/wochenpost_sub]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd_sub = _captured_commands.get('wochenpost_sub')
+        cmd_unsub = _captured_commands.get('wochenpost_unsub')
+
+        check('cmd_wochenpost_sub gefunden', cmd_sub is not None)
+        check('cmd_wochenpost_unsub gefunden', cmd_unsub is not None)
+        if not all([cmd_sub, cmd_unsub]):
+            return
+
+        # 1) Sub Default → Bestaetigung, JSON korrekt (hour=17)
+        user = FakeMember(uid=11111, name='SubUser')
+        ia = make_interaction(user=user)
+        run_async(cmd_sub(ia, zeit=17))
+        content = ia.response.calls[0].get('content') or ''
+        check('sub → Bestaetigung', 'abonniert' in content.lower())
+        check('sub → 17:00', '17:00' in content)
+        sub_data = atomic_read(wochenpost_mod.WOCHENPOST_SUB_FILE, default=dict)
+        check('sub → JSON hat Subscriber',
+              '11111' in sub_data.get('subscribers', {}))
+        check('sub → hour=17',
+              sub_data['subscribers']['11111']['hour'] == 17)
+        check('sub → next vorhanden',
+              'next' in sub_data['subscribers']['11111'])
+
+        # 2) Re-Sub mit anderer Zeit → "aktualisiert"
+        ia = make_interaction(user=user)
+        run_async(cmd_sub(ia, zeit=9))
+        content = ia.response.calls[0].get('content') or ''
+        check('re-sub → aktualisiert', 'aktualisiert' in content.lower())
+        check('re-sub → 9:00', '9:00' in content)
+        sub_data = atomic_read(wochenpost_mod.WOCHENPOST_SUB_FILE, default=dict)
+        check('re-sub → hour=9',
+              sub_data['subscribers']['11111']['hour'] == 9)
+
+        # 3) Ungueltige Zeit (25) → Fehler
+        ia = make_interaction(user=user)
+        run_async(cmd_sub(ia, zeit=25))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('ungueltige Zeit → Fehler', 'ungueltig' in content)
+
+        # 3b) Nicht-Admin mit user → Fehler
+        other = FakeMember(uid=88888, name='Other')
+        ia = make_interaction(admin=False)
+        run_async(cmd_sub(ia, zeit=17, user=other))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('sub user ohne Admin → Fehler', 'admin' in content)
+
+        ia = make_interaction(admin=False)
+        run_async(cmd_unsub(ia, user=other))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('unsub user ohne Admin → Fehler', 'admin' in content)
+
+        # 3c) Admin subscribed anderen User
+        ia = make_interaction(admin=True)
+        run_async(cmd_sub(ia, zeit=10, user=other))
+        content = ia.response.calls[0].get('content') or ''
+        check('admin sub user → Bestaetigung', 'subscribed' in content.lower())
+        check('admin sub user → Name', 'Other' in content)
+        sub_data = atomic_read(wochenpost_mod.WOCHENPOST_SUB_FILE, default=dict)
+        check('admin sub user → in JSON',
+              '88888' in sub_data.get('subscribers', {}))
+        check('admin sub user → hour=10',
+              sub_data['subscribers']['88888']['hour'] == 10)
+
+        # 3d) Admin unsubscribed anderen User
+        ia = make_interaction(admin=True)
+        run_async(cmd_unsub(ia, user=other))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('admin unsub user → Bestaetigung', 'unsubscribed' in content)
+        sub_data = atomic_read(wochenpost_mod.WOCHENPOST_SUB_FILE, default=dict)
+        check('admin unsub user → aus JSON',
+              '88888' not in sub_data.get('subscribers', {}))
+
+        # 4) Unsub → Bestaetigung
+        ia = make_interaction(user=user)
+        run_async(cmd_unsub(ia))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('unsub → Bestaetigung', 'abbestellt' in content)
+        sub_data = atomic_read(wochenpost_mod.WOCHENPOST_SUB_FILE, default=dict)
+        check('unsub → aus JSON entfernt',
+              '11111' not in sub_data.get('subscribers', {}))
+
+        # 5) Unsub ohne Sub → Hinweis
+        ia = make_interaction(user=user)
+        run_async(cmd_unsub(ia))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('unsub ohne Sub → Hinweis', 'kein' in content)
+
+        # 6) update_resolution → User in resolved, dann entfernt
+        wochenpost_mod.update_resolution(42, 11111, True)
+        sub_data = atomic_read(wochenpost_mod.WOCHENPOST_SUB_FILE, default=dict)
+        check('resolution add → User drin',
+              11111 in sub_data.get('resolved', {}).get('42', []))
+
+        wochenpost_mod.update_resolution(42, 11111, False)
+        sub_data = atomic_read(wochenpost_mod.WOCHENPOST_SUB_FILE, default=dict)
+        check('resolution remove → User weg',
+              11111 not in sub_data.get('resolved', {}).get('42', []))
+
+        # 7) _entry_id_for_msg → findet Entry, None fuer unbekannte
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [
+            {'id': 5, 'datum': '2026-05-01', 'posted': True,
+             'msg_id': 9999, 'thread_id': 100001},
+        ])
+        check('entry_id_for_msg → findet',
+              wochenpost_mod._entry_id_for_msg(9999) == 5)
+        check('entry_id_for_msg → None bei unbekannt',
+              wochenpost_mod._entry_id_for_msg(8888) is None)
+
+        # 8) _get_latest_posted → findet juengsten
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [
+            {'id': 1, 'datum': '2026-04-25', 'posted': True,
+             'msg_id': 100, 'thread_id': 200},
+            {'id': 2, 'datum': '2026-05-02', 'posted': True,
+             'msg_id': 101, 'thread_id': 201},
+            {'id': 3, 'datum': '2026-05-09', 'posted': False},
+        ])
+        latest = wochenpost_mod._get_latest_posted()
+        check('latest_posted → id=2',
+              latest is not None and latest['id'] == 2)
+
+        # Kein geposteter → None
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [
+            {'id': 1, 'datum': '2026-05-01', 'posted': False},
+        ])
+        check('latest_posted leer → None',
+              wochenpost_mod._get_latest_posted() is None)
+
+        # 9) Reminder-Loop: resolved User uebersprungen, unresolved bekommt DM
+
+        # Setup: Wochenpost-Eintrag mit msg_id + thread_id
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [
+            {'id': 5, 'datum': '2026-04-24', 'titel': '24.04.2026',
+             'text': '', 'url': '', 'pdf_url': '', 'pdf_name': '',
+             'posted': True, 'user': 'Admin',
+             'msg_id': 9999, 'thread_id': 100001},
+        ])
+
+        # Subscriber: user A (resolved) + user B (unresolved)
+        past = '2020-01-01T00:00:00+00:00'
+        atomic_write(wochenpost_mod.WOCHENPOST_SUB_FILE, {
+            "subscribers": {
+                "22222": {"hour": 17, "next": past},
+                "33333": {"hour": 17, "next": past},
+            },
+            "resolved": {
+                "5": [22222],
+            },
+        })
+
+        # Bot-Setup
+        dm_channel_b = FakeChannel()
+        dm_channel_a = FakeChannel()
+        fake_user_b = FakeMember(uid=33333, name='UserB')
+        fake_user_b.create_dm = AsyncMock(return_value=dm_channel_b)
+        fake_user_a = FakeMember(uid=22222, name='UserA')
+        fake_user_a.create_dm = AsyncMock(return_value=dm_channel_a)
+
+        old_bot = wochenpost_mod._bot
+        old_cid = wochenpost_mod._wochenpost_channel_id
+        fake_bot = MagicMock()
+        fake_channel = FakeChannel(channel_id=88888)
+        fake_bot.get_channel = lambda cid: fake_channel if cid == 88888 else None
+        fake_bot.fetch_user = AsyncMock(side_effect=lambda uid:
+            fake_user_a if uid == 22222 else fake_user_b)
+        wochenpost_mod._bot = fake_bot
+        wochenpost_mod._wochenpost_channel_id = 88888
+
+        # Mock date.today() → nicht Veroeffentlichungstag
+        import unittest.mock
+        with unittest.mock.patch('commands.wochenpost.date') as mock_date:
+            mock_date.today.return_value = date(2026, 4, 26)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            run_async(wochenpost_mod._run_wochenpost_reminders())
+
+        # User A (resolved) → keine DM
+        check('resolved → keine DM', not fake_user_a.create_dm.called)
+
+        # User B (unresolved) → DM
+        check('unresolved → DM', fake_user_b.create_dm.called)
+        if dm_channel_b.sent:
+            dm_text = dm_channel_b.sent[0].content or ''
+            check('DM enthaelt Titel', '24.04.2026' in dm_text)
+
+        # next wurde advanced
+        sub_data = atomic_read(wochenpost_mod.WOCHENPOST_SUB_FILE, default=dict)
+        for uid_str in ('22222', '33333'):
+            nxt = sub_data.get('subscribers', {}).get(uid_str, {}).get('next', '')
+            check(f'next advanced ({uid_str})', nxt > past)
+
+        # Aufraumen
+        wochenpost_mod._bot = old_bot
+        wochenpost_mod._wochenpost_channel_id = old_cid
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [])
+        atomic_write(wochenpost_mod.WOCHENPOST_SUB_FILE, {})
+
+    finally:
+        teardown_temp_config(tmpdir)
     print()
