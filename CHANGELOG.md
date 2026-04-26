@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.0.4] - 2026-04-26
+### Changed
+- Admin-Commands `/greeted`, `/dm-log`, `/stats` zeigen Server-Nickname statt globalem Display-Name
+- Neuer Helper `_display_name()` nutzt `guild.get_member`/`guild.fetch_member` fuer Server-Nicks
+
 ## [2.0.3] - 2026-04-26
 ### Fixed
 - Dockerfile: libcairo2-dev statt libcairo2 (Dev-Header fuer pycairo Build)

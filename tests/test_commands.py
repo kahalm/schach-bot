@@ -253,6 +253,16 @@ class FakeMember(FakeUser):
     pass
 
 
+class _FakeGuild:
+    """Fake-Guild fuer _display_name: liefert FakeUser per get_member/fetch_member."""
+
+    def get_member(self, uid):
+        return FakeUser(uid=uid, name=f'User_{uid}')
+
+    async def fetch_member(self, uid):
+        return FakeUser(uid=uid, name=f'User_{uid}')
+
+
 class FakeChannel:
     def __init__(self, channel_id=99999):
         self.id = channel_id
@@ -286,6 +296,7 @@ def make_interaction(user=None, admin=False):
     ia.response = FakeResponse()
     ia.followup = FakeFollowup()
     ia.client = _CapturingBot()
+    ia.guild = _FakeGuild()
     return ia
 
 

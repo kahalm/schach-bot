@@ -170,6 +170,21 @@ async def on_member_join(member: discord.Member):
 
 # --- Helpers ---
 
+async def _display_name(uid, guild=None):
+    """Server-Nick wenn moeglich, sonst globaler Name."""
+    if guild:
+        try:
+            member = guild.get_member(int(uid)) or await guild.fetch_member(int(uid))
+            return member.display_name
+        except Exception:
+            pass
+    try:
+        u = await bot.fetch_user(int(uid))
+        return u.display_name
+    except Exception:
+        return f'User {uid}'
+
+
 def _paginate_lines(header: str, lines: list[str],
                     max_len: int = 4096) -> list[discord.Embed]:
     """Teilt Zeilen auf mehrere Embeds auf, wenn >max_len Zeichen."""
@@ -360,11 +375,8 @@ async def cmd_greeted(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
 
     async def _fetch(uid):
-        try:
-            u = await bot.fetch_user(int(uid))
-            return f'• **{u.display_name}** (`{uid}`)'
-        except Exception:
-            return f'• User `{uid}` (nicht auflösbar)'
+        name = await _display_name(uid, interaction.guild)
+        return f'• **{name}** (`{uid}`)'
 
     results = await asyncio.gather(*[_fetch(uid) for uid in greeted], return_exceptions=True)
     lines = [r for r in results if isinstance(r, str)]
@@ -394,11 +406,7 @@ async def cmd_dm_log(interaction: discord.Interaction, user: discord.User = None
     uids = list(subset.keys())
 
     async def _fetch_name(uid):
-        try:
-            u = await bot.fetch_user(int(uid))
-            return uid, u.display_name
-        except Exception:
-            return uid, f'User {uid}'
+        return uid, await _display_name(uid, interaction.guild)
 
     results = await asyncio.gather(*[_fetch_name(uid) for uid in uids],
                                    return_exceptions=True)
@@ -455,11 +463,7 @@ async def cmd_stats(interaction: discord.Interaction):
     uids = list(all_stats.keys())
 
     async def _fetch_name(uid):
-        try:
-            user = await bot.fetch_user(int(uid))
-            return uid, user.display_name
-        except Exception:
-            return uid, f'User {uid}'
+        return uid, await _display_name(uid, interaction.guild)
 
     results = await asyncio.gather(*[_fetch_name(uid) for uid in uids], return_exceptions=True)
     names = dict(r for r in results if isinstance(r, tuple))
