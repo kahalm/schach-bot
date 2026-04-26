@@ -48,6 +48,7 @@ def _is_valid_url(url: str) -> bool:
 TURNIER_FILE = os.path.join(CONFIG_DIR, 'turnier.json')
 RALLYE_URL = 'https://tirol.chess.at/termine/'
 _DEFAULT = {"events": [], "subscribers": {}, "next_id": 1}
+_PRUNE_DAYS = 90  # Alte Events nach N Tagen entfernen
 
 _bot = None
 _tournament_channel_id = 0
@@ -59,6 +60,25 @@ def _is_admin(interaction: discord.Interaction) -> bool:
         isinstance(member, discord.Member)
         and member.guild_permissions.administrator
     )
+
+
+def _prune_old_events():
+    """Entfernt Events die aelter als _PRUNE_DAYS Tage sind."""
+    cutoff = date.today() - timedelta(days=_PRUNE_DAYS)
+    pruned = [0]
+
+    def _prune(data):
+        before = len(data.get('events', []))
+        data['events'] = [
+            e for e in data.get('events', [])
+            if (_parse_stored(e.get('datum', '')) or date.min) >= cutoff
+        ]
+        pruned[0] = before - len(data['events'])
+        return data
+
+    atomic_update(TURNIER_FILE, _prune, default=lambda: dict(_DEFAULT))
+    if pruned[0]:
+        log.info('Turnier-Prune: %d alte Events entfernt (> %d Tage).', pruned[0], _PRUNE_DAYS)
 
 
 def _parse_datum(text: str) -> date | None:
@@ -838,6 +858,7 @@ def setup(bot, tournament_channel_id: int = 0):
             added = await _parse_and_post()
             if added:
                 log.info('Auto-Parse: %d neue Turniere importiert.', len(added))
+            await asyncio.to_thread(_prune_old_events)
         except Exception:
             log.exception('Auto-Parse fehlgeschlagen')
 

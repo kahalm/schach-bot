@@ -136,9 +136,16 @@ def setup(bot: commands.Bot):
         lines = []
         for e in entries_sorted:
             votes = len(e['votes'])
+            # User-Name dynamisch auflösen, Fallback auf gespeicherten
+            uid = e.get('user_id')
+            name = e.get('user', 'Unbekannt')
+            if uid:
+                u = interaction.client.get_user(uid)
+                if u:
+                    name = u.display_name
             lines.append(
                 f"**#{e['id']}** — {e['text']} (+{votes})\n"
-                f"_von {e['user']} am {e['datum']}_"
+                f"_von {name} am {e['datum']}_"
             )
 
         text = '\n\n'.join(lines)

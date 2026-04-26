@@ -17,7 +17,6 @@ from puzzle.state import (
     load_puzzle_state, save_puzzle_state,
 )
 from puzzle.processing import _flatten_null_move_variations, _has_training_comment, _split_for_blind
-from core.paths import CONFIG_DIR
 
 log = logging.getLogger('schach-bot')
 
@@ -246,9 +245,11 @@ def pick_random_lines(count: int = 1,
 
     remaining = [(lid, g) for lid, g in all_lines if lid not in posted]
     if not remaining:
-        posted    = set()
+        # Nur die Linien dieses Pools aus posted entfernen, nicht alles
+        pool_ids = {lid for lid, _ in all_lines}
+        posted -= pool_ids
         remaining = all_lines
-        log.info('Alle Linien gepostet – starte von vorne.')
+        log.info('Alle Linien im Pool gepostet – starte von vorne (Pool: %d Linien).', len(pool_ids))
 
     count  = max(1, min(count, len(remaining)))
     chosen = random.sample(remaining, count)

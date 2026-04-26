@@ -4,6 +4,30 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.3.0] - 2026-04-26
+### Fixed
+- `pick_random_lines` resettet jetzt nur den eigenen Pool statt alle Buecher (#20)
+- `/kurs` Exception-Handler loggt jetzt den Fehler (`log.exception`)
+- `/puzzle anzahl:100` gibt klare Fehlermeldung statt stiller Fehlschlaege (Limit 1-20)
+- `/endless` defer vor Session-Start (kein verwaister State bei Netzwerkfehler)
+- `_is_admin` Docstring korrigiert (False in DMs, nicht True)
+
+### Added
+- Duplikat-URL-Erkennung in `/resourcen` und `/youtube`
+- Turnier-Auto-Prune: Events aelter als 90 Tage werden automatisch entfernt
+- `/wanted` Liste zeigt dynamisch aufgeloeste Usernamen statt statischer Snapshots
+- Tests: puzzle/buttons.py Click-Logik (Mutex, Toggle, Eviction, Counter)
+- Tests: `_format_blind_moves` (Weiss/Schwarz-Start, Zugnummern)
+- Tests: Collection Max-Entries-Limit und Input-Truncation
+- Tests: Duplikat-URL-Ablehnung
+- Tests: Turnier-Prune-Logik
+- Tests: Posted-Reset-per-Pool-Logik
+- Tests: `/puzzle anzahl` Validierung
+
+### Removed
+- Dead Import `CONFIG_DIR` in `puzzle/selection.py`
+- Dead Imports `chess`/`chess.pgn` in `puzzle/commands.py`
+
 ## [2.2.0] - 2026-04-26
 ### Security
 - Pickle-Cache (`puzzle_lines.pkl`) komplett entfernt — keine unsichere Deserialization mehr

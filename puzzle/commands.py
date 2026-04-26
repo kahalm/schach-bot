@@ -5,8 +5,6 @@ import logging
 import re
 from collections import defaultdict
 
-import chess
-import chess.pgn
 import discord
 
 from core import stats
@@ -30,6 +28,10 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
                 '⚠️ Nur Admins duerfen Puzzles an andere User senden.',
                 ephemeral=True)
             return
+    if anzahl < 1 or anzahl > 20:
+        await interaction.response.send_message(
+            '⚠️ `anzahl` muss zwischen 1 und 20 liegen.', ephemeral=True)
+        return
     target_user = user or interaction.user
     log.info('/puzzle von %s: anzahl=%d buch=%d id=%s user=%s',
              interaction.user, anzahl, buch, id, target_user)
@@ -313,6 +315,7 @@ async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
         embed.set_footer(text=footer)
         await interaction.followup.send(embed=embed, ephemeral=True)
     except Exception as e:
+        log.exception('/kurs fehlgeschlagen: %s', e)
         await interaction.followup.send('❌ Ein Fehler ist aufgetreten.', ephemeral=True)
 
 
@@ -547,8 +550,8 @@ async def _cmd_endless(bot, interaction: discord.Interaction, buch: int = 0):
                     ephemeral=True)
                 return
 
-    _pkg.start_endless(user_id, book_filename)
     await interaction.response.defer(ephemeral=True)
+    _pkg.start_endless(user_id, book_filename)
 
     try:
         await _pkg.post_next_endless(bot, user_id)

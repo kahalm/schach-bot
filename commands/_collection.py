@@ -63,6 +63,9 @@ def setup_collection(bot, *,
                 if len(entries) >= _MAX_ENTRIES:
                     result['full'] = True
                     return entries
+                if any(e['url'] == new_entry['url'] for e in entries):
+                    result['duplicate'] = True
+                    return entries
                 entries.append(new_entry)
                 return entries
 
@@ -70,6 +73,11 @@ def setup_collection(bot, *,
             if result.get('full'):
                 await interaction.response.send_message(
                     f'⚠️ Maximum von {_MAX_ENTRIES} Eintraegen erreicht.',
+                    ephemeral=True)
+                return
+            if result.get('duplicate'):
+                await interaction.response.send_message(
+                    '⚠️ Diese URL existiert bereits.',
                     ephemeral=True)
                 return
             await interaction.response.send_message(

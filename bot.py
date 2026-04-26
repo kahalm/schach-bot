@@ -206,7 +206,7 @@ def _paginate_lines(header: str, lines: list[str],
 # --- Slash-Commands ---
 
 def _is_admin(interaction: discord.Interaction) -> bool:
-    """True wenn der User Server-Admin ist (oder im DM-Kontext)."""
+    """True wenn der User Server-Admin ist. Im DM-Kontext immer False."""
     member = interaction.user
     return (
         isinstance(member, discord.Member)

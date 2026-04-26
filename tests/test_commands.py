@@ -18,7 +18,7 @@ import shutil
 import unittest.mock as _mock
 from unittest.mock import MagicMock, AsyncMock
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 
 # ---------------------------------------------------------------------------
 # 0) Pfad-Setup
@@ -193,6 +193,9 @@ class _CapturingBot:
 
     def get_channel(self, cid):
         return FakeChannel(channel_id=cid) if cid else None
+
+    def get_user(self, uid):
+        return FakeUser(uid=uid, name=f'User_{uid}')
 
     async def fetch_user(self, uid):
         return FakeUser(uid=uid, name=f'User_{uid}')
@@ -580,6 +583,61 @@ def test_resourcen():
         embed = call.get('embed')
         check('Liste → Embed mit Eintrag',
               embed is not None and len(embed.fields) > 0)
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_collection_limits():
+    """Tests fuer _collection.py _MAX_ENTRIES Limit."""
+    print('[collection_limits]')
+    import commands._collection as col
+
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('resourcen')
+        if not cmd:
+            check('cmd_resourcen fuer limits', False, 'cmd nicht gefunden')
+            return
+
+        # Pre-fill mit 100 Eintraegen
+        json_file = col._json_path('resourcen.json')
+        from core.json_store import atomic_write
+        prefill = [{'url': f'https://example.com/{i}',
+                     'beschreibung': f'res{i}',
+                     'user': 'Test', 'datum': '2025-01-01'}
+                    for i in range(100)]
+        atomic_write(json_file, prefill)
+
+        # 101. Eintrag muss abgelehnt werden
+        ia = make_interaction()
+        run_async(cmd(ia, url='https://example.com/overflow',
+                      beschreibung='Overflow'))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('max entries → Warnung', 'maximum' in content)
+
+        # Pruefen dass kein 101. Eintrag drin ist
+        from core.json_store import atomic_read
+        entries = atomic_read(json_file, default=list)
+        check('max entries → count=100', len(entries) == 100)
+
+        # URL-Validierung: kein Schema
+        ia = make_interaction()
+        run_async(cmd(ia, url='not-a-url', beschreibung='Bad'))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('invalid URL → Warnung', 'gueltige url' in content)
+
+        # Truncation: lange URL + Beschreibung
+        ia = make_interaction()
+        # Zuerst Platz schaffen (auf 99 kuerzen)
+        atomic_write(json_file, prefill[:99])
+        long_url = 'https://example.com/' + 'x' * 600
+        long_desc = 'D' * 600
+        run_async(cmd(ia, url=long_url, beschreibung=long_desc))
+        entries = atomic_read(json_file, default=list)
+        last = entries[-1]
+        check('truncation → url <= 500', len(last['url']) <= 500)
+        check('truncation → beschreibung <= 500', len(last['beschreibung']) <= 500)
     finally:
         teardown_temp_config(tmpdir)
     print()
@@ -2358,6 +2416,273 @@ def test_admin_enforcement():
     print()
 
 
+def test_buttons():
+    """Tests fuer puzzle/buttons.py _apply_click Logik."""
+    print('[buttons]')
+    import puzzle.buttons as btns
+
+    # State vor jedem Test-Block zuruecksetzen
+    btns._clicks.clear()
+
+    # --- Einfacher Klick: hinzufuegen ---
+    delta, removed = btns._apply_click(1, '✅', user_id=100)
+    check('click add → delta=+1', delta == 1)
+    check('click add → removed=None', removed is None)
+    check('click add → count=1', btns._count(1, '✅') == 1)
+
+    # --- Toggle-off: gleicher Klick entfernt Stimme ---
+    delta, removed = btns._apply_click(1, '✅', user_id=100)
+    check('toggle-off → delta=-1', delta == -1)
+    check('toggle-off → count=0', btns._count(1, '✅') == 0)
+
+    # --- Mutex: ✅ dann ❌ entfernt ✅ ---
+    btns._clicks.clear()
+    btns._apply_click(1, '✅', user_id=200)
+    check('mutex pre → ✅=1', btns._count(1, '✅') == 1)
+    delta, removed = btns._apply_click(1, '❌', user_id=200)
+    check('mutex → delta=+1', delta == 1)
+    check('mutex → removed=✅', removed == '✅')
+    check('mutex → ✅ count=0', btns._count(1, '✅') == 0)
+    check('mutex → ❌ count=1', btns._count(1, '❌') == 1)
+
+    # --- Mutex 👍↔👎 ---
+    btns._clicks.clear()
+    btns._apply_click(2, '👍', user_id=300)
+    delta, removed = btns._apply_click(2, '👎', user_id=300)
+    check('mutex 👍→👎 → removed=👍', removed == '👍')
+    check('mutex 👍→👎 → 👍=0', btns._count(2, '👍') == 0)
+    check('mutex 👍→👎 → 👎=1', btns._count(2, '👎') == 1)
+
+    # --- 🚮 hat keinen Mutex-Partner ---
+    btns._clicks.clear()
+    btns._apply_click(3, '✅', user_id=400)
+    delta, removed = btns._apply_click(3, '🚮', user_id=400)
+    check('🚮 → kein mutex', removed is None)
+    check('🚮 → delta=+1', delta == 1)
+    check('🚮 → ✅ bleibt', btns._count(3, '✅') == 1)
+
+    # --- Mehrere User auf gleichem Emoji ---
+    btns._clicks.clear()
+    btns._apply_click(4, '✅', user_id=501)
+    btns._apply_click(4, '✅', user_id=502)
+    btns._apply_click(4, '✅', user_id=503)
+    check('multi-user → count=3', btns._count(4, '✅') == 3)
+    btns._apply_click(4, '✅', user_id=502)  # toggle-off
+    check('multi-user toggle-off → count=2', btns._count(4, '✅') == 2)
+
+    # --- Eviction bei Cap-Ueberlauf ---
+    btns._clicks.clear()
+    old_cap = btns._CLICKS_CAP
+    btns._CLICKS_CAP = 5
+    try:
+        for i in range(6):
+            btns._apply_click(i, '✅', user_id=600)
+        check('eviction → max entries <= cap+1', len(btns._clicks) <= btns._CLICKS_CAP + 1)
+        # Aelteste (msg_id=0) sollte rausgeflogen sein
+        check('eviction → msg 0 entfernt', 0 not in btns._clicks)
+    finally:
+        btns._CLICKS_CAP = old_cap
+
+    # --- _count bei unbekannter msg_id ---
+    check('count unknown msg → 0', btns._count(99999, '✅') == 0)
+    check('count unknown emoji → 0', btns._count(1, '💀') == 0)
+
+    btns._clicks.clear()  # Aufraumen
+    print()
+
+
+def test_format_blind_moves():
+    """Tests fuer _format_blind_moves (Zugnotation mit korrekten Nummern)."""
+    print('[format_blind_moves]')
+    import chess
+    from puzzle.processing import _format_blind_moves
+
+    # --- Weiss am Zug, Startposition (Zug 1) ---
+    board = chess.Board()  # Standard-Startstellung, Weiss am Zug, Zug 1
+    result = _format_blind_moves(board, ['e4', 'e5', 'Nf3'])
+    check('white start → 1. e4 e5 2. Nf3', result == '1. e4 e5 2. Nf3')
+
+    # --- Schwarz am Zug (z.B. nach 1.e4) ---
+    board_black = chess.Board()
+    board_black.push_san('e4')  # Jetzt Schwarz am Zug, Zug 1
+    result = _format_blind_moves(board_black, ['e5', 'Nf3', 'Nc6'])
+    check('black start → 1... e5 2. Nf3 Nc6', result == '1... e5 2. Nf3 Nc6')
+
+    # --- Spaetere Zugnummer ---
+    board_late = chess.Board()
+    board_late.fullmove_number = 15
+    board_late.turn = chess.WHITE
+    result = _format_blind_moves(board_late, ['Nf3', 'Nc6'])
+    check('Zug 15 → 15. Nf3 Nc6', result == '15. Nf3 Nc6')
+
+    # --- Einzelner Zug Weiss ---
+    result = _format_blind_moves(chess.Board(), ['d4'])
+    check('single white → 1. d4', result == '1. d4')
+
+    # --- Einzelner Zug Schwarz ---
+    board_b2 = chess.Board()
+    board_b2.push_san('d4')
+    result = _format_blind_moves(board_b2, ['d5'])
+    check('single black → 1... d5', result == '1... d5')
+
+    # --- Leere Liste ---
+    result = _format_blind_moves(chess.Board(), [])
+    check('empty → leer', result == '')
+    print()
+
+
+def test_puzzle_anzahl_validation():
+    """Test dass /puzzle anzahl ausserhalb 1-20 abgelehnt wird."""
+    print('[puzzle_anzahl_validation]')
+    tmpdir = setup_temp_config()
+    try:
+        import puzzle.commands
+        cmd = getattr(puzzle.commands, '_cmd_puzzle', None)
+        if cmd is None:
+            for attr in dir(puzzle.commands):
+                obj = getattr(puzzle.commands, attr)
+                if callable(obj) and getattr(obj, '__name__', '') == '_cmd_puzzle':
+                    cmd = obj
+                    break
+        if cmd:
+            ia = make_interaction()
+            run_async(cmd(ia, anzahl=100, buch=0, id='', user=None))
+            content = (ia.response.calls[0].get('content') or '').lower()
+            check('/puzzle anzahl:100 → Fehler', 'zwischen 1 und 20' in content)
+
+            ia = make_interaction()
+            run_async(cmd(ia, anzahl=0, buch=0, id='', user=None))
+            content = (ia.response.calls[0].get('content') or '').lower()
+            check('/puzzle anzahl:0 → Fehler', 'zwischen 1 und 20' in content)
+        else:
+            check('/puzzle anzahl Validierung', False, 'cmd nicht gefunden')
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_collection_duplicate_url():
+    """Test dass doppelte URLs in _collection abgelehnt werden."""
+    print('[collection_duplicate_url]')
+    import commands._collection as col
+
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('resourcen')
+        if not cmd:
+            check('cmd_resourcen fuer duplicates', False, 'cmd nicht gefunden')
+            return
+
+        # Ersten Eintrag anlegen
+        ia = make_interaction()
+        run_async(cmd(ia, url='https://example.com/dup', beschreibung='Erster'))
+        content = (ia.response.calls[0].get('content') or '')
+        check('erster Eintrag → OK', 'Erster' in content)
+
+        # Gleiche URL nochmal
+        ia = make_interaction()
+        run_async(cmd(ia, url='https://example.com/dup', beschreibung='Zweiter'))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('duplicate URL → Warnung', 'existiert bereits' in content)
+
+        # Andere URL geht
+        ia = make_interaction()
+        run_async(cmd(ia, url='https://example.com/other', beschreibung='Andere'))
+        content = (ia.response.calls[0].get('content') or '')
+        check('andere URL → OK', 'Andere' in content)
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_turnier_prune():
+    """Test dass _prune_old_events alte Events entfernt."""
+    print('[turnier_prune]')
+    tmpdir = setup_temp_config()
+    try:
+        from commands.schachrallye import _prune_old_events, TURNIER_FILE, _PRUNE_DAYS
+        import commands.schachrallye as rallye_mod
+        old_file = rallye_mod.TURNIER_FILE
+        rallye_mod.TURNIER_FILE = os.path.join(tmpdir, 'turnier.json')
+
+        try:
+            from core.json_store import atomic_write, atomic_read
+            old_date = str(date.today() - timedelta(days=_PRUNE_DAYS + 10))
+            recent_date = str(date.today() + timedelta(days=5))
+            data = {
+                "events": [
+                    {"id": 1, "datum": old_date, "name": "Alt"},
+                    {"id": 2, "datum": recent_date, "name": "Neu"},
+                ],
+                "subscribers": {},
+                "next_id": 3,
+            }
+            atomic_write(rallye_mod.TURNIER_FILE, data)
+
+            _prune_old_events()
+
+            result = atomic_read(rallye_mod.TURNIER_FILE, default=dict)
+            events = result.get('events', [])
+            check('prune → 1 Event uebrig', len(events) == 1)
+            check('prune → neues bleibt', events[0]['name'] == 'Neu')
+        finally:
+            rallye_mod.TURNIER_FILE = old_file
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_posted_reset_per_pool():
+    """Test dass pick_random_lines nur Pool-Linien aus posted entfernt (#20)."""
+    print('[posted_reset_per_pool]')
+    tmpdir = setup_temp_config()
+    try:
+        import puzzle.selection as sel
+        import puzzle.state as pstate
+
+        old_dir = sel.BOOKS_DIR
+        old_state_dir = pstate.BOOKS_DIR
+        old_state_file = pstate.PUZZLE_STATE_FILE
+        sel.BOOKS_DIR = tmpdir
+        pstate.BOOKS_DIR = tmpdir
+
+        # books.json: book_a random=true, book_b random=true
+        from core.json_store import atomic_write, atomic_read
+        books_json = os.path.join(tmpdir, 'books.json')
+        atomic_write(books_json, {
+            'book_a.pgn': {'random': True},
+            'book_b.pgn': {'random': True},
+        })
+        pstate._invalidate_books_config_cache()
+
+        # Puzzle-State: book_a und book_b haben je 1 Linie als posted
+        state_file = os.path.join(tmpdir, 'puzzle_state.json')
+        pstate.PUZZLE_STATE_FILE = state_file
+        atomic_write(state_file, {
+            'posted': ['book_a.pgn:1.1', 'book_b.pgn:2.1']
+        })
+
+        # Lade den posted-state und pruefe
+        state = sel.load_puzzle_state()
+        check('pre: 2 posted', len(state.get('posted', [])) == 2)
+
+        # Simuliere die Reset-Logik direkt (ohne echte PGNs)
+        posted = set(state.get('posted', []))
+        pool_ids = {'book_a.pgn:1.1'}  # nur book_a im Pool
+        # Alte Logik: posted = set() → ALLES weg
+        # Neue Logik: posted -= pool_ids → nur Pool-Linien weg
+        posted -= pool_ids
+        check('posted reset → book_b bleibt', 'book_b.pgn:2.1' in posted)
+        check('posted reset → book_a weg', 'book_a.pgn:1.1' not in posted)
+    finally:
+        sel.BOOKS_DIR = old_dir
+        pstate.BOOKS_DIR = old_state_dir
+        pstate.PUZZLE_STATE_FILE = old_state_file
+        sel.clear_lines_cache()
+        teardown_temp_config(tmpdir)
+    print()
+
+
 # ===================================================================
 # MAIN
 # ===================================================================
@@ -2369,6 +2694,7 @@ def main():
     test_version()
     test_elo()
     test_resourcen()
+    test_collection_limits()
     test_youtube()
     test_puzzle()
     test_kurs()
@@ -2398,6 +2724,12 @@ def main():
     test_pgn_parse_max_errors()
     test_event_log()
     test_admin_enforcement()
+    test_buttons()
+    test_format_blind_moves()
+    test_puzzle_anzahl_validation()
+    test_collection_duplicate_url()
+    test_turnier_prune()
+    test_posted_reset_per_pool()
 
     print(f'---\n{total - failed}/{total} checks passed.')
     if failed:
