@@ -18,6 +18,7 @@ from datetime import datetime, time
 from core import stats, dm_log
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
+from core.permissions import is_privileged
 from core.version import VERSION, START_TIME, EMBED_COLOR
 
 from dotenv import load_dotenv
@@ -213,20 +214,16 @@ def _paginate_lines(header: str, lines: list[str],
 # --- Slash-Commands ---
 
 def _is_admin(interaction: discord.Interaction) -> bool:
-    """True wenn der User Server-Admin ist. Im DM-Kontext immer False."""
-    member = interaction.user
-    return (
-        isinstance(member, discord.Member)
-        and member.guild_permissions.administrator
-    )
+    """True wenn der User Server-Admin oder Moderator ist."""
+    return is_privileged(interaction)
 
 
 async def _require_admin(interaction: discord.Interaction) -> bool:
-    """Prueft Admin-Rechte und antwortet bei Fehlen. Returns True wenn Admin."""
-    if _is_admin(interaction):
+    """Prueft Admin/Mod-Rechte und antwortet bei Fehlen."""
+    if is_privileged(interaction):
         return True
     await interaction.response.send_message(
-        '⚠️ Nur für Admins.', ephemeral=True)
+        '⚠️ Nur für Admins/Moderatoren.', ephemeral=True)
     return False
 
 

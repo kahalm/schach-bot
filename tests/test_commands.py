@@ -252,13 +252,19 @@ class FakePermissions:
         self.administrator = administrator
 
 
+class FakeRole:
+    def __init__(self, name='member'):
+        self.name = name
+
+
 class FakeUser:
-    def __init__(self, uid=12345, name='TestUser', admin=False):
+    def __init__(self, uid=12345, name='TestUser', admin=False, roles=None):
         self.id = uid
         self.display_name = name
         self.name = name
         self.mention = f'<@{uid}>'
         self.guild_permissions = FakePermissions(administrator=admin)
+        self.roles = roles or []
         self.bot = False
 
     async def create_dm(self):
@@ -2448,6 +2454,22 @@ def test_admin_enforcement():
             teardown_temp_config(tmpdir)
     else:
         check('/reminder buch:-1', False, 'cmd nicht gefunden')
+
+    # Moderator-Rolle wird wie Admin behandelt
+    from core.permissions import is_privileged
+    mod_user = FakeMember(admin=False, roles=[FakeRole('Moderator')])
+    mod_ia = make_interaction(user=mod_user)
+    check('Moderator → is_privileged', is_privileged(mod_ia))
+
+    # Normaler User ohne Mod/Admin → kein Zugriff
+    normal_user = FakeMember(admin=False, roles=[FakeRole('member')])
+    normal_ia = make_interaction(user=normal_user)
+    check('normaler User → nicht privileged', not is_privileged(normal_ia))
+
+    # Admin ohne Mod-Rolle → weiterhin Zugriff
+    admin_user = FakeMember(admin=True, roles=[])
+    admin_ia = make_interaction(user=admin_user)
+    check('Admin → is_privileged', is_privileged(admin_ia))
     print()
 
 

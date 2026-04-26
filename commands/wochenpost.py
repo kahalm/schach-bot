@@ -21,6 +21,7 @@ from discord.ext import tasks
 from commands.wochenpost_buttons import fresh_view as _fresh_button_view
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
+from core.permissions import is_privileged
 from core.version import EMBED_COLOR
 
 log = logging.getLogger('schach-bot')
@@ -32,11 +33,7 @@ _wochenpost_channel_id = 0
 
 
 def _is_admin(interaction: discord.Interaction) -> bool:
-    member = interaction.user
-    return (
-        isinstance(member, discord.Member)
-        and member.guild_permissions.administrator
-    )
+    return is_privileged(interaction)
 
 
 def _parse_datum(text: str) -> date | None:

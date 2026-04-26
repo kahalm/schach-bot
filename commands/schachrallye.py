@@ -29,6 +29,7 @@ from urllib.parse import urlparse
 
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
+from core.permissions import is_privileged
 from core.version import EMBED_COLOR
 
 log = logging.getLogger('schach-bot')
@@ -55,11 +56,7 @@ _tournament_channel_id = 0
 
 
 def _is_admin(interaction: discord.Interaction) -> bool:
-    member = interaction.user
-    return (
-        isinstance(member, discord.Member)
-        and member.guild_permissions.administrator
-    )
+    return is_privileged(interaction)
 
 
 def _prune_old_events():
