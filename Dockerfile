@@ -1,7 +1,11 @@
 FROM python:3.12-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libcairo2 \
+    && apt-get install -y --no-install-recommends \
+       libcairo2 \
+       build-essential \
+       pkg-config \
+       libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

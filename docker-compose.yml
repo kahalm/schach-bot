@@ -1,10 +1,10 @@
 services:
   schach-bot:
-    build: .
+    build: /opt/stacks/schach-bot
     restart: unless-stopped
-    env_file: .env
+    env_file: /opt/stacks/schach-bot/.env
     volumes:
-      - ./config:/app/config
-      - ./books:/app/books
+      - /opt/stacks/schach-bot/config:/app/config
+      - /opt/stacks/schach-bot/books:/app/books
     mem_limit: 512m
     cpus: 0.5

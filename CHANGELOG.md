@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.0.2] - 2026-04-26
+### Fixed
+- Dockerfile: build-essential und pkg-config fuer svglib/reportlab Kompilierung
+
 ## [2.0.1] - 2026-04-26
 ### Added
 - `/turnier_sub`, `/turnier_unsub` Commands mit Tag-basiertem Ping bei neuen Turnieren
