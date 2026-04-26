@@ -1,6 +1,5 @@
 """PGN-Verarbeitung: Trimmen, Bereinigen, Blind-Modus-Splitting."""
 
-import io
 import re
 import logging
 

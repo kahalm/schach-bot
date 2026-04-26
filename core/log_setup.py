@@ -28,10 +28,19 @@ class _SuppressEmptyFen:
         return getattr(self._s, n)
 
 
+_setup_done = False
+
+
 def setup() -> logging.Logger:
     """Initialisiert globales Logging und gibt den 'schach-bot'-Logger zurück.
 
     Wird einmal aus bot.py beim Start aufgerufen."""
+    global _setup_done
+    log = logging.getLogger('schach-bot')
+    if _setup_done:
+        return log
+    _setup_done = True
+
     sys.stdout = _SuppressEmptyFen(sys.stdout)
     sys.stderr = _SuppressEmptyFen(sys.stderr)
 
@@ -47,7 +56,6 @@ def setup() -> logging.Logger:
     term_handler.setFormatter(fmt)
     term_handler.setLevel(logging.ERROR)
 
-    log = logging.getLogger('schach-bot')
     log.setLevel(logging.DEBUG)
     log.addHandler(file_handler)
     log.addHandler(term_handler)

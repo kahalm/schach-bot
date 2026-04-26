@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [1.40.0] - 2026-04-26
+### Changed
+- CLAUDE.md: Architektur-Tabelle aktualisiert (puzzle/ Module, wanted.py, _collection.py)
+- CLAUDE.md: `POST_HOUR`/`POST_MINUTE` → `PUZZLE_HOUR`/`PUZZLE_MINUTE` (matcht .env.example)
+- `log_setup.py`: Idempotent-Guard gegen doppeltes Handler-Wrapping
+- Unused `import io` aus `processing.py` entfernt
+
 ## [1.39.0] - 2026-04-26
 ### Added
 - Tests fuer `_parse_index_entry` (6 Checks), `_auto_tag` (7 Checks),

@@ -22,7 +22,7 @@ Copy `.env.example` to `.env` and fill in:
 - `DISCORD_TOKEN` – Discord bot token
 - `LICHESS_TOKEN` – Lichess API token (study:write scope)
 - `CHANNEL_ID` – Discord channel for daily posts
-- `POST_HOUR` / `POST_MINUTE` – Daily post time (UTC)
+- `PUZZLE_HOUR` / `PUZZLE_MINUTE` – Daily post time (UTC)
 - `BOOKS_DIR` – Directory containing PGN files (default: `books/`)
 
 Runtime state lives in `config/` (gitignored, auto-created).
@@ -32,13 +32,13 @@ Runtime state lives in `config/` (gitignored, auto-created).
 | Package / File | Role |
 |----------------|------|
 | `bot.py` | Main entry, events, /help, /version, /stats, /announce, /daily, daily task |
-| `puzzle/` | Package: `legacy.py` (implementation), `buttons.py` (Button-View), `__init__.py` (public API) |
-| `commands/` | Slash-Commands: `elo.py`, `reminder.py`, `resourcen.py`, `youtube.py`, `release_notes.py`, `test.py`, `blind.py` |
+| `puzzle/` | Package: `commands.py`, `state.py`, `selection.py`, `processing.py`, `rendering.py`, `posting.py`, `lichess.py`, `embed.py`, `buttons.py`, `__init__.py` |
+| `commands/` | Slash-Commands: `elo.py`, `reminder.py`, `resourcen.py`, `youtube.py`, `release_notes.py`, `test.py`, `blind.py`, `wanted.py`, `_collection.py` |
 | `core/` | Shared utilities: `paths.py`, `stats.py`, `version.py`, `log_setup.py`, `dm_log.py`, `event_log.py`, `json_store.py` |
 | `library.py` | Books library (/bibliothek, /tag, /autor, /reindex) |
 | `books/` | PGN files + `books.json` metadata |
 | `assets/` | Bot icons |
-| `tests/` | `test_trim.py` (Snapshot-Regression), `test_commands.py` (alle 27 Slash-Commands) |
+| `tests/` | `test_trim.py` (Snapshot-Regression), `test_commands.py` (Command-Tests) |
 
 ### Key patterns
 
