@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.17.1] - 2026-04-27
+### Fixed
+- KI-Chat Model-ID korrigiert: `claude-sonnet-4-20250514` (retired) → `claude-sonnet-4-6`
+
 ## [2.17.0] - 2026-04-27
 ### Added
 - KI-Schachtrainer per DM: whitelisted User koennen dem Bot per DM schreiben und erhalten Antworten von einem strengen, lustigen Schachtrainer (Claude API)

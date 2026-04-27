@@ -25,7 +25,7 @@ if _CLAUDE_API_KEY:
     except Exception as e:
         log.warning('anthropic-Client konnte nicht erstellt werden: %s', e)
 
-_MODEL = 'claude-sonnet-4-20250514'
+_MODEL = 'claude-sonnet-4-6'
 _MAX_HISTORY = 20  # 10 Austausche (user + assistant)
 
 _SYSTEM_PROMPT = (
