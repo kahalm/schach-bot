@@ -41,9 +41,12 @@ _SYSTEM_PROMPT = (
 
 
 def _is_whitelisted(user_id: int) -> bool:
-    """Prueft ob der User auf der Chat-Whitelist steht."""
-    data = atomic_read(CHAT_FILE, default=dict)
-    return user_id in data.get('whitelist', [])
+    """Prueft ob der User auf der Chat-Whitelist steht.
+
+    Aktuell fuer alle User freigeschaltet (vorerst).
+    Original-Check: ``user_id in data.get('whitelist', [])``
+    """
+    return True
 
 
 def _append_and_get_history(user_id: int, text: str) -> list[dict]:

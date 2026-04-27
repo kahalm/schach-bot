@@ -120,11 +120,9 @@ def test_chat_routing():
     print('[chat_routing]')
     tmpdir = setup_temp_config()
     try:
-        # is_whitelisted prueft chat.json
-        atomic_write(chat_mod.CHAT_FILE, {'whitelist': [42], 'history': {}})
-
-        check('whitelisted User → True', chat_mod._is_whitelisted(42))
-        check('nicht-whitelisted User → False', not chat_mod._is_whitelisted(99))
+        # Aktuell fuer alle freigeschaltet (vorerst)
+        check('alle User → True', chat_mod._is_whitelisted(42))
+        check('alle User → True (auch ohne Whitelist)', chat_mod._is_whitelisted(99))
 
     finally:
         teardown_temp_config(tmpdir)
