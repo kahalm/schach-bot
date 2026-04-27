@@ -27,7 +27,7 @@ from test_cmd_events import (
     test_schachrallye, test_turnier_sub, test_turnier_prune,
     test_turnier_review,
     test_wochenpost, test_wochenpost_batch, test_wochenpost_buttons,
-    test_parse_zeit, test_wochenpost_sub,
+    test_parse_zeit, test_wochenpost_sub, test_wochenpost_chat_spark,
 )
 from test_cmd_library import (
     test_bibliothek, test_tag, test_autor, test_reindex,
@@ -96,6 +96,7 @@ def main():
     test_build_puzzle_embed()
     test_dm_log_internals()
     test_suppress_empty_fen()
+    test_wochenpost_chat_spark()
     test_chat_whitelist()
     test_chat_clear()
     test_chat_routing()

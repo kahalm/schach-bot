@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.18.0] - 2026-04-27
+### Added
+- Sarkastischer Chat-Spark bei Wochenpost-Reminders: whitelisted Chat-User erhalten eine von Claude generierte, sarkastisch-motivierende Nachricht statt nur einen Spruch
+- Fallback auf normalen Spruch wenn User nicht whitelisted, kein API-Client, oder bei Fehler
+
 ## [2.17.1] - 2026-04-27
 ### Fixed
 - KI-Chat Model-ID korrigiert: `claude-sonnet-4-20250514` (retired) → `claude-sonnet-4-6`

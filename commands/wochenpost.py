@@ -58,6 +58,31 @@ def _random_spruch() -> str:
         return f'_"{text}"_ — {autor}'
     return f'_"{text}"_'
 
+async def _try_chat_spark(uid: int, spruch: str, titel: str) -> str | None:
+    """Generiert sarkastische Claude-Antwort fuer whitelisted Chat-User.
+
+    Gibt None zurueck wenn User nicht whitelisted oder kein API-Client.
+    """
+    from commands.chat import _client, _is_whitelisted, _chat_response
+    if _client is None:
+        return None
+    if not await asyncio.to_thread(_is_whitelisted, uid):
+        return None
+    try:
+        prompt = (
+            f'Hier ist dein taeglicher Schach-Spruch:\n\n'
+            f'{spruch}\n\n'
+            f'Die aktuelle Wochenpost heisst: "{titel}".\n\n'
+            f'Reagiere darauf — kurz, sarkastisch, mit einem Augenzwinkern. '
+            f'Motiviere den User trotzdem, seine Uebungen zu machen. '
+            f'Maximal 2-3 Saetze.'
+        )
+        return await _chat_response(uid, prompt)
+    except Exception:
+        log.warning('Chat-Spark fuer User %s fehlgeschlagen', uid)
+        return None
+
+
 WOCHENPOST_FILE = os.path.join(CONFIG_DIR, 'wochenpost.json')
 WOCHENPOST_SUB_FILE = os.path.join(CONFIG_DIR, 'wochenpost_sub.json')
 
@@ -799,7 +824,12 @@ async def _run_wochenpost_reminders():
             user = await _bot.fetch_user(int(uid_str))
             dm = await user.create_dm()
             spruch = _random_spruch()
-            msg_text = f'{spruch}\n\n' if spruch else ''
+            uid = int(uid_str)
+            chat_reply = await _try_chat_spark(uid, spruch, titel)
+            if chat_reply:
+                msg_text = f'{chat_reply}\n\n'
+            else:
+                msg_text = f'{spruch}\n\n' if spruch else ''
             msg_text += f'\U0001f4ec Mache deine Übungen! → **{titel}**'
             if thread_url:
                 msg_text += f'\n{thread_url}'

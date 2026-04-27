@@ -1485,3 +1485,50 @@ def test_wochenpost_sub():
     finally:
         teardown_temp_config(tmpdir)
     print()
+
+
+def test_wochenpost_chat_spark():
+    """Tests fuer _try_chat_spark: Claude-Antwort fuer whitelisted Chat-User."""
+    print('[wochenpost_chat_spark]')
+    tmpdir = setup_temp_config()
+    try:
+        import commands.chat as chat_mod_ref
+        old_client = chat_mod_ref._client
+
+        # Test 1: whitelisted + client → Claude-Antwort
+        fake_client = MagicMock()
+        chat_mod_ref._client = fake_client
+        mock_chat_resp = AsyncMock(return_value='Sarkastische Antwort!')
+        with _mock.patch.object(chat_mod_ref, '_is_whitelisted', return_value=True):
+            with _mock.patch.object(chat_mod_ref, '_chat_response', mock_chat_resp):
+                result = run_async(wochenpost_mod._try_chat_spark(
+                    42, 'Ein Spruch', 'Wochenpost Titel'))
+                check('whitelisted + client → Claude-Antwort',
+                      result == 'Sarkastische Antwort!')
+                check('_chat_response aufgerufen', mock_chat_resp.called)
+
+        # Test 2: nicht-whitelisted → None
+        with _mock.patch.object(chat_mod_ref, '_is_whitelisted', return_value=False):
+            result = run_async(wochenpost_mod._try_chat_spark(
+                99, 'Spruch', 'Titel'))
+            check('nicht-whitelisted → None', result is None)
+
+        # Test 3: _client is None → None
+        chat_mod_ref._client = None
+        result = run_async(wochenpost_mod._try_chat_spark(
+            42, 'Spruch', 'Titel'))
+        check('client None → None', result is None)
+
+        # Test 4: Exception → None (Fallback)
+        chat_mod_ref._client = fake_client
+        mock_chat_resp_err = AsyncMock(side_effect=Exception('API kaputt'))
+        with _mock.patch.object(chat_mod_ref, '_is_whitelisted', return_value=True):
+            with _mock.patch.object(chat_mod_ref, '_chat_response', mock_chat_resp_err):
+                result = run_async(wochenpost_mod._try_chat_spark(
+                    42, 'Spruch', 'Titel'))
+                check('Exception → None (Fallback)', result is None)
+
+        chat_mod_ref._client = old_client
+
+    finally:
+        teardown_temp_config(tmpdir)
