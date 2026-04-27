@@ -63,17 +63,38 @@ async def _try_chat_spark(uid: int, spruch: str, titel: str) -> str | None:
 
     Gibt None zurueck wenn User nicht whitelisted oder kein API-Client.
     """
-    from commands.chat import _client, _is_whitelisted, _chat_response
+    from commands.chat import (
+        _client, _is_whitelisted, _chat_response,
+        CHAT_FILE as _CHAT_FILE,
+    )
+    from core.json_store import atomic_read as _ar
     if _client is None:
         return None
     if not await asyncio.to_thread(_is_whitelisted, uid):
         return None
     try:
+        # Eskalationsstufe aus bisheriger History ableiten
+        data = await asyncio.to_thread(_ar, _CHAT_FILE, dict)
+        msgs = data.get('history', {}).get(str(uid), [])
+        spark_count = sum(1 for m in msgs if m.get('role') == 'assistant')
+
+        if spark_count < 3:
+            tone = 'leicht sarkastisch, mit einem Augenzwinkern'
+        elif spark_count < 7:
+            tone = 'deutlich sarkastischer, fast schon frech'
+        elif spark_count < 12:
+            tone = ('richtig bissig und provokant — du bist ein '
+                    'drill-sergeant der Schach-Armee')
+        else:
+            tone = ('komplett ungebremst, absolut gnadenlos, theatralisch '
+                    'uebertrieben — als waere das Schicksal der Menschheit '
+                    'davon abhaengig, dass dieser User seine Uebungen macht')
+
         prompt = (
             f'Hier ist dein taeglicher Schach-Spruch:\n\n'
             f'{spruch}\n\n'
             f'Die aktuelle Wochenpost heisst: "{titel}".\n\n'
-            f'Reagiere darauf — kurz, sarkastisch, mit einem Augenzwinkern. '
+            f'Reagiere darauf — {tone}. '
             f'Motiviere den User trotzdem, seine Uebungen zu machen. '
             f'Maximal 2-3 Saetze.'
         )

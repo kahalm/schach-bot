@@ -1528,6 +1528,52 @@ def test_wochenpost_chat_spark():
                     42, 'Spruch', 'Titel'))
                 check('Exception → None (Fallback)', result is None)
 
+        # Test 5: Eskalation — Prompt aendert sich mit History-Tiefe
+        chat_mod_ref._client = fake_client
+        prompts = []
+        async def _capture_prompt(uid, text):
+            prompts.append(text)
+            return 'Antwort'
+        with _mock.patch.object(chat_mod_ref, '_is_whitelisted', return_value=True):
+            with _mock.patch.object(chat_mod_ref, '_chat_response', _capture_prompt):
+                # spark_count=0 → leicht sarkastisch
+                run_async(wochenpost_mod._try_chat_spark(42, 'S', 'T'))
+                check('Stufe 0 → Augenzwinkern', 'augenzwinkern' in prompts[-1].lower())
+
+                # spark_count=5 → frech
+                atomic_write(chat_mod_ref.CHAT_FILE, {
+                    'whitelist': [42],
+                    'history': {
+                        '42': [{'role': 'assistant', 'content': f'x'}
+                               for _ in range(5)]
+                    }
+                })
+                run_async(wochenpost_mod._try_chat_spark(42, 'S', 'T'))
+                check('Stufe 5 → frech', 'frech' in prompts[-1].lower())
+
+                # spark_count=10 → drill-sergeant
+                atomic_write(chat_mod_ref.CHAT_FILE, {
+                    'whitelist': [42],
+                    'history': {
+                        '42': [{'role': 'assistant', 'content': f'x'}
+                               for _ in range(10)]
+                    }
+                })
+                run_async(wochenpost_mod._try_chat_spark(42, 'S', 'T'))
+                check('Stufe 10 → drill-sergeant',
+                      'drill-sergeant' in prompts[-1].lower())
+
+                # spark_count=15 → gnadenlos
+                atomic_write(chat_mod_ref.CHAT_FILE, {
+                    'whitelist': [42],
+                    'history': {
+                        '42': [{'role': 'assistant', 'content': f'x'}
+                               for _ in range(15)]
+                    }
+                })
+                run_async(wochenpost_mod._try_chat_spark(42, 'S', 'T'))
+                check('Stufe 15 → gnadenlos', 'gnadenlos' in prompts[-1].lower())
+
         chat_mod_ref._client = old_client
 
     finally:
