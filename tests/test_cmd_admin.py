@@ -296,6 +296,55 @@ def test_test_cmd():
         check('build_result_embed: gruen bei 100%',
               all_ok_embed.colour != 0xe74c3c)
 
+        # --- Test-Reminder (Wochenpost + Turnier) ---
+        import commands.wochenpost as wp_mod
+        import commands.schachrallye as sr_mod
+        from datetime import timedelta
+
+        # Wochenpost: User subscribed + geposteter Eintrag
+        atomic_write(wp_mod.WOCHENPOST_FILE, [
+            {'id': 1, 'datum': '2026-04-25', 'titel': '25.04.2026',
+             'posted': True, 'msg_id': 111, 'thread_id': 222},
+        ])
+        atomic_write(wp_mod.WOCHENPOST_SUB_FILE, {
+            'subscribers': {'12345': {'hour': 17, 'minute': 0,
+                                      'next': '2099-01-01T00:00:00+00:00'}},
+            'resolved': {},
+        })
+
+        # Turnier: User subscribed + zukuenftiges Event
+        from datetime import date
+        future = (date.today() + timedelta(days=5)).strftime('%Y-%m-%d')
+        atomic_write(sr_mod.TURNIER_FILE, {
+            'events': [
+                {'id': 1, 'name': 'Test-Blitz', 'datum': future,
+                 'ort': 'Innsbruck', 'tags': ['blitz']},
+            ],
+            'subscribers': {'blitz': [12345]},
+            'next_id': 2,
+        })
+
+        ia = make_interaction(admin=True)
+        run_async(cmd(ia, modus='status', kurs=0, puzzle=0, lichess=0))
+        reminder_calls = [c for c in ia.followup.calls
+                          if 'Test-Reminder' in (c.get('content') or '')]
+        check('test-reminder: followup vorhanden', len(reminder_calls) > 0)
+        if reminder_calls:
+            content = reminder_calls[0].get('content', '')
+            check('test-reminder: wochenpost', 'wochenpost' in content)
+            check('test-reminder: turnier', 'turnier' in content)
+
+        # Ohne Subscriptions → kein Reminder-Followup
+        atomic_write(wp_mod.WOCHENPOST_SUB_FILE, {
+            'subscribers': {}, 'resolved': {}})
+        atomic_write(sr_mod.TURNIER_FILE, {
+            'events': [], 'subscribers': {}, 'next_id': 1})
+        ia = make_interaction(admin=True)
+        run_async(cmd(ia, modus='status', kurs=0, puzzle=0, lichess=0))
+        reminder_calls = [c for c in ia.followup.calls
+                          if 'Test-Reminder' in (c.get('content') or '')]
+        check('test-reminder: ohne Sub kein Reminder', len(reminder_calls) == 0)
+
     finally:
         teardown_temp_config(tmpdir)
     print()

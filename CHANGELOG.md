@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.15.1] - 2026-04-27
+### Added
+- `/test` sendet nach jedem Modus automatisch Test-Reminder per DM, falls der auslösende Admin für `wochenpost_sub` oder `turnier_sub` subscribed ist (Wochenpost-Erinnerung + Turnier-Erinnerung mit nächsten Terminen)
+
 ## [2.15.0] - 2026-04-27
 ### Added
 - `/test modus:` Parameter mit 7 Diagnose-Modi: `status` (Bot-Vitals, Latenz, Uptime, Task-Loops), `files` (JSON-Integritaet), `pgn` (PGN-Parsing + books.json-Abgleich), `lichess` (Token + API-Check), `rendering` (Board-Bild mit Vorschau), `assets` (SVG-Pieces, Sprueche, Icons), `snapshots` (bisheriger Default)

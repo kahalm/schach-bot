@@ -640,6 +640,94 @@ async def _run_snapshots(interaction, kurs, show_puzzle, show_lichess):
 
 
 # ---------------------------------------------------------------------------
+# Test-Reminder per DM (Wochenpost + Turnier)
+# ---------------------------------------------------------------------------
+
+async def _trigger_test_reminders(interaction, bot):
+    """Sendet Test-Reminder per DM falls der User subscribed ist."""
+    uid = str(interaction.user.id)
+    uid_int = interaction.user.id
+    sent = []
+
+    # --- Wochenpost-Erinnerung ---
+    try:
+        import commands.wochenpost as wp
+        sub_data = atomic_read(wp.WOCHENPOST_SUB_FILE, default=dict)
+        if uid in sub_data.get('subscribers', {}):
+            entry = wp._get_latest_posted()
+            if entry and 'msg_id' in entry:
+                spruch = wp._random_spruch()
+                titel = entry.get('titel', '')
+                thread_id = entry.get('thread_id')
+
+                thread_url = ''
+                if thread_id and wp._wochenpost_channel_id:
+                    channel = bot.get_channel(wp._wochenpost_channel_id)
+                    if channel:
+                        guild_id = getattr(getattr(channel, 'guild', None), 'id', None)
+                        if guild_id:
+                            thread_url = f'https://discord.com/channels/{guild_id}/{thread_id}'
+
+                msg = f'{spruch}\n\n' if spruch else ''
+                msg += f'\U0001f4ec Mache deine \u00dcbungen! \u2192 **{titel}**'
+                if thread_url:
+                    msg += f'\n{thread_url}'
+
+                dm = await interaction.user.create_dm()
+                await dm.send(msg)
+                sent.append('wochenpost')
+    except Exception as e:
+        log.debug('Test-Reminder wochenpost: %s', e)
+
+    # --- Turnier-Erinnerung ---
+    try:
+        import commands.schachrallye as sr
+        turnier_data = atomic_read(sr.TURNIER_FILE, default=dict)
+        if isinstance(turnier_data, dict):
+            subs = turnier_data.get('subscribers', {})
+            user_tags = [tag for tag, uids in subs.items() if uid_int in uids]
+
+            if user_tags:
+                events = turnier_data.get('events', [])
+                today = datetime.now(timezone.utc).date()
+                upcoming = []
+                for ev in events:
+                    if not set(ev.get('tags', [])).intersection(user_tags):
+                        continue
+                    try:
+                        d = datetime.strptime(ev.get('datum', ''), '%Y-%m-%d').date()
+                    except ValueError:
+                        continue
+                    if d > today:
+                        upcoming.append(ev)
+
+                if upcoming:
+                    upcoming.sort(key=lambda e: e.get('datum', ''))
+                    lines = []
+                    for ev in upcoming[:5]:
+                        name = ev.get('name', f'Termin #{ev.get("id", "?")}')
+                        try:
+                            d = datetime.strptime(ev['datum'], '%Y-%m-%d').date()
+                            ts = int(datetime(d.year, d.month, d.day, tzinfo=timezone.utc).timestamp())
+                            lines.append(f'**{name}** \u2014 <t:{ts}:D>')
+                        except Exception:
+                            lines.append(f'**{name}** \u2014 {ev.get("datum", "")}')
+
+                    tags_str = ', '.join(user_tags)
+                    msg = f'\U0001f3c6 **Turnier-Erinnerung** (Tags: {tags_str})\n\n' + '\n'.join(lines)
+
+                    dm = await interaction.user.create_dm()
+                    await dm.send(msg)
+                    sent.append('turnier')
+    except Exception as e:
+        log.debug('Test-Reminder turnier: %s', e)
+
+    if sent:
+        await interaction.followup.send(
+            f'Test-Reminder gesendet: {", ".join(sent)}', ephemeral=True)
+
+
+# ---------------------------------------------------------------------------
 # Dispatch + Command
 # ---------------------------------------------------------------------------
 
@@ -679,33 +767,23 @@ def setup(bot):
 
         if modus == 'snapshots':
             await _run_snapshots(interaction, kurs, puzzle == 1, lichess == 1)
-            return
-
-        if modus == 'status':
+        elif modus == 'status':
             checks = _run_status(bot)
             embed = _build_result_embed('Bot-Status', checks)
             await interaction.followup.send(embed=embed, ephemeral=True)
-            return
-
-        if modus == 'files':
+        elif modus == 'files':
             checks = await asyncio.to_thread(_run_files)
             embed = _build_result_embed('JSON-Integritaet', checks)
             await interaction.followup.send(embed=embed, ephemeral=True)
-            return
-
-        if modus == 'pgn':
+        elif modus == 'pgn':
             checks = await asyncio.to_thread(_run_pgn)
             embed = _build_result_embed('PGN-Dateien', checks)
             await interaction.followup.send(embed=embed, ephemeral=True)
-            return
-
-        if modus == 'lichess':
+        elif modus == 'lichess':
             checks = await asyncio.to_thread(_run_lichess)
             embed = _build_result_embed('Lichess-API', checks)
             await interaction.followup.send(embed=embed, ephemeral=True)
-            return
-
-        if modus == 'rendering':
+        elif modus == 'rendering':
             checks, img = await asyncio.to_thread(_run_rendering)
             embed = _build_result_embed('Board-Rendering', checks)
             if img:
@@ -715,13 +793,14 @@ def setup(bot):
                     file=file, embed=embed, ephemeral=True)
             else:
                 await interaction.followup.send(embed=embed, ephemeral=True)
-            return
-
-        if modus == 'assets':
+        elif modus == 'assets':
             checks = _run_assets()
             embed = _build_result_embed('Assets', checks)
             await interaction.followup.send(embed=embed, ephemeral=True)
+        else:
+            await interaction.followup.send(
+                f'Unbekannter Modus: `{modus}`', ephemeral=True)
             return
 
-        await interaction.followup.send(
-            f'Unbekannter Modus: `{modus}`', ephemeral=True)
+        # Test-Reminder per DM falls subscribed
+        await _trigger_test_reminders(interaction, bot)
