@@ -446,6 +446,7 @@ import commands.reminder as reminder_mod
 import commands.schachrallye as schachrallye_mod
 import commands.wochenpost as wochenpost_mod
 import commands.wochenpost_buttons as wp_buttons_mod
+import commands.turnier_buttons as turnier_buttons_mod
 
 # bot.py importieren (ruft am Ende bot.run() auf, was jetzt ein no-op ist)
 import bot as bot_mod

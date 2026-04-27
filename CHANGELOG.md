@@ -4,6 +4,22 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.16.0] - 2026-04-27
+### Added
+- Turnier-Review-System: neue Turniere muessen von Reviewern freigegeben werden, bevor sie im Channel gepostet werden
+- `/turnier_review` — Als Turnier-Reviewer subscriben/unsubscriben (Admin, Toggle)
+- `/turnier_pending` — Alle ausstehenden (pending) Turniere anzeigen (Admin)
+- `commands/turnier_buttons.py` — Persistente View mit Freigeben/Ablehnen-Buttons fuer Review-DMs
+- Review-DMs an alle Reviewer bei neuen Turnieren mit Approve/Reject-Buttons
+- Fallback: ohne Reviewer werden Turniere wie bisher direkt gepostet (auto-approve)
+- Abwaertskompatibilitaet: existierende Events ohne `approved`-Feld gelten als freigegeben
+
+### Changed
+- `/turnier` zeigt nur noch freigegebene Events an (pending werden gefiltert)
+- `/turnier_parse` zeigt "(pending)" im Status wenn Reviewer vorhanden sind
+- Rallye-Reminder ignoriert pending Events
+- `turnier.json` Datenmodell erweitert: `reviewers[]` (Root-Level) und `approved` (pro Event)
+
 ## [2.15.1] - 2026-04-27
 ### Added
 - `/test` sendet nach jedem Modus automatisch Test-Reminder per DM, falls der auslösende Admin für `wochenpost_sub` oder `turnier_sub` subscribed ist (Wochenpost-Erinnerung + Turnier-Erinnerung mit nächsten Terminen)

@@ -135,6 +135,8 @@ async def on_ready():
     bot.add_view(puzzle.PuzzleView())
     from commands.wochenpost_buttons import WochenpostView
     bot.add_view(WochenpostView())
+    from commands.turnier_buttons import TurnierReviewView
+    bot.add_view(TurnierReviewView())
     for attempt, delay in enumerate([0, 5, 15, 30], 1):
         try:
             if delay:
@@ -360,6 +362,8 @@ def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str
             ('/schachrallye_add <datum> <ort>', 'Rallye-Termin anlegen (TT.MM.JJJJ).'),
             ('/schachrallye_del <id>', 'Rallye-Termin löschen.'),
             ('/turnier_parse', 'Termine von tirol.chess.at importieren.'),
+            ('/turnier_review', 'Als Turnier-Reviewer subscriben (Toggle).'),
+            ('/turnier_pending', 'Ausstehende Turniere anzeigen.'),
             ('/wochenpost', 'Geplante Wochenposts anzeigen.'),
             ('/wochenpost_add <datum> <titel>', 'Wochenpost anlegen (Freitags).'),
             ('/wochenpost_del <id>', 'Wochenpost löschen.'),
@@ -404,7 +408,7 @@ async def cmd_help(interaction: discord.Interaction, bereich: str = ''):
                         inline=False)
         if is_admin:
             embed.add_field(name='🔧 admin',
-                            value='`/daily` `/stats` `/announce` `/log` `/dm-log` `/ignore_kapitel` `/test` `/wanted_delete` `/schachrallye_add` `/schachrallye_del` `/wochenpost`',
+                            value='`/daily` `/stats` `/announce` `/log` `/dm-log` `/ignore_kapitel` `/test` `/wanted_delete` `/schachrallye_add` `/schachrallye_del` `/turnier_review` `/turnier_pending` `/wochenpost`',
                             inline=False)
 
     embed.set_footer(text=f'Schach-Bot v{VERSION}')

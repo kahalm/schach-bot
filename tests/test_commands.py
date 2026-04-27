@@ -25,6 +25,7 @@ from test_cmd_community import (
 )
 from test_cmd_events import (
     test_schachrallye, test_turnier_sub, test_turnier_prune,
+    test_turnier_review,
     test_wochenpost, test_wochenpost_batch, test_wochenpost_buttons,
     test_parse_zeit, test_wochenpost_sub,
 )
@@ -80,6 +81,7 @@ def main():
     test_puzzle_anzahl_validation()
     test_collection_duplicate_url()
     test_turnier_prune()
+    test_turnier_review()
     test_posted_reset_per_pool()
     test_wochenpost()
     test_wochenpost_batch()

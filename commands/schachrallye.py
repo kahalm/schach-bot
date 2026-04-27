@@ -49,7 +49,7 @@ def _is_valid_url(url: str) -> bool:
 
 TURNIER_FILE = os.path.join(CONFIG_DIR, 'turnier.json')
 RALLYE_URL = 'https://tirol.chess.at/termine/'
-_DEFAULT = {"events": [], "subscribers": {}, "next_id": 1}
+_DEFAULT = {"events": [], "subscribers": {}, "reviewers": [], "next_id": 1}
 _PRUNE_DAYS = 90  # Alte Events nach N Tagen entfernen
 
 _bot = None
@@ -284,6 +284,10 @@ def setup(bot, tournament_channel_id: int = 0):
     _bot = bot
     _tournament_channel_id = tournament_channel_id
     tree = bot.tree
+
+    # turnier_buttons mit Bot-Referenz konfigurieren
+    from commands.turnier_buttons import configure as _configure_buttons
+    _configure_buttons(bot, tournament_channel_id)
 
     # --- /schachrallye -------------------------------------------------------
 
@@ -627,14 +631,104 @@ def setup(bot, tournament_channel_id: int = 0):
 
     # --- Parse-Logik (shared zwischen Command und Auto-Loop) ---------------
 
+    async def _post_approved_event(event: dict):
+        """Postet ein freigegebenes Event im Tournament-Channel mit Mentions."""
+        if not _tournament_channel_id:
+            return
+        channel = _bot.get_channel(_tournament_channel_id)
+        if not channel:
+            return
+
+        subs_data = atomic_read(TURNIER_FILE, default=dict).get('subscribers', {})
+        dt = event.get('datum_text', event.get('datum', ''))
+        ort = _shorten_ort(event.get('ort', ''))
+        link = event.get('link', '')
+        tags = event.get('tags', [])
+        desc = f"\U0001f4c5 `{dt}`"
+        if ort:
+            desc += f" \u00b7 {ort}"
+        if tags:
+            desc += '\n' + ' '.join(f'`{t}`' for t in tags)
+        # Subscriber-Mentions sammeln
+        mention_ids = set()
+        for t in tags:
+            mention_ids.update(subs_data.get(t, []))
+        mention_text = (' '.join(f'<@{uid}>' for uid in mention_ids)
+                        if mention_ids else '')
+        embed = discord.Embed(
+            title=event.get('name', ''),
+            description=desc,
+            color=EMBED_COLOR,
+        )
+        if link and _is_valid_url(link):
+            embed.url = link
+        embed.set_footer(text='tirol.chess.at/termine/')
+        try:
+            await channel.send(content=mention_text or None, embed=embed)
+        except Exception:
+            log.exception('Turnier-Post fehlgeschlagen fuer %s', event.get('name', ''))
+
+    # Fuer turnier_buttons.py verfuegbar machen
+    _post_approved_event.__module__ = __name__
+
+    async def _notify_reviewers(added_events: list[dict]):
+        """Sendet Review-DMs an alle Reviewer fuer neue Events."""
+        from commands.turnier_buttons import TurnierReviewView
+
+        data = atomic_read(TURNIER_FILE, default=dict)
+        reviewers = data.get('reviewers', [])
+        if not reviewers:
+            return
+
+        # Event-IDs aus der JSON holen (added_events enthaelt die Roh-Daten,
+        # wir brauchen die gespeicherten mit ID)
+        all_events = data.get('events', [])
+        # Neue Events matchen ueber (datum, name)
+        added_keys = {(a['datum'], a['name']) for a in added_events}
+        pending = [e for e in all_events
+                   if (e['datum'], e.get('name', '')) in added_keys
+                   and e.get('approved') is False]
+
+        for event in pending:
+            dt = event.get('datum_text', event.get('datum', ''))
+            ort = _shorten_ort(event.get('ort', ''))
+            tags = event.get('tags', [])
+            desc = f"\U0001f4c5 `{dt}`"
+            if ort:
+                desc += f" \u00b7 {ort}"
+            if tags:
+                desc += '\n' + ' '.join(f'`{t}`' for t in tags)
+
+            embed = discord.Embed(
+                title=event.get('name', 'Neues Turnier'),
+                description=desc,
+                color=0xf39c12,  # Orange fuer Pending
+            )
+            embed.set_footer(text=f'Event #{event["id"]}')
+
+            view = TurnierReviewView()
+
+            for uid in reviewers:
+                try:
+                    user = _bot.get_user(uid) or await _bot.fetch_user(uid)
+                    dm = await user.create_dm()
+                    await dm.send(embed=embed, view=view)
+                except Exception:
+                    log.warning('Review-DM an %s fehlgeschlagen (Event #%d)',
+                                uid, event['id'])
+
     async def _parse_and_post() -> list[dict]:
-        """Fetcht Termine, merged in JSON, postet neue im Channel.
+        """Fetcht Termine, merged in JSON, ggf. Review oder direkt posten.
 
         Returns: Liste der neu hinzugefuegten Events.
         """
         new_events = await asyncio.to_thread(_fetch_termine)
 
         added: list[dict] = []
+
+        # Reviewer-Liste VOR dem Merge lesen
+        pre_data = atomic_read(TURNIER_FILE, default=lambda: dict(_DEFAULT))
+        has_reviewers = bool(pre_data.get('reviewers', []))
 
         def _merge(data):
             if not isinstance(data, dict) or 'events' not in data:
@@ -652,6 +746,7 @@ def setup(bot, tournament_channel_id: int = 0):
                     'ort': t['ort'],
                     'link': t.get('link', ''),
                     'tags': t.get('tags', []),
+                    'approved': not has_reviewers,
                 }
                 if 'schachrallye' in t.get('tags', []):
                     entry['reminded'] = False
@@ -662,40 +757,14 @@ def setup(bot, tournament_channel_id: int = 0):
 
         atomic_update(TURNIER_FILE, _merge)
 
-        # Neue Turniere im Channel posten — je ein Embed pro Turnier
-        subs_data = atomic_read(TURNIER_FILE, default=dict).get('subscribers', {})
-        if added and _tournament_channel_id:
-            channel = _bot.get_channel(_tournament_channel_id)
-            if channel:
+        if added:
+            if has_reviewers:
+                # Review-DMs senden, NICHT direkt posten
+                await _notify_reviewers(added)
+            else:
+                # Kein Reviewer → direkt posten (bisheriges Verhalten)
                 for a in added:
-                    dt = a.get('datum_text', a['datum'])
-                    ort = _shorten_ort(a.get('ort', ''))
-                    link = a.get('link', '')
-                    tags = a.get('tags', [])
-                    desc = f"\U0001f4c5 `{dt}`"
-                    if ort:
-                        desc += f" \u00b7 {ort}"
-                    if tags:
-                        desc += '\n' + ' '.join(f'`{t}`' for t in tags)
-                    # Subscriber-Mentions sammeln (als content, damit Discord pingt)
-                    mention_ids = set()
-                    for t in tags:
-                        mention_ids.update(subs_data.get(t, []))
-                    mention_text = (' '.join(f'<@{uid}>' for uid in mention_ids)
-                                    if mention_ids else '')
-                    embed = discord.Embed(
-                        title=a['name'],
-                        description=desc,
-                        color=EMBED_COLOR,
-                    )
-                    if link and _is_valid_url(link):
-                        embed.url = link
-                    embed.set_footer(text='tirol.chess.at/termine/')
-                    try:
-                        await channel.send(content=mention_text or None,
-                                           embed=embed)
-                    except Exception:
-                        log.exception('Turnier-Post fehlgeschlagen fuer %s', a['name'])
+                    await _post_approved_event(a)
 
         return added
 
@@ -717,16 +786,21 @@ def setup(bot, tournament_channel_id: int = 0):
                 f'\u274c Fehler beim Laden von {RALLYE_URL}: {e}', ephemeral=True)
             return
 
+        # Pruefen ob Reviewer vorhanden sind (fuer Status-Meldung)
+        cur_data = atomic_read(TURNIER_FILE, default=dict)
+        has_reviewers = bool(cur_data.get('reviewers', []))
+
         if added:
             rallye_added = [a for a in added if 'schachrallye' in a.get('tags', [])]
             turnier_added = [a for a in added if 'schachrallye' not in a.get('tags', [])]
+            suffix = ' (pending)' if has_reviewers else ''
             parts = []
             if rallye_added:
                 lines = [_format_turnier_line(a) for a in rallye_added]
-                parts.append(f"**Rallye** \u2014 {len(rallye_added)} neu:\n" + '\n'.join(lines))
+                parts.append(f"**Rallye** \u2014 {len(rallye_added)} neu{suffix}:\n" + '\n'.join(lines))
             if turnier_added:
                 lines = [_format_turnier_line(a) for a in turnier_added]
-                parts.append(f"**Turniere** \u2014 {len(turnier_added)} neu:\n" + '\n'.join(lines))
+                parts.append(f"**Turniere** \u2014 {len(turnier_added)} neu{suffix}:\n" + '\n'.join(lines))
             desc = '\n\n'.join(parts)
             if len(desc) > 4096:
                 desc = desc[:4093] + '...'
@@ -752,7 +826,9 @@ def setup(bot, tournament_channel_id: int = 0):
         events = data.get('events', [])
 
         today = date.today()
-        future = [e for e in events if (_parse_stored(e['datum']) or date.min) >= today]
+        future = [e for e in events
+                  if (_parse_stored(e['datum']) or date.min) >= today
+                  and e.get('approved', True) is not False]
         future.sort(key=lambda e: e['datum'])
 
         if not future:
@@ -773,6 +849,88 @@ def setup(bot, tournament_channel_id: int = 0):
             color=EMBED_COLOR,
         )
         embed.set_footer(text='Quelle: tirol.chess.at/termine/')
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # --- /turnier_review (Reviewer sub/unsub) ---------------------------------
+
+    @tree.command(name='turnier_review',
+                  description='Als Turnier-Reviewer subscriben/unsubscriben (Admin)')
+    @discord.app_commands.default_permissions(administrator=True)
+    async def cmd_turnier_review(interaction: discord.Interaction):
+        if not is_privileged(interaction):
+            await interaction.response.send_message(
+                '\u26a0\ufe0f Nur fuer Admins/Moderatoren.', ephemeral=True)
+            return
+
+        uid = interaction.user.id
+        result = {'action': ''}
+
+        def _toggle(data):
+            if not isinstance(data, dict) or 'events' not in data:
+                data = _DEFAULT.copy()
+            reviewers = data.setdefault('reviewers', [])
+            if uid in reviewers:
+                reviewers.remove(uid)
+                result['action'] = 'unsub'
+            else:
+                reviewers.append(uid)
+                result['action'] = 'sub'
+            return data
+
+        atomic_update(TURNIER_FILE, _toggle)
+
+        if result['action'] == 'sub':
+            await interaction.response.send_message(
+                '\u2705 Du bist jetzt Turnier-Reviewer. '
+                'Neue Turniere muessen von dir freigegeben werden, '
+                'bevor sie im Channel gepostet werden.',
+                ephemeral=True)
+        else:
+            await interaction.response.send_message(
+                '\u2705 Turnier-Review abbestellt.',
+                ephemeral=True)
+
+    # --- /turnier_pending (pending Events anzeigen) -------------------------
+
+    @tree.command(name='turnier_pending',
+                  description='Ausstehende Turniere anzeigen (Admin)')
+    @discord.app_commands.default_permissions(administrator=True)
+    async def cmd_turnier_pending(interaction: discord.Interaction):
+        if not is_privileged(interaction):
+            await interaction.response.send_message(
+                '\u26a0\ufe0f Nur fuer Admins/Moderatoren.', ephemeral=True)
+            return
+
+        data = atomic_read(TURNIER_FILE, default=dict)
+        if not data:
+            data = _DEFAULT.copy()
+        events = data.get('events', [])
+        pending = [e for e in events if e.get('approved') is False]
+
+        if not pending:
+            await interaction.response.send_message(
+                'Keine ausstehenden Turniere.', ephemeral=True)
+            return
+
+        pending.sort(key=lambda e: e.get('datum', ''))
+        lines = []
+        for e in pending:
+            line = f"**#{e['id']}** \u2014 {_format_turnier_line(e)}"
+            lines.append(line)
+
+        desc = '\n'.join(lines)
+        if len(desc) > 4096:
+            desc = desc[:4093] + '...'
+        embed = discord.Embed(
+            title='\U0001f4cb Ausstehende Turniere',
+            description=desc,
+            color=EMBED_COLOR,
+        )
+        reviewers = data.get('reviewers', [])
+        if reviewers:
+            reviewer_list = ', '.join(f'<@{uid}>' for uid in reviewers)
+            embed.set_footer(text=f'Reviewer: {len(reviewers)}')
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # --- Reminder-Loop -------------------------------------------------------
@@ -798,6 +956,8 @@ def setup(bot, tournament_channel_id: int = 0):
 
         for event in events:
             if 'schachrallye' not in event.get('tags', []):
+                continue
+            if event.get('approved', True) is False:
                 continue
             if event.get('reminded'):
                 continue

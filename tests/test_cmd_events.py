@@ -14,7 +14,7 @@ from test_helpers import (
     make_interaction, _captured_commands, _discord,
     FakeMember, FakeChannel, FakeMessage, FakeView,
     atomic_read, atomic_write,
-    schachrallye_mod, wochenpost_mod, wp_buttons_mod,
+    schachrallye_mod, wochenpost_mod, wp_buttons_mod, turnier_buttons_mod,
 )
 
 
@@ -465,6 +465,183 @@ def test_turnier_prune():
             check('prune → neues bleibt', events[0]['name'] == 'Neu')
         finally:
             rallye_mod.TURNIER_FILE = old_file
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_turnier_review():
+    """Tests fuer Turnier-Review-Flow: approved-Flag, Reviewer-Toggle, Pending."""
+    print('[turnier_review]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd_review = _captured_commands.get('turnier_review')
+        cmd_pending = _captured_commands.get('turnier_pending')
+        cmd_turnier = _captured_commands.get('turnier')
+        cmd_parse = _captured_commands.get('turnier_parse')
+
+        check('cmd_turnier_review gefunden', cmd_review is not None)
+        check('cmd_turnier_pending gefunden', cmd_pending is not None)
+        if not cmd_review or not cmd_pending:
+            return
+
+        # --- Reviewer Toggle ---
+        # Sub als Admin
+        admin_user = FakeMember(uid=11111, name='Admin', admin=True)
+        ia = make_interaction(user=admin_user)
+        run_async(cmd_review(ia))
+        content = ia.response.calls[0].get('content') or ''
+        check('review sub → Bestaetigung', 'reviewer' in content.lower())
+
+        # In JSON?
+        tdata = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+        check('reviewer in JSON', 11111 in tdata.get('reviewers', []))
+
+        # Unsub (nochmal aufrufen → Toggle)
+        ia = make_interaction(user=admin_user)
+        run_async(cmd_review(ia))
+        content = ia.response.calls[0].get('content') or ''
+        check('review unsub → Bestaetigung', 'abbestellt' in content.lower())
+
+        tdata = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+        check('reviewer aus JSON entfernt', 11111 not in tdata.get('reviewers', []))
+
+        # Nicht-Admin → Fehler
+        ia = make_interaction(admin=False)
+        run_async(cmd_review(ia))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('review ohne Admin → Fehler', 'admin' in content)
+
+        # --- Neue Events mit approved=false wenn Reviewer vorhanden ---
+        # Erst Reviewer subscriben
+        ia = make_interaction(user=admin_user)
+        run_async(cmd_review(ia))
+
+        # Fake Parse mit Reviewer
+        future_d = (date.today() + timedelta(days=45)).strftime('%d.%m.%Y')
+        future_iso = (date.today() + timedelta(days=45)).strftime('%Y-%m-%d')
+        fake_html = (
+            '<table>'
+            '<tr><th>Datum</th><th>Veranstaltung</th><th>Ort</th></tr>'
+            f'<tr><td>{future_d}</td><td>Testturnier Review</td>'
+            '<td>Innsbruck</td></tr>'
+            '</table>'
+        )
+        fake_resp = MagicMock()
+        fake_resp.text = fake_html
+        fake_resp.raise_for_status = MagicMock()
+        old_fetch = schachrallye_mod.requests.get
+        schachrallye_mod.requests.get = MagicMock(return_value=fake_resp)
+        try:
+            ia = make_interaction(admin=True)
+            run_async(cmd_parse(ia))
+
+            # Event in JSON mit approved=false?
+            tdata = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+            review_events = [e for e in tdata.get('events', [])
+                             if e.get('name') == 'Testturnier Review']
+            check('neues Event hat approved=false',
+                  len(review_events) == 1 and review_events[0].get('approved') is False)
+
+            # /turnier zeigt pending Events NICHT an
+            if cmd_turnier:
+                ia = make_interaction()
+                run_async(cmd_turnier(ia))
+                call = ia.response.calls[0]
+                embed = call.get('embed')
+                content = call.get('content') or ''
+                desc = embed.description if embed else content
+                check('/turnier filtert pending Events',
+                      'Testturnier Review' not in desc)
+
+            # /turnier_pending zeigt pending Events
+            ia = make_interaction(admin=True)
+            run_async(cmd_pending(ia))
+            call = ia.response.calls[0]
+            embed = call.get('embed')
+            check('/turnier_pending → Embed', embed is not None)
+            desc = embed.description if embed else ''
+            check('/turnier_pending zeigt pending Event',
+                  'Testturnier Review' in desc)
+
+            # /turnier_parse zeigt "pending" im Text
+            fu_call = None
+            for c in ia.followup.calls:
+                if c.get('type') == 'send':
+                    fu_call = c
+                    break
+            # Parse-Antwort pruefen (vom vorherigen parse-Aufruf)
+            # Nochmal parsen (liefert "bereits vorhanden")
+            ia2 = make_interaction(admin=True)
+            run_async(cmd_parse(ia2))
+
+        finally:
+            schachrallye_mod.requests.get = old_fetch
+
+        # --- Kein Reviewer → auto-approve ---
+        # Reviewer entfernen
+        ia = make_interaction(user=admin_user)
+        run_async(cmd_review(ia))  # Toggle → unsub
+
+        # Neues Event parsen ohne Reviewer
+        future_d2 = (date.today() + timedelta(days=55)).strftime('%d.%m.%Y')
+        fake_html2 = (
+            '<table>'
+            '<tr><th>Datum</th><th>Veranstaltung</th><th>Ort</th></tr>'
+            f'<tr><td>{future_d2}</td><td>Auto-Approve Turnier</td>'
+            '<td>Schwaz</td></tr>'
+            '</table>'
+        )
+        fake_resp2 = MagicMock()
+        fake_resp2.text = fake_html2
+        fake_resp2.raise_for_status = MagicMock()
+        schachrallye_mod.requests.get = MagicMock(return_value=fake_resp2)
+        try:
+            ia = make_interaction(admin=True)
+            run_async(cmd_parse(ia))
+
+            tdata = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+            auto_events = [e for e in tdata.get('events', [])
+                           if e.get('name') == 'Auto-Approve Turnier']
+            check('kein Reviewer → approved=true',
+                  len(auto_events) == 1 and auto_events[0].get('approved') is True)
+        finally:
+            schachrallye_mod.requests.get = old_fetch
+
+        # --- /turnier_pending leer → Hinweis ---
+        # Erst alle pending Events entfernen (approved setzen)
+        def _approve_all(data):
+            for e in data.get('events', []):
+                e['approved'] = True
+            return data
+        from core.json_store import atomic_update
+        atomic_update(schachrallye_mod.TURNIER_FILE, _approve_all)
+
+        ia = make_interaction(admin=True)
+        run_async(cmd_pending(ia))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('/turnier_pending leer → Hinweis', 'keine' in content)
+
+        # --- Abwaertskompatibilitaet: Events ohne approved-Feld gelten als approved ---
+        data_compat = {
+            "events": [
+                {"id": 99, "datum": str(date.today() + timedelta(days=10)),
+                 "name": "Legacy Event", "ort": "Wien"}
+            ],
+            "subscribers": {},
+            "reviewers": [],
+            "next_id": 100,
+        }
+        atomic_write(schachrallye_mod.TURNIER_FILE, data_compat)
+        if cmd_turnier:
+            ia = make_interaction()
+            run_async(cmd_turnier(ia))
+            call = ia.response.calls[0]
+            embed = call.get('embed')
+            desc = embed.description if embed else ''
+            check('Legacy Event ohne approved → sichtbar',
+                  'Legacy Event' in desc)
+
     finally:
         teardown_temp_config(tmpdir)
     print()
