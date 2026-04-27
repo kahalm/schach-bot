@@ -75,6 +75,43 @@ def _is_admin(interaction: discord.Interaction) -> bool:
     return is_privileged(interaction)
 
 
+def _parse_zeit(raw: str) -> tuple[int, int] | None:
+    """Parst Uhrzeit in verschiedenen Formaten zu (hour, minute).
+
+    Akzeptiert: '17', '1730', '17:30', '17 30'.
+    Gibt None bei ungueltigem Format oder Werten zurueck.
+    """
+    s = raw.strip()
+    if not s:
+        return None
+    # "17:30" oder "17 30"
+    for sep in (':', ' '):
+        if sep in s:
+            parts = s.split(sep, 1)
+            try:
+                h, m = int(parts[0]), int(parts[1])
+            except ValueError:
+                return None
+            if 0 <= h <= 23 and 0 <= m <= 59:
+                return (h, m)
+            return None
+    # Reine Zahl: "17" (1-2 Stellen) oder "1730" (3-4 Stellen)
+    try:
+        val = int(s)
+    except ValueError:
+        return None
+    if len(s) <= 2:
+        if 0 <= val <= 23:
+            return (val, 0)
+        return None
+    if len(s) in (3, 4):
+        h, m = divmod(val, 100)
+        if 0 <= h <= 23 and 0 <= m <= 59:
+            return (h, m)
+        return None
+    return None
+
+
 def _parse_datum(text: str) -> date | None:
     """Parst TT.MM.JJJJ zu date, gibt None bei Fehler."""
     try:
@@ -450,10 +487,10 @@ def setup(bot, wochenpost_channel_id: int = 0):
     @tree.command(name='wochenpost_sub',
                   description='Taeglich DM-Erinnerung an den aktuellen Wochenpost')
     @discord.app_commands.describe(
-        zeit='Uhrzeit MEZ/MESZ (0-23, Standard: 17)',
+        zeit='Uhrzeit MEZ/MESZ (z.B. 17, 17:30, 1730)',
         user='Anderen User subscriben (Admin/Mod)')
     async def cmd_wochenpost_sub(interaction: discord.Interaction,
-                                  zeit: int = 17,
+                                  zeit: str = '17',
                                   user: discord.User = None):
         if user and not _is_admin(interaction):
             await interaction.response.send_message(
@@ -461,20 +498,24 @@ def setup(bot, wochenpost_channel_id: int = 0):
                 ephemeral=True)
             return
 
-        if not 0 <= zeit <= 23:
+        parsed = _parse_zeit(zeit)
+        if parsed is None:
             await interaction.response.send_message(
-                '\u26a0\ufe0f Ungueltige Uhrzeit. Bitte 0-23 angeben.',
+                '\u26a0\ufe0f Ungueltige Uhrzeit. '
+                'Beispiele: `17`, `17:30`, `1730`, `17 30`.',
                 ephemeral=True)
             return
 
+        h, m = parsed
         target = user or interaction.user
         uid = str(target.id)
         now_vienna = datetime.now(_VIENNA)
-        next_dt = now_vienna.replace(hour=zeit, minute=0, second=0, microsecond=0)
+        next_dt = now_vienna.replace(hour=h, minute=m, second=0, microsecond=0)
         if next_dt <= now_vienna:
             next_dt += timedelta(days=1)
         next_dt = next_dt.astimezone(timezone.utc)
 
+        zeit_display = f'{h}:{m:02d} MEZ/MESZ'
         result = {'updated': False}
 
         def _sub(data):
@@ -483,7 +524,7 @@ def setup(bot, wochenpost_channel_id: int = 0):
             subs = data.setdefault('subscribers', {})
             data.setdefault('resolved', {})
             result['updated'] = uid in subs
-            subs[uid] = {'hour': zeit, 'next': next_dt.isoformat()}
+            subs[uid] = {'hour': h, 'minute': m, 'next': next_dt.isoformat()}
             return data
 
         await asyncio.to_thread(atomic_update, WOCHENPOST_SUB_FILE,
@@ -494,23 +535,23 @@ def setup(bot, wochenpost_channel_id: int = 0):
             if user:
                 await interaction.response.send_message(
                     f'\u2705 {name} aktualisiert: '
-                    f'taeglich um **{zeit}:00 MEZ/MESZ**.',
+                    f'taeglich um **{zeit_display}**.',
                     ephemeral=True)
             else:
                 await interaction.response.send_message(
                     f'\u2705 {name} aktualisiert: '
-                    f'taeglich um **{zeit}:00 MEZ/MESZ**.',
+                    f'taeglich um **{zeit_display}**.',
                     ephemeral=True)
         else:
             if user:
                 await interaction.response.send_message(
                     f'\u2705 {name} fuer Wochenpost-Erinnerungen subscribed: '
-                    f'taeglich um **{zeit}:00 MEZ/MESZ**.',
+                    f'taeglich um **{zeit_display}**.',
                     ephemeral=True)
             else:
                 await interaction.response.send_message(
                     f'\u2705 Wochenpost-Erinnerung abonniert: '
-                    f'taeglich um **{zeit}:00 MEZ/MESZ**.\n'
+                    f'taeglich um **{zeit_display}**.\n'
                     f'Du bekommst eine DM, bis du den aktuellen '
                     f'Wochenpost als erledigt markierst.',
                     ephemeral=True)
@@ -742,8 +783,9 @@ async def _run_wochenpost_reminders():
             continue
 
         hour = info.get('hour', 17)
+        minute = info.get('minute', 0)
         tomorrow_vienna = (now_vienna + timedelta(days=1)).replace(
-            hour=hour, minute=0, second=0, microsecond=0)
+            hour=hour, minute=minute, second=0, microsecond=0)
         tomorrow = tomorrow_vienna.astimezone(timezone.utc)
 
         # Veroeffentlichungstag → skip

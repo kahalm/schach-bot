@@ -996,6 +996,40 @@ def test_wochenpost_buttons():
     print()
 
 
+def test_parse_zeit():
+    """Tests fuer _parse_zeit() Hilfsfunktion."""
+    print('[_parse_zeit]')
+    pz = wochenpost_mod._parse_zeit
+
+    # Gueltige Formate
+    check('parse "17" → (17,0)', pz('17') == (17, 0))
+    check('parse "0" → (0,0)', pz('0') == (0, 0))
+    check('parse "23" → (23,0)', pz('23') == (23, 0))
+    check('parse "9" → (9,0)', pz('9') == (9, 0))
+    check('parse "1730" → (17,30)', pz('1730') == (17, 30))
+    check('parse "0930" → (9,30)', pz('0930') == (9, 30))
+    check('parse "930" → (9,30)', pz('930') == (9, 30))
+    check('parse "17:30" → (17,30)', pz('17:30') == (17, 30))
+    check('parse "9:05" → (9,5)', pz('9:05') == (9, 5))
+    check('parse "17 30" → (17,30)', pz('17 30') == (17, 30))
+    check('parse "0:00" → (0,0)', pz('0:00') == (0, 0))
+    check('parse "23:59" → (23,59)', pz('23:59') == (23, 59))
+    check('parse " 17 " → (17,0)', pz(' 17 ') == (17, 0))
+
+    # Ungueltige Werte
+    check('parse "24" → None', pz('24') is None)
+    check('parse "25" → None', pz('25') is None)
+    check('parse "-1" → None', pz('-1') is None)
+    check('parse "1760" → None', pz('1760') is None)
+    check('parse "2400" → None', pz('2400') is None)
+    check('parse "24:00" → None', pz('24:00') is None)
+    check('parse "17:60" → None', pz('17:60') is None)
+    check('parse "" → None', pz('') is None)
+    check('parse "abc" → None', pz('abc') is None)
+    check('parse "12345" → None', pz('12345') is None)
+    print()
+
+
 def test_wochenpost_sub():
     """Tests fuer /wochenpost_sub, /wochenpost_unsub + Reminder-Loop."""
     print('[/wochenpost_sub]')
@@ -1012,7 +1046,7 @@ def test_wochenpost_sub():
         # 1) Sub Default → Bestaetigung, JSON korrekt (hour=17)
         user = FakeMember(uid=11111, name='SubUser')
         ia = make_interaction(user=user)
-        run_async(cmd_sub(ia, zeit=17))
+        run_async(cmd_sub(ia, zeit='17'))
         content = ia.response.calls[0].get('content') or ''
         check('sub → Bestaetigung', 'abonniert' in content.lower())
         check('sub → 17:00', '17:00' in content)
@@ -1021,12 +1055,14 @@ def test_wochenpost_sub():
               '11111' in sub_data.get('subscribers', {}))
         check('sub → hour=17',
               sub_data['subscribers']['11111']['hour'] == 17)
+        check('sub → minute=0',
+              sub_data['subscribers']['11111']['minute'] == 0)
         check('sub → next vorhanden',
               'next' in sub_data['subscribers']['11111'])
 
         # 2) Re-Sub mit anderer Zeit → "aktualisiert"
         ia = make_interaction(user=user)
-        run_async(cmd_sub(ia, zeit=9))
+        run_async(cmd_sub(ia, zeit='9'))
         content = ia.response.calls[0].get('content') or ''
         check('re-sub → aktualisiert', 'aktualisiert' in content.lower())
         check('re-sub → 9:00', '9:00' in content)
@@ -1034,16 +1070,63 @@ def test_wochenpost_sub():
         check('re-sub → hour=9',
               sub_data['subscribers']['11111']['hour'] == 9)
 
+        # 2b) Sub mit Minuten: "17:30" → hour=17, minute=30
+        ia = make_interaction(user=user)
+        run_async(cmd_sub(ia, zeit='17:30'))
+        content = ia.response.calls[0].get('content') or ''
+        check('sub 17:30 → aktualisiert', 'aktualisiert' in content.lower())
+        check('sub 17:30 → 17:30', '17:30' in content)
+        sub_data = atomic_read(wochenpost_mod.WOCHENPOST_SUB_FILE, default=dict)
+        check('sub 17:30 → hour=17',
+              sub_data['subscribers']['11111']['hour'] == 17)
+        check('sub 17:30 → minute=30',
+              sub_data['subscribers']['11111']['minute'] == 30)
+
+        # 2c) Sub mit Minuten: "1730" → hour=17, minute=30
+        ia = make_interaction(user=user)
+        run_async(cmd_sub(ia, zeit='1730'))
+        content = ia.response.calls[0].get('content') or ''
+        check('sub 1730 → 17:30', '17:30' in content)
+        sub_data = atomic_read(wochenpost_mod.WOCHENPOST_SUB_FILE, default=dict)
+        check('sub 1730 → hour=17',
+              sub_data['subscribers']['11111']['hour'] == 17)
+        check('sub 1730 → minute=30',
+              sub_data['subscribers']['11111']['minute'] == 30)
+
+        # 2d) Sub mit Minuten: "17 30" → hour=17, minute=30
+        ia = make_interaction(user=user)
+        run_async(cmd_sub(ia, zeit='17 30'))
+        content = ia.response.calls[0].get('content') or ''
+        check('sub "17 30" → 17:30', '17:30' in content)
+
         # 3) Ungueltige Zeit (25) → Fehler
         ia = make_interaction(user=user)
-        run_async(cmd_sub(ia, zeit=25))
+        run_async(cmd_sub(ia, zeit='25'))
         content = (ia.response.calls[0].get('content') or '').lower()
         check('ungueltige Zeit → Fehler', 'ungueltig' in content)
+
+        # 3a2) Ungueltige Minuten (1760) → Fehler
+        ia = make_interaction(user=user)
+        run_async(cmd_sub(ia, zeit='1760'))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('ungueltige Minuten → Fehler', 'ungueltig' in content)
+
+        # 3a3) Leerer String → Fehler
+        ia = make_interaction(user=user)
+        run_async(cmd_sub(ia, zeit=''))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('leere Zeit → Fehler', 'ungueltig' in content)
+
+        # 3a4) Unsinn → Fehler
+        ia = make_interaction(user=user)
+        run_async(cmd_sub(ia, zeit='abc'))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('Unsinn-Zeit → Fehler', 'ungueltig' in content)
 
         # 3b) Nicht-Admin mit user → Fehler
         other = FakeMember(uid=88888, name='Other')
         ia = make_interaction(admin=False)
-        run_async(cmd_sub(ia, zeit=17, user=other))
+        run_async(cmd_sub(ia, zeit='17', user=other))
         content = (ia.response.calls[0].get('content') or '').lower()
         check('sub user ohne Admin → Fehler', 'admin' in content)
 
@@ -1054,7 +1137,7 @@ def test_wochenpost_sub():
 
         # 3c) Admin subscribed anderen User
         ia = make_interaction(admin=True)
-        run_async(cmd_sub(ia, zeit=10, user=other))
+        run_async(cmd_sub(ia, zeit='10', user=other))
         content = ia.response.calls[0].get('content') or ''
         check('admin sub user → Bestaetigung', 'subscribed' in content.lower())
         check('admin sub user → Name', 'Other' in content)

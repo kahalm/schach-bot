@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.12.1] - 2026-04-27
+### Changed
+- `/wochenpost_sub zeit:` akzeptiert jetzt auch Minuten: `17`, `17:30`, `1730`, `17 30`
+- Bestehende Abos ohne Minuten-Feld bleiben abwaertskompatibel (default: 0)
+
 ## [2.12.0] - 2026-04-27
 ### Added
 - Wochenpost-Erinnerungs-DMs enthalten jetzt einen zufälligen Spruch (500 Stück in `assets/sprueche.json` — Großmeister-Zitate, lustige und motivierende Sprüche)
