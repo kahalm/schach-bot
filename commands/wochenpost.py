@@ -1,6 +1,6 @@
 """Wochenpost-Verwaltung: woechentliche Link/PDF-Posts als Thread.
 
-Freitags 18:00 UTC wird pro geplantem Eintrag ein Thread im
+Taeglich 18:00 UTC wird pro geplantem Eintrag ein Thread im
 konfigurierten Channel erstellt (Thread-Name = dd.mm.yyyy).
 
 /wochenpost           — Alle geplanten + vergangenen Posts anzeigen
@@ -62,18 +62,13 @@ def _next_id(entries: list) -> int:
     return max(e.get('id', 0) for e in entries) + 1
 
 
-def _next_free_friday(entries: list) -> date:
-    """Gibt den naechsten Freitag zurueck, der noch nicht belegt ist."""
-    today = date.today()
-    days_until_friday = (4 - today.weekday()) % 7
-    if days_until_friday == 0:
-        days_until_friday = 7  # heute ist Freitag → naechste Woche
-    friday = today + timedelta(days=days_until_friday)
-
+def _next_free_day(entries: list) -> date:
+    """Gibt den naechsten Tag zurueck, der noch nicht belegt ist."""
+    day = date.today() + timedelta(days=1)
     used = {e.get('datum') for e in entries if isinstance(e, dict)}
-    while friday.strftime('%Y-%m-%d') in used:
-        friday += timedelta(days=7)
-    return friday
+    while day.strftime('%Y-%m-%d') in used:
+        day += timedelta(days=1)
+    return day
 
 
 def _parse_utc(ts: str) -> datetime:
@@ -190,7 +185,7 @@ def setup(bot, wochenpost_channel_id: int = 0):
     @tree.command(name='wochenpost_add',
                   description='Neuen Wochenpost anlegen (Admin)')
     @discord.app_commands.describe(
-        datum='Datum TT.MM.JJJJ (Freitag). Ohne Angabe: naechster freier Freitag',
+        datum='Datum TT.MM.JJJJ. Ohne Angabe: naechster freier Tag',
         text='Optionaler Beschreibungstext',
         url='Optionaler Link',
         pdf='Optionale PDF-Datei als Attachment',
@@ -219,16 +214,11 @@ def setup(bot, wochenpost_channel_id: int = 0):
                     '\u26a0\ufe0f Ungueltiges Datum. Format: `TT.MM.JJJJ` (z.B. 02.05.2026)',
                     ephemeral=True)
                 return
-            if d.weekday() != 4:
-                await interaction.response.send_message(
-                    '\u26a0\ufe0f Das Datum muss ein Freitag sein.',
-                    ephemeral=True)
-                return
         else:
             entries = atomic_read(WOCHENPOST_FILE, default=list)
             if not isinstance(entries, list):
                 entries = []
-            d = _next_free_friday(entries)
+            d = _next_free_day(entries)
 
         # URL validieren falls angegeben
         if url:
@@ -286,7 +276,7 @@ def setup(bot, wochenpost_channel_id: int = 0):
                     log.exception('Sofort-Post fehlgeschlagen fuer #%d', result['id'])
                     await interaction.followup.send(
                         f"\u2705 Wochenpost #{result['id']} angelegt fuer **{d_fmt}** "
-                        f"(Sofort-Post fehlgeschlagen, wird beim naechsten Freitag nachgeholt).",
+                        f"(Sofort-Post fehlgeschlagen, wird zum geplanten Datum nachgeholt).",
                         ephemeral=True)
                     return
 
@@ -301,7 +291,7 @@ def setup(bot, wochenpost_channel_id: int = 0):
 
     # --- Batch-Add Logik -----------------------------------------------------
 
-    _BATCH_LIMIT = 52  # max 1 Jahr Freitage
+    _BATCH_LIMIT = 52
 
     async def _batch_add(interaction: discord.Interaction, raw_json: str):
         """Legt mehrere Wochenposts aus einem JSON-Array an."""
@@ -346,9 +336,6 @@ def setup(bot, wochenpost_channel_id: int = 0):
             d = _parse_datum(str(raw_datum))
             if d is None:
                 errors.append(f'#{i}: Ungueltiges Datum `{raw_datum}`')
-                continue
-            if d.weekday() != 4:
-                errors.append(f'#{i}: `{raw_datum}` ist kein Freitag')
                 continue
             entry_url = str(item.get('url', ''))[:500]
             if entry_url:
@@ -547,7 +534,7 @@ def setup(bot, wochenpost_channel_id: int = 0):
                     '\u26a0\ufe0f Du hast kein Wochenpost-Abo.',
                     ephemeral=True)
 
-    # --- Scheduled Loop (taeglich 18:00 UTC, postet nur freitags) -----------
+    # --- Scheduled Loop (taeglich 18:00 UTC, postet faellige Eintraege) -----
 
     @tasks.loop(time=time(hour=18, minute=0))
     async def _wochenpost_loop():
@@ -660,10 +647,8 @@ async def _post_entry(channel, entry: dict):
 
 
 async def run_wochenpost():
-    """Prueft ob heute Freitag ist und postet faellige Wochenposts."""
+    """Postet faellige Wochenposts (Datum == heute)."""
     today = date.today()
-    if today.weekday() != 4:  # 4 = Freitag
-        return
 
     if not _wochenpost_channel_id:
         return

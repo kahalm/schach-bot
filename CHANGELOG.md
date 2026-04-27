@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.10.0] - 2026-04-27
+### Changed
+- `/wochenpost_add` akzeptiert jetzt beliebige Daten, nicht nur Freitage
+- Wochenpost-Loop postet taeglich statt nur freitags
+- `_next_free_friday` → `_next_free_day`: ohne Datum wird der naechste freie Tag gewaehlt
+
 ## [2.9.2] - 2026-04-27
 ### Fixed
 - `/test` im Docker-Container: `trim_snapshots.json` war durch `.dockerignore` ausgeschlossen

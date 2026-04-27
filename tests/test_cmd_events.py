@@ -503,13 +503,7 @@ def test_wochenpost():
         content = (ia.response.calls[0].get('content') or '').lower()
         check('ungueltiges Datum → Fehler', 'ungueltig' in content)
 
-        # Test: Kein Freitag (04.05.2026 = Montag)
-        ia = make_interaction(admin=True)
-        run_async(cmd_add(ia, datum='04.05.2026'))
-        content = (ia.response.calls[0].get('content') or '').lower()
-        check('kein Freitag → Fehler', 'freitag' in content)
-
-        # Test: Eintrag anlegen (01.05.2026 = Freitag)
+        # Test: Eintrag anlegen (01.05.2026)
         ia = make_interaction(admin=True)
         run_async(cmd_add(ia, datum='01.05.2026',
                           text='Beschreibung', url='https://example.com'))
@@ -524,7 +518,7 @@ def test_wochenpost():
         check('Eintrag Titel = Datum', entries[0]['titel'] == '01.05.2026')
         check('Eintrag URL', entries[0]['url'] == 'https://example.com')
 
-        # Test: Zweiter Eintrag mit PDF-Attachment (08.05.2026 = Freitag)
+        # Test: Zweiter Eintrag mit PDF-Attachment (08.05.2026)
         fake_pdf = MagicMock()
         fake_pdf.url = 'https://cdn.discord.com/test.pdf'
         fake_pdf.filename = 'test.pdf'
@@ -570,36 +564,29 @@ def test_wochenpost():
         content = (ia.response.calls[0].get('content') or '').lower()
         check('del ohne Admin → abgelehnt', 'admin' in content)
 
-        # Test: Ungueltige URL wird abgelehnt (15.05.2026 = Freitag)
+        # Test: Ungueltige URL wird abgelehnt (15.05.2026)
         ia = make_interaction(admin=True)
         run_async(cmd_add(ia, datum='15.05.2026', url='not-a-url'))
         content = (ia.response.calls[0].get('content') or '').lower()
         check('ungueltige URL → Fehler', 'url' in content)
 
-        # Test: _next_free_friday Hilfsfunktion
+        # Test: _next_free_day Hilfsfunktion
         import unittest.mock
-        # Montag 2026-04-27 → naechster Freitag = 01.05.2026
+        # Montag 2026-04-27 → morgen = 28.04.2026
         with unittest.mock.patch('commands.wochenpost.date') as mock_date:
             mock_date.today.return_value = date(2026, 4, 27)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            nf = wochenpost_mod._next_free_friday([])
-        check('next_free_friday leer → 01.05', nf == date(2026, 5, 1))
+            nf = wochenpost_mod._next_free_day([])
+        check('next_free_day leer → 28.04', nf == date(2026, 4, 28))
 
-        # Mit belegtem 01.05 → 08.05
+        # Mit belegtem 28.04 → 29.04
         with unittest.mock.patch('commands.wochenpost.date') as mock_date:
             mock_date.today.return_value = date(2026, 4, 27)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            nf = wochenpost_mod._next_free_friday([{'datum': '2026-05-01'}])
-        check('next_free_friday belegt → 08.05', nf == date(2026, 5, 8))
+            nf = wochenpost_mod._next_free_day([{'datum': '2026-04-28'}])
+        check('next_free_day belegt → 29.04', nf == date(2026, 4, 29))
 
-        # Freitag selbst → naechste Woche
-        with unittest.mock.patch('commands.wochenpost.date') as mock_date:
-            mock_date.today.return_value = date(2026, 5, 1)  # Freitag
-            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            nf = wochenpost_mod._next_free_friday([])
-        check('next_free_friday heute=Freitag → naechste Woche', nf == date(2026, 5, 8))
-
-        # Test: Add ohne Datum → automatischer naechster Freitag
+        # Test: Add ohne Datum → automatischer naechster freier Tag
         # Erst JSON leeren
         atomic_write(wochenpost_mod.WOCHENPOST_FILE, [])
         ia = make_interaction(admin=True)
@@ -608,19 +595,19 @@ def test_wochenpost():
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
             run_async(cmd_add(ia))
         content = ia.response.calls[0].get('content') or ''
-        check('add ohne Datum → Bestaetigung', '01.05.2026' in content)
+        check('add ohne Datum → Bestaetigung', '28.04.2026' in content)
         entries = atomic_read(wochenpost_mod.WOCHENPOST_FILE, default=list)
         check('add ohne Datum → korrekt gespeichert',
-              len(entries) == 1 and entries[0]['datum'] == '2026-05-01')
+              len(entries) == 1 and entries[0]['datum'] == '2026-04-28')
 
-        # Zweiter Add ohne Datum → 08.05
+        # Zweiter Add ohne Datum → 29.04
         ia = make_interaction(admin=True)
         with unittest.mock.patch('commands.wochenpost.date') as mock_date:
             mock_date.today.return_value = date(2026, 4, 27)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
             run_async(cmd_add(ia))
         content = ia.response.calls[0].get('content') or ''
-        check('zweiter add ohne Datum → 08.05', '08.05.2026' in content)
+        check('zweiter add ohne Datum → 29.04', '29.04.2026' in content)
 
         # JSON fuer nachfolgende Tests aufraumen
         atomic_write(wochenpost_mod.WOCHENPOST_FILE, [])
@@ -709,17 +696,6 @@ def test_wochenpost():
 
         entries_after = atomic_read(wochenpost_mod.WOCHENPOST_FILE, default=list)
         check('Loop → posted=true', entries_after[0].get('posted') is True)
-
-        # Test: Loop ignoriert Nicht-Freitag
-        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [
-            {**test_entry, 'datum': '2026-05-02', 'posted': False}
-        ])
-        fake_channel.threads = []
-        with unittest.mock.patch('commands.wochenpost.date') as mock_date:
-            mock_date.today.return_value = date(2026, 5, 2)  # Samstag
-            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            run_async(wochenpost_mod.run_wochenpost())
-        check('Nicht-Freitag → kein Thread', len(fake_channel.threads) == 0)
 
         # Test: Loop ignoriert bereits gepostete
         atomic_write(wochenpost_mod.WOCHENPOST_FILE, [
@@ -830,16 +806,16 @@ def test_wochenpost_batch():
         content = (ia.response.calls[0].get('content') or '').lower()
         check('batch leer → Hinweis', 'leer' in content)
 
-        # 5) Validierungsfehler: ein Eintrag kein Freitag → keiner angelegt
+        # 5) Validierungsfehler: ein Eintrag ungueltige URL → keiner angelegt
         atomic_write(wochenpost_mod.WOCHENPOST_FILE, [])
         batch_bad = json.dumps([
             {"datum": "01.05.2026"},
-            {"datum": "04.05.2026"},  # Montag
+            {"datum": "04.05.2026", "url": "not-a-url"},
         ])
         ia = make_interaction(admin=True)
         run_async(cmd_add(ia, json_input=batch_bad))
         content = (ia.response.calls[0].get('content') or '').lower()
-        check('batch Validierung → Fehler', 'freitag' in content)
+        check('batch Validierung → Fehler', 'url' in content)
         entries = atomic_read(wochenpost_mod.WOCHENPOST_FILE, default=list)
         check('batch Validierung → keiner angelegt', len(entries) == 0)
 
