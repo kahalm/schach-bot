@@ -131,7 +131,7 @@ def test_ignore_kapitel():
 
 
 def test_test_cmd():
-    """Smoke-Tests fuer /test Command."""
+    """Smoke-Tests fuer /test Command (alle Modi)."""
     print('[/test]')
     tmpdir = setup_temp_config()
     try:
@@ -142,10 +142,10 @@ def test_test_cmd():
 
         import commands.test as test_mod
 
+        # --- Modus: snapshots (bestehender Test) ---
         orig_load = test_mod._load_snapshots
         orig_find = test_mod._find_game
 
-        # Minimaler Snapshot
         fake_snap = {
             'filename': 'book1_firstkey.pgn',
             'round': '001.001',
@@ -156,7 +156,6 @@ def test_test_cmd():
         }
         test_mod._load_snapshots = lambda: [fake_snap]
 
-        # _find_game muss ein Game-Objekt zurueckgeben
         import chess.pgn
 
         def fake_find_game(filename, round_id):
@@ -165,15 +164,138 @@ def test_test_cmd():
 
         test_mod._find_game = fake_find_game
 
-        # _trim_to_training_position muss importierbar sein
         try:
             ia = make_interaction(admin=True)
-            run_async(cmd(ia, kurs=0, puzzle=0, lichess=0))
-            check('defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
-            check('followup gesendet', len(ia.followup.calls) > 0)
+            run_async(cmd(ia, modus='snapshots', kurs=0, puzzle=0, lichess=0))
+            check('snapshots: defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
+            check('snapshots: followup gesendet', len(ia.followup.calls) > 0)
         finally:
             test_mod._load_snapshots = orig_load
             test_mod._find_game = orig_find
+
+        # --- Modus: status ---
+        import bot as bot_mod_local
+        old_bot_loops = getattr(bot_mod_local.bot, '_task_loops', None)
+        fake_loop = MagicMock()
+        fake_loop.is_running = MagicMock(return_value=True)
+        bot_mod_local.bot._task_loops = {'test_loop': fake_loop}
+        try:
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, modus='status', kurs=0, puzzle=0, lichess=0))
+            check('status: defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
+            check('status: followup gesendet', len(ia.followup.calls) > 0)
+            embed = ia.followup.calls[0].get('embed')
+            check('status: Embed vorhanden', embed is not None)
+            if embed:
+                check('status: Titel', embed.title == 'Bot-Status')
+                field_names = [f.get('name', '') for f in embed.fields]
+                has_version = any('Version' in n for n in field_names)
+                check('status: Version-Field', has_version)
+                has_loop = any('test_loop' in n for n in field_names)
+                check('status: Loop-Field', has_loop)
+        finally:
+            if old_bot_loops is not None:
+                bot_mod_local.bot._task_loops = old_bot_loops
+            else:
+                bot_mod_local.bot._task_loops = {}
+
+        # --- Modus: files ---
+        # Temp-Config mit gueltiger JSON
+        from core.json_store import atomic_write as aw
+        aw(os.path.join(tmpdir, 'test_config.json'), {'key': 'value'})
+        ia = make_interaction(admin=True)
+        run_async(cmd(ia, modus='files', kurs=0, puzzle=0, lichess=0))
+        check('files: defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
+        check('files: followup gesendet', len(ia.followup.calls) > 0)
+        embed = ia.followup.calls[0].get('embed')
+        check('files: Embed vorhanden', embed is not None)
+        if embed:
+            check('files: Titel', embed.title == 'JSON-Integritaet')
+
+        # --- Modus: rendering ---
+        orig_render = test_mod._render_board
+        test_mod._render_board = lambda board: _io.BytesIO(b'fake-png')
+        try:
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, modus='rendering', kurs=0, puzzle=0, lichess=0))
+            check('rendering: defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
+            check('rendering: followup gesendet', len(ia.followup.calls) > 0)
+            embed = ia.followup.calls[0].get('embed')
+            check('rendering: Embed vorhanden', embed is not None)
+            if embed:
+                check('rendering: Titel', embed.title == 'Board-Rendering')
+        finally:
+            test_mod._render_board = orig_render
+
+        # --- Modus: assets ---
+        ia = make_interaction(admin=True)
+        run_async(cmd(ia, modus='assets', kurs=0, puzzle=0, lichess=0))
+        check('assets: defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
+        check('assets: followup gesendet', len(ia.followup.calls) > 0)
+        embed = ia.followup.calls[0].get('embed')
+        check('assets: Embed vorhanden', embed is not None)
+        if embed:
+            check('assets: Titel', embed.title == 'Assets')
+
+        # --- Modus: lichess ---
+        # Mock Token weg damit kein HTTP-Call gemacht wird
+        import puzzle.lichess as lichess_mod
+        orig_token_mod = lichess_mod.LICHESS_TOKEN
+        lichess_mod.LICHESS_TOKEN = ''
+        try:
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, modus='lichess', kurs=0, puzzle=0, lichess=0))
+            check('lichess: defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
+            check('lichess: followup gesendet', len(ia.followup.calls) > 0)
+            embed = ia.followup.calls[0].get('embed')
+            check('lichess: Embed vorhanden', embed is not None)
+            if embed:
+                check('lichess: Titel', embed.title == 'Lichess-API')
+        finally:
+            lichess_mod.LICHESS_TOKEN = orig_token_mod
+
+        # --- Modus: pgn ---
+        orig_books_dir = test_mod.BOOKS_DIR
+        orig_load_config = test_mod._load_books_config
+        pgn_dir = os.path.join(tmpdir, 'books_test')
+        os.makedirs(pgn_dir, exist_ok=True)
+        with open(os.path.join(pgn_dir, 'test_firstkey.pgn'), 'w') as f:
+            f.write('[Event "Test"]\n[Round "1"]\n\n1. e4 e5 *\n')
+        test_mod.BOOKS_DIR = pgn_dir
+        test_mod._load_books_config = lambda: {'test_firstkey.pgn': {}}
+        try:
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, modus='pgn', kurs=0, puzzle=0, lichess=0))
+            check('pgn: defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
+            check('pgn: followup gesendet', len(ia.followup.calls) > 0)
+            embed = ia.followup.calls[0].get('embed')
+            check('pgn: Embed vorhanden', embed is not None)
+            if embed:
+                check('pgn: Titel', embed.title == 'PGN-Dateien')
+        finally:
+            test_mod.BOOKS_DIR = orig_books_dir
+            test_mod._load_books_config = orig_load_config
+
+        # --- CheckResult + _build_result_embed Unit-Test ---
+        from commands.test import CheckResult, _build_result_embed
+        checks = [
+            CheckResult('Test OK', True, 'alles gut'),
+            CheckResult('Test FAIL', False, 'kaputt'),
+        ]
+        embed = _build_result_embed('Unit-Test', checks)
+        check('build_result_embed: Titel', embed.title == 'Unit-Test')
+        check('build_result_embed: 2 Fields', len(embed.fields) == 2)
+        check('build_result_embed: Footer 1/2',
+              '1/2' in embed._footer.get('text', ''))
+        check('build_result_embed: rot bei Fehlern',
+              embed.colour == 0xe74c3c)
+
+        all_ok_embed = _build_result_embed('Alles OK', [
+            CheckResult('A', True, ''),
+        ])
+        check('build_result_embed: gruen bei 100%',
+              all_ok_embed.colour != 0xe74c3c)
+
     finally:
         teardown_temp_config(tmpdir)
     print()

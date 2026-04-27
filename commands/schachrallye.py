@@ -857,3 +857,7 @@ def setup(bot, tournament_channel_id: int = 0):
             _rallye_reminder.start()
         if not _auto_parse.is_running():
             _auto_parse.start()
+
+    if hasattr(bot, '_task_loops'):
+        bot._task_loops['rallye_reminder'] = _rallye_reminder
+        bot._task_loops['auto_parse'] = _auto_parse

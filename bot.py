@@ -81,6 +81,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 bot = commands.Bot(command_prefix=commands.when_mentioned, intents=intents)
+bot._task_loops = {}
 tree = bot.tree
 
 # Module laden
@@ -148,6 +149,8 @@ async def on_ready():
     await asyncio.to_thread(_write_health)
     puzzle_task.start()
     _health_loop.start()
+    bot._task_loops['puzzle_task'] = puzzle_task
+    bot._task_loops['health_loop'] = _health_loop
 
 
 @bot.event

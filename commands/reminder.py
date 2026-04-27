@@ -173,3 +173,6 @@ def setup(bot):
     async def _start_reminder_loop():
         if not _reminder_loop.is_running():
             _reminder_loop.start()
+
+    if hasattr(bot, '_task_loops'):
+        bot._task_loops['reminder'] = _reminder_loop

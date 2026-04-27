@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.15.0] - 2026-04-27
+### Added
+- `/test modus:` Parameter mit 7 Diagnose-Modi: `status` (Bot-Vitals, Latenz, Uptime, Task-Loops), `files` (JSON-Integritaet), `pgn` (PGN-Parsing + books.json-Abgleich), `lichess` (Token + API-Check), `rendering` (Board-Bild mit Vorschau), `assets` (SVG-Pieces, Sprueche, Icons), `snapshots` (bisheriger Default)
+- `CheckResult` NamedTuple und `_build_result_embed()` fuer einheitliche Diagnose-Embeds
+- `bot._task_loops` Dict: alle Task-Loops (puzzle_task, health_loop, reminder, wochenpost, wochenpost_sub, rallye_reminder, auto_parse) zentral registriert fuer `/test modus:status`
+- 30 neue Tests in `test_cmd_admin.py` fuer alle /test-Modi
+
 ## [2.14.1] - 2026-04-27
 ### Fixed
 - `/log` Interaction Timeout: defer() vor dem File-Read verhindert "Unknown interaction" nach 3s

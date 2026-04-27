@@ -603,6 +603,10 @@ def setup(bot, wochenpost_channel_id: int = 0):
         # Verpasste Posts der letzten 7 Tage nachholen
         await _catchup_missed()
 
+    if hasattr(bot, '_task_loops'):
+        bot._task_loops['wochenpost'] = _wochenpost_loop
+        bot._task_loops['wochenpost_sub'] = _wochenpost_sub_loop
+
 
 _CATCHUP_DAYS = 7
 
