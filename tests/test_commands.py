@@ -38,6 +38,10 @@ from test_cmd_admin import (
     test_greeted, test_stats, test_dm_log, test_log,
     test_dm_log_internals, test_suppress_empty_fen,
 )
+from test_cmd_chat import (
+    test_chat_whitelist, test_chat_clear, test_chat_routing,
+    test_chat_history_prune, test_chat_no_key,
+)
 
 
 def main():
@@ -92,6 +96,11 @@ def main():
     test_build_puzzle_embed()
     test_dm_log_internals()
     test_suppress_empty_fen()
+    test_chat_whitelist()
+    test_chat_clear()
+    test_chat_routing()
+    test_chat_history_prune()
+    test_chat_no_key()
 
     print(f'---\n{h.total - h.failed}/{h.total} checks passed.')
     if h.failed:

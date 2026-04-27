@@ -87,7 +87,7 @@ tree = bot.tree
 # Module laden
 import puzzle
 import library
-from commands import reminder, resourcen, youtube, elo, release_notes, blind, test, wanted, schachrallye, wochenpost
+from commands import reminder, resourcen, youtube, elo, release_notes, blind, test, wanted, schachrallye, wochenpost, chat
 
 puzzle.setup(bot)
 library.setup(bot)
@@ -101,6 +101,7 @@ test.setup(bot)
 wanted.setup(bot)
 schachrallye.setup(bot, tournament_channel_id=TOURNAMENT_CHANNEL_ID)
 wochenpost.setup(bot, wochenpost_channel_id=WOCHENPOST_CHANNEL_ID)
+chat.setup(bot)
 
 
 _ready_done = False
@@ -316,6 +317,7 @@ def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str
              '`/wanted` — Auflisten · `/wanted beschreibung:…` — Einreichen'),
             ('/wanted_list', 'Alle Feature-Wünsche anzeigen (nach Stimmen sortiert).'),
             ('/wanted_vote <id>', 'Für einen Feature-Wunsch stimmen (Toggle +1/−1).'),
+            ('/chat_clear', 'Eigene KI-Chat-Historie löschen.'),
             ('/schachrallye', 'Alle Schachrallye-Termine anzeigen.'),
             ('/schachrallye_sub [user]',
              'Für Rallye-Erinnerungen subscriben.\n'
@@ -367,6 +369,11 @@ def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str
             ('/wochenpost', 'Geplante Wochenposts anzeigen.'),
             ('/wochenpost_add <datum> <titel>', 'Wochenpost anlegen (Freitags).'),
             ('/wochenpost_del <id>', 'Wochenpost löschen.'),
+            ('/chat_whitelist [user] [aktion]',
+             'KI-Chat Whitelist verwalten.\n'
+             '`/chat_whitelist user:@X` — Hinzufügen\n'
+             '`/chat_whitelist user:@X aktion:remove` — Entfernen\n'
+             '`/chat_whitelist aktion:list` — Liste anzeigen'),
         ]
     return '', []
 
@@ -401,14 +408,14 @@ async def cmd_help(interaction: discord.Interaction, bereich: str = ''):
                         value='`/bibliothek` `/autor` `/tag`',
                         inline=False)
         embed.add_field(name='🌐 community',
-                        value='`/resourcen` `/youtube` `/elo` `/wanted` `/schachrallye` `/turnier`',
+                        value='`/resourcen` `/youtube` `/elo` `/wanted` `/schachrallye` `/turnier` `/chat_clear`',
                         inline=False)
         embed.add_field(name='ℹ️ info',
                         value='`/version` `/release-notes` `/help`',
                         inline=False)
         if is_admin:
             embed.add_field(name='🔧 admin',
-                            value='`/daily` `/stats` `/announce` `/log` `/dm-log` `/ignore_kapitel` `/test` `/wanted_delete` `/schachrallye_add` `/schachrallye_del` `/turnier_review` `/turnier_pending` `/wochenpost`',
+                            value='`/daily` `/stats` `/announce` `/log` `/dm-log` `/ignore_kapitel` `/test` `/wanted_delete` `/schachrallye_add` `/schachrallye_del` `/turnier_review` `/turnier_pending` `/wochenpost` `/chat_whitelist`',
                             inline=False)
 
     embed.set_footer(text=f'Schach-Bot v{VERSION}')

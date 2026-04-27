@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.17.0] - 2026-04-27
+### Added
+- KI-Schachtrainer per DM: whitelisted User koennen dem Bot per DM schreiben und erhalten Antworten von einem strengen, lustigen Schachtrainer (Claude API)
+- `/chat_whitelist [user] [aktion]` — Admin: User zur Chat-Whitelist hinzufuegen/entfernen/auflisten
+- `/chat_clear` — Eigene KI-Chat-Historie loeschen (jeder User)
+- `commands/chat.py` — Neues Modul mit DM-Listener (`bot.listen('on_message')`), Claude API Integration, History-Management
+- Feature ist optional: ohne `CLAUDE_API_KEY` in `.env` aendert sich nichts am Verhalten
+- Chat-History begrenzt auf 20 Nachrichten pro User (10 Austausche)
+- `anthropic>=0.40.0` als neue Dependency
+
 ## [2.16.0] - 2026-04-27
 ### Added
 - Turnier-Review-System: neue Turniere muessen von Reviewern freigegeben werden, bevor sie im Channel gepostet werden

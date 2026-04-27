@@ -54,6 +54,7 @@ for mod_name in (
     'reportlab', 'reportlab.graphics', 'reportlab.graphics.renderPM',
     'requests',
     'dotenv',
+    'anthropic',
 ):
     sys.modules.setdefault(mod_name, _mock.MagicMock())
 
@@ -366,6 +367,7 @@ def setup_temp_config():
     _patch_file_constant('commands.schachrallye', 'TURNIER_FILE', tmpdir)
     _patch_file_constant('commands.wochenpost', 'WOCHENPOST_FILE', tmpdir)
     _patch_file_constant('commands.wochenpost', 'WOCHENPOST_SUB_FILE', tmpdir)
+    _patch_file_constant('commands.chat', 'CHAT_FILE', tmpdir)
     _patch_file_constant('core.stats', 'STATS_FILE', tmpdir)
 
     return tmpdir
@@ -447,6 +449,7 @@ import commands.schachrallye as schachrallye_mod
 import commands.wochenpost as wochenpost_mod
 import commands.wochenpost_buttons as wp_buttons_mod
 import commands.turnier_buttons as turnier_buttons_mod
+import commands.chat as chat_mod
 
 # bot.py importieren (ruft am Ende bot.run() auf, was jetzt ein no-op ist)
 import bot as bot_mod
@@ -456,7 +459,8 @@ import bot as bot_mod
 # _CapturingTree registriert)
 _cap_bot = _CapturingBot()
 for mod in (elo_mod, resourcen_mod, youtube_mod, wanted_mod,
-            release_notes_mod, reminder_mod, schachrallye_mod, wochenpost_mod):
+            release_notes_mod, reminder_mod, schachrallye_mod, wochenpost_mod,
+            chat_mod):
     if mod is schachrallye_mod:
         mod.setup(_cap_bot, tournament_channel_id=0)
     elif mod is wochenpost_mod:
