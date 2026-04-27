@@ -7,4 +7,5 @@ venv/
 .github/
 *.log
 tests/
+!tests/trim_snapshots.json
 screenshot/
