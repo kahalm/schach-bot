@@ -57,6 +57,10 @@ Runtime state lives in `config/` (gitignored, auto-created).
 2. **Test-First**: Für jedes neue Feature ZUERST einen Test schreiben, dann die Implementierung.
 3. **Bug-First-Test**: Wenn der User einen Bug meldet, ZUERST einen Test schreiben der den Fehler reproduziert (Test muss fehlschlagen), DANN den Bug fixen (Test muss bestehen). So wird sichergestellt, dass der Fehler nie wieder auftreten kann.
 
+## Keine duplizierte Logik (PFLICHT!)
+
+`/test` und andere Stellen, die produktive Abläufe simulieren, dürfen **keine eigene Kopie** der Logik enthalten. Stattdessen immer die existierenden Hilfsfunktionen aus dem jeweiligen Modul aufrufen (z.B. `wp._try_chat_spark()`, `wp._random_spruch()`). Wenn eine Funktion fehlt, zuerst im Originalmodul extrahieren, dann von `/test` aufrufen.
+
 ## Release-Regel (PFLICHT bei jedem Commit!)
 
 Vor jedem `git commit` MÜSSEN diese beiden Dateien mitgeändert werden:

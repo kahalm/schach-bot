@@ -668,7 +668,11 @@ async def _trigger_test_reminders(interaction, bot):
                         if guild_id:
                             thread_url = f'https://discord.com/channels/{guild_id}/{thread_id}'
 
-                msg = f'{spruch}\n\n' if spruch else ''
+                chat_reply = await wp._try_chat_spark(uid_int, spruch, titel)
+                if chat_reply:
+                    msg = f'{chat_reply}\n\n'
+                else:
+                    msg = f'{spruch}\n\n' if spruch else ''
                 msg += f'\U0001f4ec Mache deine \u00dcbungen! \u2192 **{titel}**'
                 if thread_url:
                     msg += f'\n{thread_url}'
