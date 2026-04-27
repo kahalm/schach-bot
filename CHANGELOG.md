@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.12.0] - 2026-04-27
+### Added
+- Wochenpost-Erinnerungs-DMs enthalten jetzt einen zufälligen Spruch (500 Stück in `assets/sprueche.json` — Großmeister-Zitate, lustige und motivierende Sprüche)
+
+## [2.11.0] - 2026-04-27
+### Added
+- `/log [zeilen]` — Letzte N Zeilen aus `bot.log` direkt in Discord anzeigen (Admin-only, ephemeral); bei >1900 Zeichen als Datei-Attachment
+
 ## [2.10.1] - 2026-04-27
 ### Changed
 - `/wochenpost_sub` zeigt "MEZ/MESZ" statt "Wiener Zeit" an

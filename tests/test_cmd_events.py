@@ -1183,12 +1183,38 @@ def test_wochenpost_sub():
         if dm_channel_b.sent:
             dm_text = dm_channel_b.sent[0].content or ''
             check('DM enthaelt Titel', '24.04.2026' in dm_text)
+            check('DM enthaelt Spruch', '_"' in dm_text)
 
         # next wurde advanced
         sub_data = atomic_read(wochenpost_mod.WOCHENPOST_SUB_FILE, default=dict)
         for uid_str in ('22222', '33333'):
             nxt = sub_data.get('subscribers', {}).get(uid_str, {}).get('next', '')
             check(f'next advanced ({uid_str})', nxt > past)
+
+        # 10) _random_spruch() Tests
+        # Leerer Cache → leerer String
+        wochenpost_mod._sprueche_cache = []
+        result = wochenpost_mod._random_spruch()
+        check('spruch leer → leerer String', result == '')
+
+        # Mit Daten (mit Autor)
+        wochenpost_mod._sprueche_cache = [
+            {'text': 'Testspruch', 'autor': 'TestAutor'}
+        ]
+        result = wochenpost_mod._random_spruch()
+        check('spruch mit Autor → enthaelt _"', '_"' in result)
+        check('spruch mit Autor → enthaelt Autor', 'TestAutor' in result)
+
+        # Mit Daten (ohne Autor)
+        wochenpost_mod._sprueche_cache = [
+            {'text': 'NurText', 'autor': None}
+        ]
+        result = wochenpost_mod._random_spruch()
+        check('spruch ohne Autor → enthaelt _"', '_"' in result)
+        check('spruch ohne Autor → kein —', '—' not in result)
+
+        # Cache zuruecksetzen fuer sauberen Zustand
+        wochenpost_mod._sprueche_cache = None
 
         # Aufraumen
         wochenpost_mod._bot = old_bot

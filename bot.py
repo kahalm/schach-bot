@@ -10,6 +10,7 @@ from core import log_setup
 log = log_setup.setup()
 
 import asyncio
+import io
 import discord
 from discord.ext import tasks, commands
 import json
@@ -342,6 +343,7 @@ def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str
              '`/ignore_kapitel buch:2 kapitel:3` — ignorieren\n'
              '`/ignore_kapitel buch:2 kapitel:3 aktion:unignore` — reaktivieren\n'
              '`/ignore_kapitel` — alle ignorierten Kapitel anzeigen'),
+            ('/log [zeilen]', 'Letzte Log-Zeilen anzeigen (Standard: 50).'),
             ('/dm-log [user]', 'DM-Log anzeigen (alle oder ein bestimmter User).'),
             ('/test', 'Snapshot-Regressionstests ausführen.'),
             ('/wanted_delete <id>', 'Feature-Wunsch löschen.'),
@@ -392,7 +394,7 @@ async def cmd_help(interaction: discord.Interaction, bereich: str = ''):
                         inline=False)
         if is_admin:
             embed.add_field(name='🔧 admin',
-                            value='`/daily` `/stats` `/announce` `/dm-log` `/ignore_kapitel` `/test` `/wanted_delete` `/schachrallye_add` `/schachrallye_del` `/wochenpost`',
+                            value='`/daily` `/stats` `/announce` `/log` `/dm-log` `/ignore_kapitel` `/test` `/wanted_delete` `/schachrallye_add` `/schachrallye_del` `/wochenpost`',
                             inline=False)
 
     embed.set_footer(text=f'Schach-Bot v{VERSION}')
@@ -570,6 +572,32 @@ async def cmd_stats(interaction: discord.Interaction):
 
 
 # --- Admin-Befehle ---
+
+def _read_log_tail(n: int) -> str:
+    """Liest die letzten n Zeilen aus bot.log."""
+    try:
+        with open('bot.log', encoding='utf-8', errors='replace') as f:
+            lines = f.readlines()
+        return ''.join(lines[-n:]).rstrip() or '(leer)'
+    except FileNotFoundError:
+        return '(leer)'
+
+
+@tree.command(name='log', description='Letzte Log-Zeilen anzeigen (Admin)')
+@discord.app_commands.describe(zeilen='Anzahl Zeilen (Standard: 50, Max: 200)')
+@discord.app_commands.default_permissions(administrator=True)
+async def cmd_log(interaction: discord.Interaction, zeilen: int = 50):
+    if not await _require_admin(interaction):
+        return
+    zeilen = max(1, min(zeilen, 200))
+    text = await asyncio.to_thread(_read_log_tail, zeilen)
+    if len(text) <= 1900:
+        await interaction.response.send_message(f'```\n{text}\n```', ephemeral=True)
+    else:
+        buf = io.BytesIO(text.encode('utf-8'))
+        await interaction.response.send_message(
+            file=discord.File(buf, filename='bot.log'), ephemeral=True)
+
 
 @tree.command(name='daily', description='Tägliches Puzzle manuell auslösen (Admin)')
 @discord.app_commands.default_permissions(administrator=True)

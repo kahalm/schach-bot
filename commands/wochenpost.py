@@ -13,6 +13,7 @@ import io
 import json
 import logging
 import os
+import random
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 from urllib.parse import urlparse
@@ -28,6 +29,33 @@ from core.permissions import is_privileged
 from core.version import EMBED_COLOR
 
 log = logging.getLogger('schach-bot')
+
+# ---------------------------------------------------------------------------
+# Zufalls-Sprueche fuer DM-Erinnerungen
+# ---------------------------------------------------------------------------
+
+_sprueche_cache = None
+
+
+def _random_spruch() -> str:
+    """Gibt einen zufaelligen Spruch als formatierten String zurueck."""
+    global _sprueche_cache
+    if _sprueche_cache is None:
+        path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                            'assets', 'sprueche.json')
+        try:
+            with open(path, encoding='utf-8') as f:
+                _sprueche_cache = json.load(f)
+        except Exception:
+            _sprueche_cache = []
+    if not _sprueche_cache:
+        return ''
+    s = random.choice(_sprueche_cache)
+    text = s.get('text', '')
+    autor = s.get('autor')
+    if autor:
+        return f'\n\n_"{text}"_ — {autor}'
+    return f'\n\n_"{text}"_'
 
 WOCHENPOST_FILE = os.path.join(CONFIG_DIR, 'wochenpost.json')
 WOCHENPOST_SUB_FILE = os.path.join(CONFIG_DIR, 'wochenpost_sub.json')
@@ -735,6 +763,7 @@ async def _run_wochenpost_reminders():
             msg_text = f'\U0001f4ec Wochenpost-Erinnerung: **{titel}**'
             if thread_url:
                 msg_text += f'\n{thread_url}'
+            msg_text += _random_spruch()
             await dm.send(msg_text)
         except Exception:
             log.warning('Wochenpost-DM an User %s fehlgeschlagen', uid_str)

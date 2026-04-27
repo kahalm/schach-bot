@@ -368,6 +368,62 @@ def test_dm_log():
     print()
 
 
+def test_log():
+    """Tests fuer /log Command."""
+    print('[/log]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('log')
+        check('cmd_log gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        import bot as bot_mod
+
+        # Test: Nicht-Admin abgelehnt
+        ia = make_interaction(admin=False)
+        run_async(cmd(ia, zeilen=50))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('Nicht-Admin → Fehler', 'admin' in content)
+
+        # Test: Default → Code-Block (wir patchen _read_log_tail)
+        orig_read = bot_mod._read_log_tail
+        bot_mod._read_log_tail = lambda n: f'Zeile 1\nZeile 2\n(n={n})'
+        try:
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, zeilen=50))
+            content = ia.response.calls[0].get('content') or ''
+            check('Default → Code-Block', '```' in content and 'Zeile 1' in content)
+            check('Default → n=50', 'n=50' in content)
+        finally:
+            bot_mod._read_log_tail = orig_read
+
+        # Test: Fehlende Log-Datei → (leer)
+        orig_read = bot_mod._read_log_tail
+        bot_mod._read_log_tail = lambda n: '(leer)'
+        try:
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, zeilen=50))
+            content = ia.response.calls[0].get('content') or ''
+            check('Fehlende Log → (leer)', '(leer)' in content)
+        finally:
+            bot_mod._read_log_tail = orig_read
+
+        # Test: Lange Ausgabe → File-Attachment
+        orig_read = bot_mod._read_log_tail
+        bot_mod._read_log_tail = lambda n: 'X' * 2000
+        try:
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, zeilen=200))
+            call = ia.response.calls[0]
+            check('Lange Ausgabe → File', call.get('file') is not None)
+        finally:
+            bot_mod._read_log_tail = orig_read
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_admin_enforcement():
     """Tests dass Admin-Commands von Nicht-Admins abgelehnt werden."""
     print('[Admin-Enforcement]')

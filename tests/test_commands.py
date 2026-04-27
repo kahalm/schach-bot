@@ -34,7 +34,7 @@ from test_cmd_library import (
 )
 from test_cmd_admin import (
     test_daily, test_ignore_kapitel, test_test_cmd, test_announce,
-    test_greeted, test_stats, test_dm_log, test_admin_enforcement,
+    test_greeted, test_stats, test_dm_log, test_log, test_admin_enforcement,
 )
 
 
@@ -70,6 +70,7 @@ def main():
     test_auto_tag()
     test_build_library_catalog()
     test_dm_log()
+    test_log()
     test_schachrallye()
     test_turnier_sub()
     test_pgn_parse_max_errors()
