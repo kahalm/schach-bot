@@ -73,15 +73,30 @@ def _svg_to_pil(svg_bytes: bytes, size: int) -> Image.Image:
     result.putalpha(alpha)
     return result
 
+_PIECES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                           'assets', 'pieces')
+
+
 def _get_piece(code: str, size: int) -> Image.Image:
     if code not in _piece_cache:
+        # 1. Lokal gebundelte SVGs (kein Netzwerk noetig)
+        local_path = os.path.join(_PIECES_DIR, f'{code}.svg')
+        if os.path.isfile(local_path):
+            try:
+                with open(local_path, 'rb') as f:
+                    _piece_cache[code] = _svg_to_pil(f.read(), size)
+                log.debug('Figur lokal geladen: %s', code)
+                return _piece_cache[code]
+            except Exception as e:
+                log.warning('Lokale Figur %s fehlgeschlagen, Netzwerk-Fallback: %s', code, e)
+        # 2. Netzwerk-Fallback (Lichess)
         url = f'https://lichess1.org/assets/piece/cburnett/{code}.svg'
         for attempt in range(2):
             try:
                 resp = _session.get(url, timeout=_PIECE_DOWNLOAD_TIMEOUT)
                 resp.raise_for_status()
                 _piece_cache[code] = _svg_to_pil(resp.content, size)
-                log.info('Figur geladen: %s', code)
+                log.info('Figur aus Netzwerk geladen: %s', code)
                 break
             except (requests.RequestException, ValueError) as e:
                 if attempt == 1:

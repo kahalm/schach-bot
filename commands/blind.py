@@ -11,6 +11,7 @@ import discord
 from discord.ext import commands
 
 import puzzle
+from core.permissions import is_privileged
 
 log = logging.getLogger('schach-bot')
 
@@ -36,8 +37,7 @@ def setup(bot: commands.Bot):
                         user: discord.Member | None = None):
         # Admin-Check fuer user:-Parameter
         if user is not None and user.id != interaction.user.id:
-            if not (isinstance(interaction.user, discord.Member)
-                    and interaction.user.guild_permissions.administrator):
+            if not is_privileged(interaction):
                 await interaction.response.send_message(
                     '⚠️ Nur Admins dürfen Puzzles an andere User senden.',
                     ephemeral=True)

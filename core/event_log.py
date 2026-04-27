@@ -40,6 +40,7 @@ def _current_elo(user_id: int) -> int | None:
             _elo_cache_ts = now
         if user_id in _elo_cache:
             return _elo_cache[user_id]
+    # Lookup ausserhalb des Locks (atomic_read hat eigenen Lock)
     try:
         from commands.elo import get_current
         val = get_current(user_id)
@@ -47,8 +48,10 @@ def _current_elo(user_id: int) -> int | None:
         log.debug('Elo-Lookup fehlgeschlagen: %s', e)
         val = None
     with _log_lock:
-        _elo_cache[user_id] = val
-    return val
+        # Re-check: anderer Thread koennte zwischenzeitlich gefuellt haben
+        if user_id not in _elo_cache:
+            _elo_cache[user_id] = val
+        return _elo_cache[user_id]
 
 
 def log_reaction(user_id: int,

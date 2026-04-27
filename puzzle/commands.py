@@ -8,6 +8,7 @@ from collections import defaultdict
 import discord
 
 from core import stats
+from core.permissions import is_privileged
 
 # Funktionen werden ueber das puzzle-Paket referenziert (nicht direkt importiert),
 # damit Test-Monkeypatches auf puzzle.X auch hier wirken.
@@ -21,9 +22,7 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
                       id: str = '', user: discord.Member | None = None):
     # Admin-Check: nur Admins duerfen Puzzles an andere User senden
     if user is not None and user.id != interaction.user.id:
-        member = interaction.user
-        if not (isinstance(member, discord.Member)
-                and member.guild_permissions.administrator):
+        if not is_privileged(interaction):
             await interaction.response.send_message(
                 '⚠️ Nur Admins duerfen Puzzles an andere User senden.',
                 ephemeral=True)
@@ -576,8 +575,7 @@ async def _cmd_ignore_kapitel(
     kapitel: int = 0,
     aktion: discord.app_commands.Choice[str] = None,
 ):
-    if not (isinstance(interaction.user, discord.Member)
-            and interaction.user.guild_permissions.administrator):
+    if not is_privileged(interaction):
         await interaction.response.send_message('⚠️ Nur für Admins.', ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
@@ -617,9 +615,11 @@ async def _cmd_ignore_kapitel(
     book_name = _pkg._clean_book_name(book_filename)
 
     # Chapter-Präfix im tatsächlichen Format finden
-    prefix = _pkg._find_chapter_prefix(book_filename, kapitel)
+    prefix = await asyncio.to_thread(
+        _pkg._find_chapter_prefix, book_filename, kapitel)
     if prefix is None:
-        chapters = _pkg._list_chapters(book_filename)
+        chapters = await asyncio.to_thread(
+            _pkg._list_chapters, book_filename)
         sample = ', '.join(sorted(chapters)[:10])
         more = f' (von {len(chapters)})' if len(chapters) > 10 else ''
         await interaction.followup.send(
@@ -629,7 +629,9 @@ async def _cmd_ignore_kapitel(
         return
 
     action_value = aktion.value if aktion else 'ignore'
-    chapter_count = _pkg._list_chapters(book_filename).get(prefix, 0)
+    chapters_map = await asyncio.to_thread(
+        _pkg._list_chapters, book_filename)
+    chapter_count = chapters_map.get(prefix, 0)
 
     if action_value == 'unignore':
         _pkg.unignore_chapter(book_filename, prefix)

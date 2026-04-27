@@ -10,12 +10,12 @@ import json
 import logging
 import os
 import threading
-from collections import OrderedDict
 from datetime import datetime, timezone
 
 import discord
 from discord import ui
 
+from core.button_tracker import ClickTracker
 from core.paths import CONFIG_DIR
 
 log = logging.getLogger('schach-bot')
@@ -35,36 +35,13 @@ _MUTEX_PAIRS = {
     '\U0001f44d': '\U0001f44e', '\U0001f44e': '\U0001f44d',
 }
 
-# msg_id -> emoji -> set[user_id]
 _CLICKS_CAP = 500
-_clicks: OrderedDict[int, dict[str, set[int]]] = OrderedDict()
+_tracker = ClickTracker(_MUTEX_PAIRS, cap=_CLICKS_CAP)
 
-
-def _count(msg_id: int, emoji: str) -> int:
-    return len(_clicks.get(msg_id, {}).get(emoji, set()))
-
-
-def _apply_click(msg_id: int, emoji: str, user_id: int
-                 ) -> tuple[int, str | None]:
-    """Toggle-Klick. Gibt (delta, removed_partner) zurueck."""
-    by_emoji = _clicks.setdefault(msg_id, {})
-    while len(_clicks) > _CLICKS_CAP:
-        _clicks.popitem(last=False)
-
-    removed: str | None = None
-    partner = _MUTEX_PAIRS.get(emoji)
-    if partner:
-        partner_users = by_emoji.get(partner)
-        if partner_users and user_id in partner_users:
-            partner_users.remove(user_id)
-            removed = partner
-
-    users = by_emoji.setdefault(emoji, set())
-    if user_id in users:
-        users.remove(user_id)
-        return -1, removed
-    users.add(user_id)
-    return +1, removed
+# Abwaertskompatible Aliases fuer Tests und externe Zugriffe
+_clicks = _tracker._clicks
+_count = _tracker.count
+_apply_click = _tracker.apply_click
 
 
 def _log_click(user_id: int, post_id: int, emoji: str, delta: int):

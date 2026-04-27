@@ -917,16 +917,16 @@ def test_wochenpost_buttons():
 
     # --- Eviction bei Cap-Ueberlauf ---
     wp_buttons_mod._clicks.clear()
-    old_cap = wp_buttons_mod._CLICKS_CAP
-    wp_buttons_mod._CLICKS_CAP = 5
+    old_cap = wp_buttons_mod._tracker._cap
+    wp_buttons_mod._tracker._cap = 5
     try:
         for i in range(6):
             wp_buttons_mod._apply_click(i, '\u2705', user_id=600)
         check('wp eviction → max entries <= cap+1',
-              len(wp_buttons_mod._clicks) <= wp_buttons_mod._CLICKS_CAP + 1)
+              len(wp_buttons_mod._clicks) <= 5 + 1)
         check('wp eviction → msg 0 entfernt', 0 not in wp_buttons_mod._clicks)
     finally:
-        wp_buttons_mod._CLICKS_CAP = old_cap
+        wp_buttons_mod._tracker._cap = old_cap
 
     # --- _count bei unbekannter msg_id ---
     check('wp count unknown msg → 0', wp_buttons_mod._count(99999, '\u2705') == 0)

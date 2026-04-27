@@ -27,6 +27,7 @@ from discord.ext import tasks
 
 from urllib.parse import urlparse
 
+from core.datetime_utils import parse_datum as _parse_datum
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 from core.permissions import is_privileged
@@ -55,10 +56,6 @@ _bot = None
 _tournament_channel_id = 0
 
 
-def _is_admin(interaction: discord.Interaction) -> bool:
-    return is_privileged(interaction)
-
-
 def _prune_old_events():
     """Entfernt Events die aelter als _PRUNE_DAYS Tage sind."""
     cutoff = date.today() - timedelta(days=_PRUNE_DAYS)
@@ -76,14 +73,6 @@ def _prune_old_events():
     atomic_update(TURNIER_FILE, _prune, default=lambda: dict(_DEFAULT))
     if pruned[0]:
         log.info('Turnier-Prune: %d alte Events entfernt (> %d Tage).', pruned[0], _PRUNE_DAYS)
-
-
-def _parse_datum(text: str) -> date | None:
-    """Parst TT.MM.JJJJ zu date, gibt None bei Fehler."""
-    try:
-        return datetime.strptime(text.strip(), '%d.%m.%Y').date()
-    except ValueError:
-        return None
 
 
 def _parse_stored(text: str) -> date | None:
@@ -352,7 +341,7 @@ def setup(bot, tournament_channel_id: int = 0):
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_schachrallye_add(interaction: discord.Interaction,
                                    datum: str, ort: str):
-        if not _is_admin(interaction):
+        if not is_privileged(interaction):
             await interaction.response.send_message('⚠️ Nur für Admins.', ephemeral=True)
             return
         d = _parse_datum(datum)
@@ -397,7 +386,7 @@ def setup(bot, tournament_channel_id: int = 0):
     @discord.app_commands.describe(id='ID des Termins (aus /schachrallye)')
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_schachrallye_del(interaction: discord.Interaction, id: int):
-        if not _is_admin(interaction):
+        if not is_privileged(interaction):
             await interaction.response.send_message('⚠️ Nur für Admins.', ephemeral=True)
             return
         result = {'found': False}
@@ -425,7 +414,7 @@ def setup(bot, tournament_channel_id: int = 0):
         user='Anderen User subscriben (nur Admin)')
     async def cmd_schachrallye_sub(interaction: discord.Interaction,
                                    user: discord.User = None):
-        if user and not _is_admin(interaction):
+        if user and not is_privileged(interaction):
             await interaction.response.send_message(
                 '\u26a0\ufe0f Nur Admins koennen andere User subscriben.',
                 ephemeral=True)
@@ -481,7 +470,7 @@ def setup(bot, tournament_channel_id: int = 0):
         user='Anderen User unsubscriben (nur Admin)')
     async def cmd_schachrallye_unsub(interaction: discord.Interaction,
                                      user: discord.User = None):
-        if user and not _is_admin(interaction):
+        if user and not is_privileged(interaction):
             await interaction.response.send_message(
                 '\u26a0\ufe0f Nur Admins koennen andere User unsubscriben.',
                 ephemeral=True)
@@ -545,7 +534,7 @@ def setup(bot, tournament_channel_id: int = 0):
                     ephemeral=True)
             return
 
-        if user and not _is_admin(interaction):
+        if user and not is_privileged(interaction):
             await interaction.response.send_message(
                 '\u26a0\ufe0f Nur Admins koennen andere User subscriben.',
                 ephemeral=True)
@@ -599,7 +588,7 @@ def setup(bot, tournament_channel_id: int = 0):
         user='Anderen User unsubscriben (nur Admin)')
     async def cmd_turnier_unsub(interaction: discord.Interaction,
                                 tag: str, user: discord.User = None):
-        if user and not _is_admin(interaction):
+        if user and not is_privileged(interaction):
             await interaction.response.send_message(
                 '\u26a0\ufe0f Nur Admins koennen andere User unsubscriben.',
                 ephemeral=True)
@@ -686,12 +675,12 @@ def setup(bot, tournament_channel_id: int = 0):
                         desc += f" \u00b7 {ort}"
                     if tags:
                         desc += '\n' + ' '.join(f'`{t}`' for t in tags)
-                    # Subscriber-Mentions sammeln
+                    # Subscriber-Mentions sammeln (als content, damit Discord pingt)
                     mention_ids = set()
                     for t in tags:
                         mention_ids.update(subs_data.get(t, []))
-                    if mention_ids:
-                        desc += '\n' + ' '.join(f'<@{uid}>' for uid in mention_ids)
+                    mention_text = (' '.join(f'<@{uid}>' for uid in mention_ids)
+                                    if mention_ids else '')
                     embed = discord.Embed(
                         title=a['name'],
                         description=desc,
@@ -701,7 +690,8 @@ def setup(bot, tournament_channel_id: int = 0):
                         embed.url = link
                     embed.set_footer(text='tirol.chess.at/termine/')
                     try:
-                        await channel.send(embed=embed)
+                        await channel.send(content=mention_text or None,
+                                           embed=embed)
                     except Exception:
                         log.exception('Turnier-Post fehlgeschlagen fuer %s', a['name'])
 
@@ -713,7 +703,7 @@ def setup(bot, tournament_channel_id: int = 0):
                   description='Termine von tirol.chess.at importieren (Admin)')
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_turnier_parse(interaction: discord.Interaction):
-        if not _is_admin(interaction):
+        if not is_privileged(interaction):
             await interaction.response.send_message('⚠️ Nur für Admins.', ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True)

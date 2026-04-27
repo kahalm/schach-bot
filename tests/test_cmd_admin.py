@@ -424,7 +424,125 @@ def test_log():
     print()
 
 
-def test_admin_enforcement():
+def test_dm_log_internals():
+    """Tests fuer core/dm_log.py _describe und _append."""
+    print('[dm_log internals]')
+    import core.dm_log as dm_log_mod
+
+    # --- _describe: positionaler Text ---
+    check('describe pos text', dm_log_mod._describe('Hallo Welt') == 'Hallo Welt')
+
+    # --- _describe: langer Text wird gekuerzt ---
+    long_text = 'X' * 400
+    result = dm_log_mod._describe(long_text)
+    check('describe lang → 300+…', len(result) == 301 and result.endswith('…'))
+
+    # --- _describe: content kwarg ---
+    check('describe content kw', dm_log_mod._describe(content='Test') == 'Test')
+
+    # --- _describe: embed ---
+    from test_helpers import _discord
+    embed = _discord.Embed(title='Puzzle Title', description='Beschreibung')
+    result = dm_log_mod._describe(embed=embed)
+    check('describe embed title', 'Puzzle Title' in result)
+    check('describe embed prefix', result.startswith('[embed:'))
+
+    # --- _describe: embed mit Beschreibung ---
+    check('describe embed desc', 'Beschreibung' in result)
+
+    # --- _describe: file ---
+    check('describe file', dm_log_mod._describe(file=MagicMock()) == '[file]')
+
+    # --- _describe: unbekannt ---
+    check('describe unbekannt', dm_log_mod._describe() == '[unbekannter Inhalt]')
+
+    # --- _append: schreibt und bereinigt alte Eintraege ---
+    tmpdir = setup_temp_config()
+    try:
+        import os
+        old_file = dm_log_mod.DM_LOG_FILE
+        dm_log_mod.DM_LOG_FILE = os.path.join(tmpdir, 'dm_log.json')
+        try:
+            # Schreibe einen Eintrag
+            dm_log_mod._append(12345, 'Test-Nachricht')
+
+            data = atomic_read(dm_log_mod.DM_LOG_FILE)
+            check('append → Eintrag vorhanden', len(data.get('12345', [])) == 1)
+            check('append → text korrekt', data['12345'][0]['text'] == 'Test-Nachricht')
+            check('append → ts vorhanden', 'ts' in data['12345'][0])
+
+            # Zweiter Eintrag
+            dm_log_mod._append(12345, 'Zweite Nachricht')
+            data = atomic_read(dm_log_mod.DM_LOG_FILE)
+            check('append → 2 Eintraege', len(data.get('12345', [])) == 2)
+
+            # Alter Eintrag (>30 Tage) wird bereinigt
+            from core.json_store import atomic_write as aw
+            aw(dm_log_mod.DM_LOG_FILE, {
+                '99': [{'ts': '2020-01-01T00:00:00+00:00', 'text': 'alt'}]
+            })
+            dm_log_mod._append(99, 'neu')
+            data = atomic_read(dm_log_mod.DM_LOG_FILE)
+            entries = data.get('99', [])
+            check('append → alter Eintrag bereinigt',
+                  len(entries) == 1 and entries[0]['text'] == 'neu')
+        finally:
+            dm_log_mod.DM_LOG_FILE = old_file
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_suppress_empty_fen():
+    """Tests fuer core/log_setup.py _SuppressEmptyFen Filter."""
+    print('[SuppressEmptyFen]')
+    from core.log_setup import _SuppressEmptyFen
+    import io as _io
+
+    buf = _io.StringIO()
+    filtered = _SuppressEmptyFen(buf)
+
+    # Normaler Text passiert durch
+    filtered.write('Hallo Welt')
+    check('normaler Text durchgelassen', buf.getvalue() == 'Hallo Welt')
+
+    # Unterdrueckte Muster
+    buf.truncate(0)
+    buf.seek(0)
+    filtered.write('empty fen while parsing something')
+    check('empty fen unterdrueckt', buf.getvalue() == '')
+
+    buf.truncate(0)
+    buf.seek(0)
+    filtered.write('illegal san: Nf3')
+    check('illegal san unterdrueckt', buf.getvalue() == '')
+
+    buf.truncate(0)
+    buf.seek(0)
+    filtered.write('invalid san: e4')
+    check('invalid san unterdrueckt', buf.getvalue() == '')
+
+    buf.truncate(0)
+    buf.seek(0)
+    filtered.write('no matching legal move found')
+    check('no matching legal move unterdrueckt', buf.getvalue() == '')
+
+    buf.truncate(0)
+    buf.seek(0)
+    filtered.write('ambiguous san: Nc3')
+    check('ambiguous san unterdrueckt', buf.getvalue() == '')
+
+    # flush delegiert
+    filtered.flush()
+    check('flush funktioniert', True)
+
+    # __getattr__ delegiert
+    check('getattr delegiert', filtered.closed == buf.closed)
+
+    print()
+
+
+
     """Tests dass Admin-Commands von Nicht-Admins abgelehnt werden."""
     print('[Admin-Enforcement]')
 

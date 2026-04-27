@@ -17,7 +17,7 @@ from test_cmd_info import (
 from test_cmd_puzzle import (
     test_puzzle, test_kurs, test_train, test_next, test_endless, test_blind,
     test_buttons, test_format_blind_moves, test_puzzle_anzahl_validation,
-    test_posted_reset_per_pool, test_pgn_parse_max_errors,
+    test_posted_reset_per_pool, test_build_puzzle_embed,
 )
 from test_cmd_community import (
     test_elo, test_resourcen, test_collection_limits, test_youtube,
@@ -34,7 +34,8 @@ from test_cmd_library import (
 )
 from test_cmd_admin import (
     test_daily, test_ignore_kapitel, test_test_cmd, test_announce,
-    test_greeted, test_stats, test_dm_log, test_log, test_admin_enforcement,
+    test_greeted, test_stats, test_dm_log, test_log,
+    test_dm_log_internals, test_suppress_empty_fen,
 )
 
 
@@ -73,9 +74,7 @@ def main():
     test_log()
     test_schachrallye()
     test_turnier_sub()
-    test_pgn_parse_max_errors()
     test_event_log()
-    test_admin_enforcement()
     test_buttons()
     test_format_blind_moves()
     test_puzzle_anzahl_validation()
@@ -88,6 +87,9 @@ def main():
     test_parse_zeit()
     test_wochenpost_sub()
     test_healthcheck()
+    test_build_puzzle_embed()
+    test_dm_log_internals()
+    test_suppress_empty_fen()
 
     print(f'---\n{h.total - h.failed}/{h.total} checks passed.')
     if h.failed:

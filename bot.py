@@ -201,20 +201,18 @@ async def on_member_join(member: discord.Member):
 
 # --- Helpers ---
 
-async def _display_name(uid, guild=None):
-    """Server-Nick wenn moeglich, sonst globaler Name."""
+def _display_name_cached(uid, guild=None):
+    """Server-Nick aus Cache (kein API-Call), Fallback auf globalen User-Cache."""
+    uid_int = int(uid)
     guilds = [guild] if guild else bot.guilds
     for g in guilds:
-        try:
-            member = g.get_member(int(uid)) or await g.fetch_member(int(uid))
-            return member.display_name
-        except Exception:
+        if g is None:
             continue
-    try:
-        u = await bot.fetch_user(int(uid))
-        return u.display_name
-    except Exception:
-        return f'User {uid}'
+        member = g.get_member(uid_int)
+        if member:
+            return member.display_name
+    u = bot.get_user(uid_int)
+    return u.display_name if u else f'User {uid}'
 
 
 def _paginate_lines(header: str, lines: list[str],
@@ -425,14 +423,7 @@ async def cmd_greeted(interaction: discord.Interaction):
 
     lines = []
     for uid in greeted:
-        uid_int = int(uid)
-        member = (interaction.guild.get_member(uid_int)
-                  if interaction.guild else None)
-        if member:
-            name = member.display_name
-        else:
-            u = bot.get_user(uid_int)
-            name = u.display_name if u else f'User {uid}'
+        name = _display_name_cached(uid, interaction.guild)
         lines.append(f'• **{name}** (`{uid}`)')
     header = f'**Begrüßte User ({len(greeted)}):**\n'
     embeds = _paginate_lines(header, lines)
@@ -459,18 +450,8 @@ async def cmd_dm_log(interaction: discord.Interaction, user: discord.User = None
         await interaction.followup.send('Noch keine DMs protokolliert.', ephemeral=True)
         return
 
-    # User-Namen aus Cache (kein API-Call, verhindert Rate-Limit-Schleife)
-    uids = list(subset.keys())
-    names = {}
-    for uid in uids:
-        uid_int = int(uid)
-        member = (interaction.guild.get_member(uid_int)
-                  if interaction.guild else None)
-        if member:
-            names[uid] = member.display_name
-        else:
-            u = bot.get_user(uid_int)
-            names[uid] = u.display_name if u else f'User {uid}'
+    names = {uid: _display_name_cached(uid, interaction.guild)
+             for uid in subset}
 
     lines = []
     for uid, entries in subset.items():
@@ -535,18 +516,8 @@ async def cmd_stats(interaction: discord.Interaction):
 
     await interaction.response.defer(ephemeral=True)
 
-    # User-Namen aus Cache (kein API-Call, verhindert Rate-Limit-Schleife)
-    uids = list(all_stats.keys())
-    names = {}
-    for uid in uids:
-        uid_int = int(uid)
-        member = (interaction.guild.get_member(uid_int)
-                  if interaction.guild else None)
-        if member:
-            names[uid] = member.display_name
-        else:
-            u = bot.get_user(uid_int)
-            names[uid] = u.display_name if u else f'User {uid}'
+    names = {uid: _display_name_cached(uid, interaction.guild)
+             for uid in all_stats}
 
     lines = []
     for uid, data in all_stats.items():
@@ -654,6 +625,14 @@ async def on_app_command_error(interaction: discord.Interaction, error):
             f'⏳ Bitte warte {error.retry_after:.0f}s.', ephemeral=True)
     else:
         log.exception('Unbehandelter Command-Fehler: %s', error)
+        try:
+            msg = '⚠️ Ein Fehler ist aufgetreten.'
+            if not interaction.response.is_done():
+                await interaction.response.send_message(msg, ephemeral=True)
+            else:
+                await interaction.followup.send(msg, ephemeral=True)
+        except Exception:
+            pass
 
 # ---------------------------------------------------------------------------
 

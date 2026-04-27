@@ -4,6 +4,26 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.13.0] - 2026-04-27
+### Added
+- Lokale SVG-Schachfiguren in `assets/pieces/` — kein Netzwerk-Download mehr noetig (Fallback auf lichess.org bleibt)
+- Gemeinsame `ClickTracker`-Klasse in `core/button_tracker.py` fuer Puzzle- und Wochenpost-Buttons
+- Gemeinsame Datumsfunktionen in `core/datetime_utils.py` (`parse_datum`, `parse_utc`)
+- PDF-Groessenlimit (25 MB) beim Wochenpost-Download
+- User-Feedback bei unbehandelten Command-Fehlern (ephemeral)
+- Tests fuer `build_puzzle_embed`, `dm_log`-Internals, `_SuppressEmptyFen`
+
+### Changed
+- Berechtigungspruefung einheitlich ueber `is_privileged()` (Admin oder Moderator)
+- `_display_name` in `bot.py` als sync-Helper, Duplikate entfernt
+- Embed-Mentions in `/schachrallye` als `content` statt im Embed (Discord pingt jetzt korrekt)
+- Button-Eviction: aelteste Nachricht wird zuerst entfernt (FIFO)
+- `_find_chapter_prefix` und `_list_chapters` laufen jetzt in `asyncio.to_thread`
+- TOCTOU-Race-Condition im Elo-Cache von `event_log.py` behoben
+
+### Removed
+- `_is_admin`-Aliases in `wochenpost.py` und `schachrallye.py` (ersetzt durch `is_privileged`)
+
 ## [2.12.1] - 2026-04-27
 ### Changed
 - `/wochenpost_sub zeit:` akzeptiert jetzt auch Minuten: `17`, `17:30`, `1730`, `17 30`

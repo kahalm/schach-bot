@@ -22,10 +22,11 @@ Arbeit in einen Background-Task (mit ``asyncio.to_thread`` für sync I/O).
 
 import asyncio
 import logging
-from collections import OrderedDict
 
 import discord
 from discord import ui
+
+from core.button_tracker import ClickTracker
 
 log = logging.getLogger('schach-bot')
 
@@ -41,46 +42,13 @@ _BUTTONS: list[tuple[str, discord.ButtonStyle, int]] = [
 # Wechselseitig exklusive Paare – Klick auf einen entfernt automatisch den anderen
 _MUTEX_PAIRS = {'✅': '❌', '❌': '✅', '👍': '👎', '👎': '👍'}
 
-# msg_id → emoji → set[user_id]
-# OrderedDict mit Cap, damit der Speicher nicht unbegrenzt wächst.
 _CLICKS_CAP = 500
-_clicks: OrderedDict[int, dict[str, set[int]]] = OrderedDict()
+_tracker = ClickTracker(_MUTEX_PAIRS, cap=_CLICKS_CAP)
 
-
-def _count(msg_id: int, emoji: str) -> int:
-    return len(_clicks.get(msg_id, {}).get(emoji, set()))
-
-
-def _apply_click(msg_id: int, emoji: str, user_id: int
-                 ) -> tuple[int, str | None]:
-    """Wendet einen Klick an.
-
-    Gibt ``(delta, removed_partner)`` zurück:
-    * ``delta`` = +1 wenn die Stimme hinzugefügt, -1 wenn entfernt wurde
-    * ``removed_partner`` = das mutex-Partner-Emoji, falls dem User dabei
-      die Gegenstimme entzogen wurde, sonst ``None``
-    """
-    by_emoji = _clicks.setdefault(msg_id, {})
-    # Eviction: älteste Einträge entfernen bei Überlauf
-    while len(_clicks) > _CLICKS_CAP:
-        _clicks.popitem(last=False)
-
-    # Mutex: hat der User die Gegenstimme bereits abgegeben? → entfernen
-    removed: str | None = None
-    partner = _MUTEX_PAIRS.get(emoji)
-    if partner:
-        partner_users = by_emoji.get(partner)
-        if partner_users and user_id in partner_users:
-            partner_users.remove(user_id)
-            removed = partner
-
-    # Eigentlicher Toggle
-    users = by_emoji.setdefault(emoji, set())
-    if user_id in users:
-        users.remove(user_id)
-        return -1, removed
-    users.add(user_id)
-    return +1, removed
+# Abwaertskompatible Aliases fuer Tests und externe Zugriffe
+_clicks = _tracker._clicks
+_count = _tracker.count
+_apply_click = _tracker.apply_click
 
 
 def _build_view(msg_id: int | None = None) -> 'PuzzleView':

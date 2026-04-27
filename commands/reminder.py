@@ -8,6 +8,7 @@ import discord
 from discord.ext import tasks
 
 import puzzle
+from core.datetime_utils import parse_utc as _parse_utc
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 
@@ -16,14 +17,6 @@ log = logging.getLogger('schach-bot')
 REMINDER_FILE = os.path.join(CONFIG_DIR, 'reminder.json')
 
 _bot = None
-
-
-def _parse_utc(ts: str) -> datetime:
-    """Parsed ISO-Timestamp und stellt UTC sicher."""
-    dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt
 
 
 @tasks.loop(minutes=1)

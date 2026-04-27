@@ -393,16 +393,16 @@ def test_buttons():
 
     # --- Eviction bei Cap-Ueberlauf ---
     btns._clicks.clear()
-    old_cap = btns._CLICKS_CAP
-    btns._CLICKS_CAP = 5
+    old_cap = btns._tracker._cap
+    btns._tracker._cap = 5
     try:
         for i in range(6):
             btns._apply_click(i, '✅', user_id=600)
-        check('eviction → max entries <= cap+1', len(btns._clicks) <= btns._CLICKS_CAP + 1)
+        check('eviction → max entries <= cap+1', len(btns._clicks) <= 5 + 1)
         # Aelteste (msg_id=0) sollte rausgeflogen sein
         check('eviction → msg 0 entfernt', 0 not in btns._clicks)
     finally:
-        btns._CLICKS_CAP = old_cap
+        btns._tracker._cap = old_cap
 
     # --- _count bei unbekannter msg_id ---
     check('count unknown msg → 0', btns._count(99999, '✅') == 0)
@@ -533,7 +533,64 @@ def test_posted_reset_per_pool():
     print()
 
 
-def test_pgn_parse_max_errors():
+def test_build_puzzle_embed():
+    """Tests fuer puzzle/embed.py build_puzzle_embed."""
+    print('[build_puzzle_embed]')
+    import chess
+    import chess.pgn
+    import io as _io
+    from puzzle.embed import build_puzzle_embed
+
+    # Minimales PGN Game erzeugen
+    pgn = _io.StringIO('[Event "TestKurs"]\n[White "Linie1"]\n[Black "Kapitel1"]\n\n1. e4 *')
+    game = chess.pgn.read_game(pgn)
+
+    # --- Basis-Embed mit allen Feldern ---
+    embed = build_puzzle_embed(game, turn=chess.WHITE, puzzle_num=3,
+                               puzzle_total=42, difficulty='Mittel',
+                               rating=1500, line_id='test.pgn:1.1',
+                               blind_moves=0)
+    check('embed title enthaelt Event', 'TestKurs' in embed.title)
+    check('embed hat Kapitel-Feld', any('Kapitel' in f.get('name', '') for f in embed.fields))
+    check('embed hat Linie-Feld', any('Linie' in f.get('name', '') for f in embed.fields))
+    check('embed hat Schwierigkeit', any('Mittel' in str(f.get('value', '')) for f in embed.fields))
+    check('embed hat Am-Zug Weiss', any('Weiß' in str(f.get('value', '')) for f in embed.fields))
+    check('embed footer ohne blind', embed._footer.get('text') == 'ID: test.pgn:1.1')
+
+    # --- Schwarz am Zug ---
+    embed2 = build_puzzle_embed(game, turn=chess.BLACK)
+    check('Am-Zug Schwarz', any('Schwarz' in str(f.get('value', '')) for f in embed2.fields))
+
+    # --- blind_moves im Footer ---
+    embed3 = build_puzzle_embed(game, line_id='x.pgn:1.1', blind_moves=4)
+    check('footer mit blind', ':blind:4' in embed3._footer.get('text', ''))
+
+    # --- Kein line_id → Default-Footer ---
+    embed4 = build_puzzle_embed(game)
+    check('default footer', 'Tägliches Puzzle' in embed4._footer.get('text', ''))
+
+    # --- Langer Event-Name wird gekuerzt ---
+    pgn_long = _io.StringIO(f'[Event "{"A" * 100}"]\n\n1. e4 *')
+    game_long = chess.pgn.read_game(pgn_long)
+    embed5 = build_puzzle_embed(game_long)
+    check('langer Titel gekuerzt', len(embed5.title) <= 84)  # 🧩 + space + 80 chars max
+
+    # --- White == Event → kein Linie-Feld ---
+    pgn_same = _io.StringIO('[Event "Kurs"]\n[White "Kurs"]\n\n1. e4 *')
+    game_same = chess.pgn.read_game(pgn_same)
+    embed6 = build_puzzle_embed(game_same)
+    check('same name → kein Linie-Feld',
+          not any('Linie' in f.get('name', '') for f in embed6.fields))
+
+    # --- puzzle_num=0 → kein Stats-Feld ---
+    embed7 = build_puzzle_embed(game, puzzle_num=0)
+    check('puzzle_num=0 → kein Stats',
+          not any('Heute' in str(f.get('value', '')) for f in embed7.fields))
+
+    print()
+
+
+
     """Test dass _parse_all_lines bei korruptem PGN nicht endlos loopt."""
     print('[pgn_parse_max_errors]')
     import puzzle.selection as sel

@@ -10,6 +10,7 @@ import io
 import chess.pgn
 import discord
 
+from core.permissions import is_privileged
 from core.version import EMBED_COLOR
 from puzzle.selection import find_line_by_id
 from puzzle.processing import (
@@ -167,8 +168,7 @@ def setup(bot):
     )
     async def test_cmd(interaction: discord.Interaction, kurs: int = 0,
                        puzzle: int = 0, lichess: int = 0):
-        if not (isinstance(interaction.user, discord.Member)
-                and interaction.user.guild_permissions.administrator):
+        if not is_privileged(interaction):
             await interaction.response.send_message('⚠️ Nur für Admins.', ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True)

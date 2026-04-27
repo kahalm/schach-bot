@@ -23,6 +23,7 @@ import requests
 from discord.ext import tasks
 
 from commands.wochenpost_buttons import fresh_view as _fresh_button_view
+from core.datetime_utils import parse_datum as _parse_datum, parse_utc as _parse_utc
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 from core.permissions import is_privileged
@@ -71,10 +72,6 @@ _bot = None
 _wochenpost_channel_id = 0
 
 
-def _is_admin(interaction: discord.Interaction) -> bool:
-    return is_privileged(interaction)
-
-
 def _parse_zeit(raw: str) -> tuple[int, int] | None:
     """Parst Uhrzeit in verschiedenen Formaten zu (hour, minute).
 
@@ -112,14 +109,6 @@ def _parse_zeit(raw: str) -> tuple[int, int] | None:
     return None
 
 
-def _parse_datum(text: str) -> date | None:
-    """Parst TT.MM.JJJJ zu date, gibt None bei Fehler."""
-    try:
-        return datetime.strptime(text.strip(), '%d.%m.%Y').date()
-    except ValueError:
-        return None
-
-
 def _next_id(entries: list) -> int:
     """Gibt die naechste freie ID zurueck."""
     if not entries:
@@ -134,14 +123,6 @@ def _next_free_day(entries: list) -> date:
     while day.strftime('%Y-%m-%d') in used:
         day += timedelta(days=1)
     return day
-
-
-def _parse_utc(ts: str) -> datetime:
-    """Parsed ISO-Timestamp und stellt UTC sicher."""
-    dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt
 
 
 def _get_latest_posted():
@@ -207,7 +188,7 @@ def setup(bot, wochenpost_channel_id: int = 0):
                   description='Alle geplanten und vergangenen Wochenposts anzeigen')
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_wochenpost(interaction: discord.Interaction):
-        if not _is_admin(interaction):
+        if not is_privileged(interaction):
             await interaction.response.send_message(
                 '\u26a0\ufe0f Nur fuer Admins.', ephemeral=True)
             return
@@ -263,7 +244,7 @@ def setup(bot, wochenpost_channel_id: int = 0):
                                   url: str = '',
                                   pdf: discord.Attachment = None,
                                   json_input: str = ''):
-        if not _is_admin(interaction):
+        if not is_privileged(interaction):
             await interaction.response.send_message(
                 '\u26a0\ufe0f Nur fuer Admins.', ephemeral=True)
             return
@@ -455,7 +436,7 @@ def setup(bot, wochenpost_channel_id: int = 0):
     @discord.app_commands.describe(id='ID des Posts (aus /wochenpost)')
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_wochenpost_del(interaction: discord.Interaction, id: int):
-        if not _is_admin(interaction):
+        if not is_privileged(interaction):
             await interaction.response.send_message(
                 '\u26a0\ufe0f Nur fuer Admins.', ephemeral=True)
             return
@@ -492,7 +473,7 @@ def setup(bot, wochenpost_channel_id: int = 0):
     async def cmd_wochenpost_sub(interaction: discord.Interaction,
                                   zeit: str = '17',
                                   user: discord.User = None):
-        if user and not _is_admin(interaction):
+        if user and not is_privileged(interaction):
             await interaction.response.send_message(
                 '\u26a0\ufe0f Nur Admins/Moderatoren koennen andere User subscriben.',
                 ephemeral=True)
@@ -562,7 +543,7 @@ def setup(bot, wochenpost_channel_id: int = 0):
         user='Anderen User unsubscriben (Admin/Mod)')
     async def cmd_wochenpost_unsub(interaction: discord.Interaction,
                                     user: discord.User = None):
-        if user and not _is_admin(interaction):
+        if user and not is_privileged(interaction):
             await interaction.response.send_message(
                 '\u26a0\ufe0f Nur Admins/Moderatoren koennen andere User unsubscriben.',
                 ephemeral=True)
@@ -680,15 +661,26 @@ async def _post_entry(channel, entry: dict):
     if desc_parts:
         embed.description = '\n\n'.join(desc_parts)
 
-    # PDF runterladen falls vorhanden
+    # PDF runterladen falls vorhanden (max 25 MB)
+    _PDF_MAX_BYTES = 25 * 1024 * 1024
     file = None
     if entry.get('pdf_url'):
         try:
-            resp = await asyncio.to_thread(
-                requests.get, entry['pdf_url'], timeout=30)
-            resp.raise_for_status()
+            def _download_pdf(url):
+                resp = requests.get(url, timeout=30, stream=True)
+                resp.raise_for_status()
+                chunks = []
+                total = 0
+                for chunk in resp.iter_content(chunk_size=8192):
+                    total += len(chunk)
+                    if total > _PDF_MAX_BYTES:
+                        raise ValueError(f'PDF zu gross (>{_PDF_MAX_BYTES // (1024*1024)} MB)')
+                    chunks.append(chunk)
+                return b''.join(chunks)
+
+            data = await asyncio.to_thread(_download_pdf, entry['pdf_url'])
             file = discord.File(
-                io.BytesIO(resp.content),
+                io.BytesIO(data),
                 filename=entry.get('pdf_name', 'datei.pdf'),
             )
         except Exception as e:

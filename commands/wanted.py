@@ -9,6 +9,7 @@ from discord.ext import commands
 
 from core.paths import CONFIG_DIR
 from core.json_store import atomic_read, atomic_update
+from core.permissions import is_privileged
 
 log = logging.getLogger('schach-bot')
 
@@ -102,8 +103,7 @@ def setup(bot: commands.Bot):
     @discord.app_commands.describe(id='Nummer des Feature-Wunsches')
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_wanted_delete(interaction: discord.Interaction, id: int):
-        if not (isinstance(interaction.user, discord.Member)
-                and interaction.user.guild_permissions.administrator):
+        if not is_privileged(interaction):
             await interaction.response.send_message('⚠️ Nur für Admins.', ephemeral=True)
             return
         result = {'found': False}
