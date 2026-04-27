@@ -55,8 +55,8 @@ def _random_spruch() -> str:
     text = s.get('text', '')
     autor = s.get('autor')
     if autor:
-        return f'\n\n_"{text}"_ — {autor}'
-    return f'\n\n_"{text}"_'
+        return f'_"{text}"_ — {autor}'
+    return f'_"{text}"_'
 
 WOCHENPOST_FILE = os.path.join(CONFIG_DIR, 'wochenpost.json')
 WOCHENPOST_SUB_FILE = os.path.join(CONFIG_DIR, 'wochenpost_sub.json')
@@ -794,10 +794,11 @@ async def _run_wochenpost_reminders():
         try:
             user = await _bot.fetch_user(int(uid_str))
             dm = await user.create_dm()
-            msg_text = f'\U0001f4ec Wochenpost-Erinnerung: **{titel}**'
+            spruch = _random_spruch()
+            msg_text = f'{spruch}\n\n' if spruch else ''
+            msg_text += f'\U0001f4ec Mache deine Übungen! → **{titel}**'
             if thread_url:
                 msg_text += f'\n{thread_url}'
-            msg_text += _random_spruch()
             await dm.send(msg_text)
         except Exception:
             log.warning('Wochenpost-DM an User %s fehlgeschlagen', uid_str)

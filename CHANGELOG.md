@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.13.1] - 2026-04-27
+### Changed
+- Wochenpost-Erinnerungs-DM: Spruch steht jetzt oben, darunter "Mache deine Übungen!" statt "Wochenpost-Erinnerung"
+
 ## [2.13.0] - 2026-04-27
 ### Added
 - Lokale SVG-Schachfiguren in `assets/pieces/` — kein Netzwerk-Download mehr noetig (Fallback auf lichess.org bleibt)
