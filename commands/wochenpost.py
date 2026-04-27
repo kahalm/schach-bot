@@ -83,6 +83,23 @@ async def _try_chat_spark(uid: int, spruch: str, titel: str) -> str | None:
         return None
 
 
+async def _build_reminder_text(uid: int, titel: str, thread_url: str = '') -> str:
+    """Baut den DM-Text fuer einen Wochenpost-Reminder.
+
+    Wird sowohl vom produktiven Loop als auch von /test verwendet.
+    """
+    spruch = _random_spruch()
+    chat_reply = await _try_chat_spark(uid, spruch, titel)
+    if chat_reply:
+        msg = f'{chat_reply}\n\n'
+    else:
+        msg = f'{spruch}\n\n' if spruch else ''
+    msg += f'\U0001f4ec Mache deine \u00dcbungen! \u2192 **{titel}**'
+    if thread_url:
+        msg += f'\n{thread_url}'
+    return msg
+
+
 WOCHENPOST_FILE = os.path.join(CONFIG_DIR, 'wochenpost.json')
 WOCHENPOST_SUB_FILE = os.path.join(CONFIG_DIR, 'wochenpost_sub.json')
 
@@ -823,16 +840,7 @@ async def _run_wochenpost_reminders():
         try:
             user = await _bot.fetch_user(int(uid_str))
             dm = await user.create_dm()
-            spruch = _random_spruch()
-            uid = int(uid_str)
-            chat_reply = await _try_chat_spark(uid, spruch, titel)
-            if chat_reply:
-                msg_text = f'{chat_reply}\n\n'
-            else:
-                msg_text = f'{spruch}\n\n' if spruch else ''
-            msg_text += f'\U0001f4ec Mache deine Übungen! → **{titel}**'
-            if thread_url:
-                msg_text += f'\n{thread_url}'
+            msg_text = await _build_reminder_text(int(uid_str), titel, thread_url)
             await dm.send(msg_text)
         except Exception:
             log.warning('Wochenpost-DM an User %s fehlgeschlagen', uid_str)

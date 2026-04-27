@@ -656,7 +656,6 @@ async def _trigger_test_reminders(interaction, bot):
         if uid in sub_data.get('subscribers', {}):
             entry = wp._get_latest_posted()
             if entry and 'msg_id' in entry:
-                spruch = wp._random_spruch()
                 titel = entry.get('titel', '')
                 thread_id = entry.get('thread_id')
 
@@ -668,15 +667,7 @@ async def _trigger_test_reminders(interaction, bot):
                         if guild_id:
                             thread_url = f'https://discord.com/channels/{guild_id}/{thread_id}'
 
-                chat_reply = await wp._try_chat_spark(uid_int, spruch, titel)
-                if chat_reply:
-                    msg = f'{chat_reply}\n\n'
-                else:
-                    msg = f'{spruch}\n\n' if spruch else ''
-                msg += f'\U0001f4ec Mache deine \u00dcbungen! \u2192 **{titel}**'
-                if thread_url:
-                    msg += f'\n{thread_url}'
-
+                msg = await wp._build_reminder_text(uid_int, titel, thread_url)
                 dm = await interaction.user.create_dm()
                 await dm.send(msg)
                 sent.append('wochenpost')

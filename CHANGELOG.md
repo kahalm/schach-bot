@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.18.2] - 2026-04-27
+### Changed
+- Wochenpost-DM-Logik in `_build_reminder_text()` extrahiert — /test und der produktive Loop nutzen jetzt dieselbe Funktion, keine Duplikation mehr
+
 ## [2.18.1] - 2026-04-27
 ### Fixed
 - /test Wochenpost-Reminder nutzt jetzt auch Chat-Spark fuer whitelisted User (war eigener Code-Pfad ohne Claude-Integration)
