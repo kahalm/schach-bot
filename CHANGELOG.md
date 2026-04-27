@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.10.1] - 2026-04-27
+### Changed
+- `/wochenpost_sub` zeigt "MEZ/MESZ" statt "Wiener Zeit" an
+
 ## [2.10.0] - 2026-04-27
 ### Changed
 - `/wochenpost_add` akzeptiert jetzt beliebige Daten, nicht nur Freitage

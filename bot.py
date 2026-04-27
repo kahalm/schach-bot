@@ -315,7 +315,7 @@ def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str
             ('/turnier_unsub <tag> [user]', 'Turnier-Tag-Abo abbestellen.'),
             ('/wochenpost_sub [zeit] [user]',
              'Täglich DM-Erinnerung an den aktuellen Wochenpost.\n'
-             '`zeit` — Uhrzeit Wiener Zeit (0-23, Standard: 17)\n'
+             '`zeit` — Uhrzeit MEZ/MESZ (0-23, Standard: 17)\n'
              '`/wochenpost_sub` — Selbst · `/wochenpost_sub user:@X` — Admin subscribed anderen\n'
              'Endet wenn du den Post als erledigt markierst.'),
             ('/wochenpost_unsub [user]', 'Wochenpost-Erinnerungen abbestellen.'),

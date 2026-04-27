@@ -422,7 +422,7 @@ def setup(bot, wochenpost_channel_id: int = 0):
     @tree.command(name='wochenpost_sub',
                   description='Taeglich DM-Erinnerung an den aktuellen Wochenpost')
     @discord.app_commands.describe(
-        zeit='Uhrzeit Wiener Zeit (0-23, Standard: 17)',
+        zeit='Uhrzeit MEZ/MESZ (0-23, Standard: 17)',
         user='Anderen User subscriben (Admin/Mod)')
     async def cmd_wochenpost_sub(interaction: discord.Interaction,
                                   zeit: int = 17,
@@ -466,23 +466,23 @@ def setup(bot, wochenpost_channel_id: int = 0):
             if user:
                 await interaction.response.send_message(
                     f'\u2705 {name} aktualisiert: '
-                    f'taeglich um **{zeit}:00 Wiener Zeit**.',
+                    f'taeglich um **{zeit}:00 MEZ/MESZ**.',
                     ephemeral=True)
             else:
                 await interaction.response.send_message(
                     f'\u2705 {name} aktualisiert: '
-                    f'taeglich um **{zeit}:00 Wiener Zeit**.',
+                    f'taeglich um **{zeit}:00 MEZ/MESZ**.',
                     ephemeral=True)
         else:
             if user:
                 await interaction.response.send_message(
                     f'\u2705 {name} fuer Wochenpost-Erinnerungen subscribed: '
-                    f'taeglich um **{zeit}:00 Wiener Zeit**.',
+                    f'taeglich um **{zeit}:00 MEZ/MESZ**.',
                     ephemeral=True)
             else:
                 await interaction.response.send_message(
                     f'\u2705 Wochenpost-Erinnerung abonniert: '
-                    f'taeglich um **{zeit}:00 Wiener Zeit**.\n'
+                    f'taeglich um **{zeit}:00 MEZ/MESZ**.\n'
                     f'Du bekommst eine DM, bis du den aktuellen '
                     f'Wochenpost als erledigt markierst.',
                     ephemeral=True)
