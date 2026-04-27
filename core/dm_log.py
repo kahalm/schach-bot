@@ -86,15 +86,16 @@ def install():
     _original_send = discord.DMChannel.send
 
     async def _patched_send(self: discord.DMChannel, *args, **kwargs):
+        result = await _original_send(self, *args, **kwargs)
         try:
             recipient = getattr(self, 'recipient', None)
             user_id   = recipient.id if recipient else None
             if user_id:
                 text = _describe(*args, **kwargs)
-                await asyncio.to_thread(_append, user_id, text)
+                asyncio.create_task(asyncio.to_thread(_append, user_id, text))
         except Exception as e:
             log.warning('DM-Log fehlgeschlagen: %s', e)
-        return await _original_send(self, *args, **kwargs)
+        return result
 
     discord.DMChannel.send = _patched_send
     log.info('DM-Log aktiv → %s', DM_LOG_FILE)

@@ -210,7 +210,9 @@ def _fetch_termine() -> list[dict]:
 
     Returns: Liste von Event-Dicts mit keys: datum, datum_text, name, ort, link, tags.
     """
-    resp = requests.get(RALLYE_URL, timeout=15)
+    from core.version import VERSION
+    resp = requests.get(RALLYE_URL, timeout=15,
+                        headers={'User-Agent': f'schach-bot/{VERSION}'})
     resp.raise_for_status()
 
     parser = _TerminParser()

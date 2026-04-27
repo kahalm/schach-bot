@@ -9,6 +9,11 @@ import chess
 import requests
 
 _session = requests.Session()
+try:
+    from requests.adapters import HTTPAdapter
+    _session.mount('https://', HTTPAdapter(pool_connections=2, pool_maxsize=2))
+except (ImportError, AttributeError):
+    pass  # Test-Umgebung mit gemocktem requests
 from PIL import Image, ImageDraw, ImageFont, ImageChops, ImageOps
 from svglib.svglib import svg2rlg
 from reportlab.graphics import renderPM
@@ -176,3 +181,18 @@ def _render_board(board: chess.Board) -> io.BytesIO:
     img.save(buf, format='PNG')
     buf.seek(0)
     return buf
+
+
+async def safe_render_board(game) -> tuple[object, io.BytesIO | None]:
+    """Rendert das Board aus einem PGN-Game (async, thread-safe).
+
+    Gibt (turn, img) zurueck. Bei Fehler: (None, None).
+    """
+    import asyncio
+    try:
+        board = game.board()
+        turn = board.turn
+        img = await asyncio.to_thread(_render_board, board)
+        return turn, img
+    except Exception:
+        return None, None

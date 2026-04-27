@@ -164,7 +164,8 @@ async def on_message(message: discord.Message):
     def _check_and_greet(data):
         nonlocal should_greet
         greeted = data.get('greeted', [])
-        if user_id in greeted:
+        greeted_set = set(greeted)
+        if user_id in greeted_set:
             return data  # bereits begrüßt
         should_greet = True
         greeted.append(user_id)
@@ -188,7 +189,7 @@ async def on_member_join(member: discord.Member):
         # In greeted-Liste eintragen, damit on_message kein Doppel-Willkommen schickt
         def _mark_greeted(data):
             greeted = data.get('greeted', [])
-            if member.id not in greeted:
+            if member.id not in set(greeted):
                 greeted.append(member.id)
                 data['greeted'] = greeted
             return data
@@ -215,6 +216,9 @@ def _display_name_cached(uid, guild=None):
     return u.display_name if u else f'User {uid}'
 
 
+_MAX_EMBEDS = 10  # Discord-Limit pro Nachricht
+
+
 def _paginate_lines(header: str, lines: list[str],
                     max_len: int = 4096) -> list[discord.Embed]:
     """Teilt Zeilen auf mehrere Embeds auf, wenn >max_len Zeichen."""
@@ -224,11 +228,16 @@ def _paginate_lines(header: str, lines: list[str],
         candidate = buf + line + '\n'
         if len(candidate) > max_len:
             embeds.append(discord.Embed(description=buf.rstrip(), color=EMBED_COLOR))
+            if len(embeds) >= _MAX_EMBEDS:
+                embeds[-1] = discord.Embed(
+                    description=buf.rstrip() + '\n\n_(gekuerzt)_', color=EMBED_COLOR)
+                return embeds
             buf = line + '\n'
         else:
             buf = candidate
     if buf.strip():
-        embeds.append(discord.Embed(description=buf.rstrip(), color=EMBED_COLOR))
+        if len(embeds) < _MAX_EMBEDS:
+            embeds.append(discord.Embed(description=buf.rstrip(), color=EMBED_COLOR))
     return embeds or [discord.Embed(description=header.rstrip(), color=EMBED_COLOR)]
 
 
@@ -545,11 +554,12 @@ async def cmd_stats(interaction: discord.Interaction):
 # --- Admin-Befehle ---
 
 def _read_log_tail(n: int) -> str:
-    """Liest die letzten n Zeilen aus bot.log."""
+    """Liest die letzten n Zeilen aus bot.log (speicherschonend via deque)."""
+    from collections import deque
     try:
         with open('bot.log', encoding='utf-8', errors='replace') as f:
-            lines = f.readlines()
-        return ''.join(lines[-n:]).rstrip() or '(leer)'
+            tail = deque(f, maxlen=n)
+        return ''.join(tail).rstrip() or '(leer)'
     except FileNotFoundError:
         return '(leer)'
 

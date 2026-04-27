@@ -123,12 +123,7 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
             urls = await _pkg._upload_puzzles_async([(game, context)], reuse_study_id=reuse_study_id)
             puzzle_url = urls[0] if urls else None
 
-            try:
-                board = game.board()
-                turn = board.turn
-                img = await asyncio.to_thread(_pkg._render_board, board)
-            except Exception:
-                turn, img = None, None
+            turn, img = await _pkg.safe_render_board(game)
 
             if user:
                 await dm.send(f'**{interaction.user.display_name}** schickt dir ein Rätsel 🧩')
@@ -488,12 +483,7 @@ async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
             puzzle_count += 1
             puzzle_num = base_count + puzzle_count
             puzzle_total = base_total + puzzle_count
-            try:
-                board = game.board()
-                turn = board.turn
-                img = await asyncio.to_thread(_pkg._render_board, board)
-            except Exception:
-                turn, img = None, None
+            turn, img = await _pkg.safe_render_board(game)
 
             embed = _pkg.build_puzzle_embed(game, turn=turn,
                                        puzzle_num=puzzle_num,

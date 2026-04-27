@@ -114,6 +114,10 @@ def _local_path(remote: str) -> str | None:
 # Tag-Wörterbücher
 # ---------------------------------------------------------------------------
 
+def _compile_tags(d: dict[str, list[str]]) -> dict[str, list[re.Pattern]]:
+    return {tag: [re.compile(p) for p in pats] for tag, pats in d.items()}
+
+
 _OPENING_TAGS: dict[str, list[str]] = {
     'Sizilianisch':   [r'\bsicilian\b', r'\bsizilian\b'],
     'Französisch':    [r'\bfrench\b', r'\bfranz[oö]sisch\b'],
@@ -164,22 +168,27 @@ _LANGUAGE_TAGS: dict[str, list[str]] = {
     'Spanisch (Sprache)':    [r'\(spanish\)', r'\bespañol\b'],
 }
 
+_OPENING_RE = _compile_tags(_OPENING_TAGS)
+_TOPIC_RE = _compile_tags(_TOPIC_TAGS)
+_LANGUAGE_RE = _compile_tags(_LANGUAGE_TAGS)
+
+
 def _auto_tag(title: str, author: str, file_ext: str) -> list[str]:
     """Generiert Tags aus Titel und Dateityp."""
     tags: list[str] = []
     text = f'{title} {author}'.lower()
-    for tag, patterns in _OPENING_TAGS.items():
-        if any(re.search(p, text) for p in patterns):
+    for tag, patterns in _OPENING_RE.items():
+        if any(p.search(text) for p in patterns):
             tags.append(tag)
-    for tag, patterns in _TOPIC_TAGS.items():
-        if any(re.search(p, text) for p in patterns):
+    for tag, patterns in _TOPIC_RE.items():
+        if any(p.search(text) for p in patterns):
             tags.append(tag)
     for tag, exts in _FORMAT_TAGS.items():
         if file_ext in exts:
             tags.append(tag)
             break
-    for tag, patterns in _LANGUAGE_TAGS.items():
-        if any(re.search(p, text) for p in patterns):
+    for tag, patterns in _LANGUAGE_RE.items():
+        if any(p.search(text) for p in patterns):
             tags.append(tag)
     return tags
 

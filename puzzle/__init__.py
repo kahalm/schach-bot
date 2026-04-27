@@ -31,7 +31,7 @@ from .processing import (  # noqa: F401
 )
 
 # --- Board-Rendering ---
-from .rendering import _svg_to_pil, _get_piece, _label_font, _render_board  # noqa: F401
+from .rendering import _svg_to_pil, _get_piece, _label_font, _render_board, safe_render_board  # noqa: F401
 
 # --- Auswahl/Caching ---
 from .selection import (  # noqa: F401

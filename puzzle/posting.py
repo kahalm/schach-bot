@@ -1,6 +1,7 @@
 """Discord-Posting: Puzzles rendern, uploaden und in Channels/DMs senden."""
 
 import asyncio
+import concurrent.futures
 import logging
 import random
 import time as _time_mod
@@ -18,7 +19,7 @@ from puzzle.processing import (
     _solution_pgn, _prelude_pgn, _trim_to_training_position,
     _split_for_blind, _format_blind_moves,
 )
-from puzzle.rendering import _render_board
+from puzzle.rendering import _render_board, safe_render_board
 from puzzle.selection import _list_pgn_files, pick_random_lines, pick_random_blind_lines
 from puzzle.state import (
     _register_puzzle_msg, _endless_sessions, stop_endless,
@@ -29,6 +30,11 @@ log = logging.getLogger('schach-bot')
 
 _DISCORD_THREAD_NAME_MAX = 100
 
+# Eigener Executor fuer Lichess-Uploads (sleep-basiertes Rate-Limiting
+# blockiert sonst den Default-ThreadPool und verzoegert andere to_thread-Calls).
+_lichess_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2,
+                                                          thread_name_prefix='lichess')
+
 
 async def _upload_puzzles_async(
     pairs: list[tuple[chess.pgn.Game, chess.pgn.Game | None]],
@@ -38,13 +44,13 @@ async def _upload_puzzles_async(
     loop = asyncio.get_running_loop()
     if len(pairs) == 1:
         u = await loop.run_in_executor(
-            None, lambda: upload_to_lichess(
+            _lichess_executor, lambda: upload_to_lichess(
                 pairs[0][0], context_game=pairs[0][1],
                 reuse_study_id=reuse_study_id))
         return [u] if u else []
     else:
         return await loop.run_in_executor(
-            None, lambda: upload_many_to_lichess(
+            _lichess_executor, lambda: upload_many_to_lichess(
                 pairs, reuse_study_id=reuse_study_id))
 
 
@@ -69,77 +75,78 @@ async def post_next_endless(bot, user_id: int):
     session = _endless_sessions.get(user_id)
     if not session:
         return
+    # Guard gegen Doppel-Sends bei schnellen Klicks (Race via create_task)
+    if session.get('_sending'):
+        return
+    session['_sending'] = True
+    try:
+        book_filename = session['book']
+        results = pick_random_lines(1, book_filename)
+        if not results:
+            # Keine Puzzles mehr → Session beenden
+            try:
+                user = await bot.fetch_user(user_id)
+                dm = await user.create_dm()
+                await dm.send('⚠️ Keine weiteren Puzzles verfügbar. Endless-Modus beendet.')
+            except Exception as e:
+                log.warning('Endless-Ende-DM fehlgeschlagen (user=%s): %s', user_id, e)
+            _endless_sessions.pop(user_id, None)
+            return
 
-    book_filename = session['book']
-    results = pick_random_lines(1, book_filename)
-    if not results:
-        # Keine Puzzles mehr → Session beenden
+        line_id, original_game = results[0]
+        game = _trim_to_training_position(original_game)
+        context = original_game if game is not original_game else None
+
+        books_config = _load_books_config()
+        fname = line_id.split(':')[0]
+        book_meta = books_config.get(fname, {})
+        diff = book_meta.get('difficulty', '')
+        rating = book_meta.get('rating', 0)
+
+        # Upload
+        reuse_study_id = _get_user_study_id(user_id)
+        urls = await _upload_puzzles_async([(game, context)], reuse_study_id=reuse_study_id)
+        puzzle_url = urls[0] if urls else None
+
+        # Studie-ID speichern
+        sid = _extract_study_id(puzzle_url)
+        if sid:
+            base_count, base_total = _get_user_puzzle_count(user_id)
+            _set_user_study_id(user_id, sid, base_count + 1, base_total + 1)
+
+        session['count'] += 1
+        session['last_active'] = _time_mod.time()
+
+        # DM senden
         try:
             user = await bot.fetch_user(user_id)
             dm = await user.create_dm()
-            await dm.send('⚠️ Keine weiteren Puzzles verfügbar. Endless-Modus beendet.')
         except Exception as e:
-            log.warning('Endless-Ende-DM fehlgeschlagen (user=%s): %s', user_id, e)
-        _endless_sessions.pop(user_id, None)
-        return
+            log.warning('Endless-DM fehlgeschlagen (user=%s): %s – Session beendet', user_id, e)
+            stop_endless(user_id)
+            return
 
-    line_id, original_game = results[0]
-    game = _trim_to_training_position(original_game)
-    context = original_game if game is not original_game else None
+        turn, img = await safe_render_board(game)
 
-    books_config = _load_books_config()
-    fname = line_id.split(':')[0]
-    book_meta = books_config.get(fname, {})
-    diff = book_meta.get('difficulty', '')
-    rating = book_meta.get('rating', 0)
+        embed = build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating, line_id=line_id)
+        embed.set_footer(text=f'♾️ Endless-Modus · Puzzle #{session["count"]} · ID: {line_id}')
 
-    # Upload
-    reuse_study_id = _get_user_study_id(user_id)
-    urls = await _upload_puzzles_async([(game, context)], reuse_study_id=reuse_study_id)
-    puzzle_url = urls[0] if urls else None
+        if img:
+            file = discord.File(img, filename='board.png')
+            embed.set_image(url='attachment://board.png')
+            msg = await dm.send(file=file, embed=embed)
+        else:
+            msg = await dm.send(embed=embed)
 
-    # Studie-ID speichern
-    sid = _extract_study_id(puzzle_url)
-    if sid:
-        base_count, base_total = _get_user_puzzle_count(user_id)
-        _set_user_study_id(user_id, sid, base_count + 1, base_total + 1)
+        _register_puzzle_msg(msg.id, line_id)
+        await msg.edit(view=_fresh_button_view())
 
-    session['count'] += 1
-    session['last_active'] = _time_mod.time()
+        # Lösung, Prelude, Lichess-Link
+        await _send_puzzle_followups(dm, game, context, puzzle_url, line_id)
 
-    # DM senden
-    try:
-        user = await bot.fetch_user(user_id)
-        dm = await user.create_dm()
-    except Exception as e:
-        log.warning('Endless-DM fehlgeschlagen (user=%s): %s – Session beendet', user_id, e)
-        stop_endless(user_id)
-        return
-
-    try:
-        board = game.board()
-        turn = board.turn
-        img = await asyncio.to_thread(_render_board, board)
-    except Exception:
-        turn, img = None, None
-
-    embed = build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating, line_id=line_id)
-    embed.set_footer(text=f'♾️ Endless-Modus · Puzzle #{session["count"]} · ID: {line_id}')
-
-    if img:
-        file = discord.File(img, filename='board.png')
-        embed.set_image(url='attachment://board.png')
-        msg = await dm.send(file=file, embed=embed)
-    else:
-        msg = await dm.send(embed=embed)
-
-    _register_puzzle_msg(msg.id, line_id)
-    await msg.edit(view=_fresh_button_view())
-
-    # Lösung, Prelude, Lichess-Link
-    await _send_puzzle_followups(dm, game, context, puzzle_url, line_id)
-
-    stats.inc(user_id, 'puzzles', 1)
+        stats.inc(user_id, 'puzzles', 1)
+    finally:
+        session.pop('_sending', None)
 
 
 async def _resilient_send(target, *args, retries: int = 3, **kwargs):
@@ -257,14 +264,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
             puzzle_url = urls[i] if i < len(urls) else None
             puzzle_num   = (base_count + i + 1) if user_id else 0
             puzzle_total = (base_total + i + 1) if user_id else 0
-            try:
-                board = game.board()
-                turn  = board.turn
-                img   = await asyncio.to_thread(_render_board, board)
-            except Exception as e:
-                log.warning('Board-Render fehlgeschlagen (%s): %s', lid, e)
-                turn = None
-                img  = None
+            turn, img = await safe_render_board(game)
 
             embed = build_puzzle_embed(game, turn=turn, puzzle_num=puzzle_num, puzzle_total=puzzle_total, difficulty=diff, rating=rating, line_id=lid)
             # Haupt-Send: Brett + Embed. Nur das ist der Erfolgs-Anker;

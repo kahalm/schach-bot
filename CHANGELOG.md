@@ -4,6 +4,24 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.14.0] - 2026-04-27
+### Added
+- `safe_render_board()` async Helper ersetzt 4x dupliziertes try/except Board-Rendering
+- Dedizierter ThreadPoolExecutor fuer Lichess-Uploads (verhindert Default-Pool-Saturation)
+
+### Changed
+- Endless-Modus: `_sending`-Guard verhindert Doppel-Sends bei schnellen Klicks
+- `_read_log_tail` nutzt `deque` statt `readlines()` (speicherschonend)
+- `rotate_log` schreibt atomar via tempfile + `os.replace`
+- HTTP-Session in `rendering.py` mit Pooling-Limit (2 Connections)
+- User-Agent Header bei `_fetch_termine` (tirol.chess.at)
+- DM-Log schreibt nach dem Send (fire-and-forget), blockiert nicht mehr die DM-Zustellung
+- `_paginate_lines` respektiert Discord-Limit von 10 Embeds pro Nachricht
+- Regex-Patterns in `library.py` `_auto_tag` vorkompiliert
+- `greeted`-Lookup als Set (O(1) statt O(n))
+- Log-Level fuer User-Studie-Lookups von info auf debug reduziert
+- `_puzzle_msg_ids` Thread-Safety-Constraint dokumentiert
+
 ## [2.13.1] - 2026-04-27
 ### Changed
 - Wochenpost-Erinnerungs-DM: Spruch steht jetzt oben, darunter "Mache deine Übungen!" statt "Wochenpost-Erinnerung"

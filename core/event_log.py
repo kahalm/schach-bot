@@ -12,6 +12,7 @@ Datei: ``config/reaction_log.jsonl``
 import json
 import logging
 import os
+import tempfile
 import threading
 from collections import deque
 from datetime import datetime, timezone
@@ -112,6 +113,13 @@ def rotate_log():
         if len(lines) <= _MAX_LOG_LINES:
             return
         trimmed = lines[-_MAX_LOG_LINES:]
-        with open(REACTION_LOG_FILE, 'w', encoding='utf-8') as f:
-            f.writelines(trimmed)
+        dir_name = os.path.dirname(REACTION_LOG_FILE) or '.'
+        fd, tmp = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                f.writelines(trimmed)
+            os.replace(tmp, REACTION_LOG_FILE)
+        except BaseException:
+            os.unlink(tmp)
+            raise
     log.info('Reaction-Log rotiert: %d → %d Zeilen', len(lines), len(trimmed))

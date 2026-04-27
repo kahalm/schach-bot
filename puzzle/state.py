@@ -25,6 +25,7 @@ LICHESS_COOLDOWN_FILE = os.path.join(CONFIG_DIR, 'lichess_cooldown.json')
 # ---------------------------------------------------------------------------
 # Puzzle-Nachrichten-Registry
 # ---------------------------------------------------------------------------
+# WICHTIG: Nur aus dem asyncio Event Loop mutieren (nicht aus Threads)!
 _PUZZLE_MSG_CAP = 500
 _puzzle_msg_ids: OrderedDict[int, dict] = OrderedDict()
 
@@ -212,7 +213,7 @@ def _get_user_study_id(user_id: int) -> str | None:
         val = entry.get('id')
     else:
         val = None
-    log.info('User-Studie laden: user=%s → %s', user_id, val or 'neu')
+    log.debug('User-Studie laden: user=%s → %s', user_id, val or 'neu')
     return val
 
 
@@ -241,7 +242,7 @@ def _set_user_study_id(user_id: int, study_id: str, count: int, total: int):
             data[key]['training'] = prev['training']
         return data
     atomic_update(USER_STUDIES_FILE, _update)
-    log.info('User-Studie gespeichert: user=%s study_id=%s count=%d total=%d', user_id, study_id, count, total)
+    log.debug('User-Studie gespeichert: user=%s study_id=%s count=%d total=%d', user_id, study_id, count, total)
 
 
 _books_config_cache: dict | None = None
