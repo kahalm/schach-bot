@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.14.1] - 2026-04-27
+### Fixed
+- `/log` Interaction Timeout: defer() vor dem File-Read verhindert "Unknown interaction" nach 3s
+
 ## [2.14.0] - 2026-04-27
 ### Added
 - `safe_render_board()` async Helper ersetzt 4x dupliziertes try/except Board-Rendering

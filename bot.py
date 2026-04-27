@@ -570,13 +570,14 @@ def _read_log_tail(n: int) -> str:
 async def cmd_log(interaction: discord.Interaction, zeilen: int = 50):
     if not await _require_admin(interaction):
         return
+    await interaction.response.defer(ephemeral=True)
     zeilen = max(1, min(zeilen, 200))
     text = await asyncio.to_thread(_read_log_tail, zeilen)
     if len(text) <= 1900:
-        await interaction.response.send_message(f'```\n{text}\n```', ephemeral=True)
+        await interaction.followup.send(f'```\n{text}\n```', ephemeral=True)
     else:
         buf = io.BytesIO(text.encode('utf-8'))
-        await interaction.response.send_message(
+        await interaction.followup.send(
             file=discord.File(buf, filename='bot.log'), ephemeral=True)
 
 

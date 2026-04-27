@@ -392,7 +392,8 @@ def test_log():
         try:
             ia = make_interaction(admin=True)
             run_async(cmd(ia, zeilen=50))
-            content = ia.response.calls[0].get('content') or ''
+            check('defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
+            content = ia.followup.calls[0].get('content') or ''
             check('Default → Code-Block', '```' in content and 'Zeile 1' in content)
             check('Default → n=50', 'n=50' in content)
         finally:
@@ -404,7 +405,7 @@ def test_log():
         try:
             ia = make_interaction(admin=True)
             run_async(cmd(ia, zeilen=50))
-            content = ia.response.calls[0].get('content') or ''
+            content = ia.followup.calls[0].get('content') or ''
             check('Fehlende Log → (leer)', '(leer)' in content)
         finally:
             bot_mod._read_log_tail = orig_read
@@ -415,7 +416,7 @@ def test_log():
         try:
             ia = make_interaction(admin=True)
             run_async(cmd(ia, zeilen=200))
-            call = ia.response.calls[0]
+            call = ia.followup.calls[0]
             check('Lange Ausgabe → File', call.get('file') is not None)
         finally:
             bot_mod._read_log_tail = orig_read
