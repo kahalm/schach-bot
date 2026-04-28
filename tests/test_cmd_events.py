@@ -1255,7 +1255,8 @@ def test_wochenpost_sub():
 
         old_bot = wochenpost_mod._bot
         fake_bot = MagicMock()
-        fake_bot.fetch_user = AsyncMock(side_effect=lambda uid:
+        fake_bot.guilds = []
+        fake_bot.get_user = MagicMock(side_effect=lambda uid:
             FakeMember(uid=uid, name=f'User{uid}'))
         wochenpost_mod._bot = fake_bot
         ia = make_interaction(admin=True)

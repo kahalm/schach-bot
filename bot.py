@@ -20,7 +20,7 @@ from datetime import datetime, time, timezone
 from core import stats, dm_log
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
-from core.permissions import is_privileged
+from core.permissions import is_privileged, set_guild_id
 from core.version import VERSION, START_TIME, EMBED_COLOR
 
 from dotenv import load_dotenv
@@ -37,6 +37,10 @@ try:
     TOURNAMENT_CHANNEL_ID = int(os.getenv('TOURNAMENT_CHANNEL_ID') or os.getenv('RALLYE_CHANNEL_ID', '0'))
 except ValueError:
     raise SystemExit(f"TOURNAMENT_CHANNEL_ID ungültig: {os.getenv('TOURNAMENT_CHANNEL_ID')!r} — muss eine Zahl sein")
+try:
+    GUILD_ID = int(os.getenv('GUILD_ID', '0'))
+except ValueError:
+    raise SystemExit(f"GUILD_ID ungültig: {os.getenv('GUILD_ID')!r} — muss eine Zahl sein")
 try:
     WOCHENPOST_CHANNEL_ID = int(os.getenv('WOCHENPOST_CHANNEL_ID', '0'))
 except ValueError:
@@ -214,7 +218,13 @@ async def on_member_join(member: discord.Member):
 def _display_name_cached(uid, guild=None):
     """Server-Nick aus Cache (kein API-Call), Fallback auf globalen User-Cache."""
     uid_int = int(uid)
-    guilds = [guild] if guild else bot.guilds
+    if guild:
+        guilds = [guild]
+    elif GUILD_ID:
+        home = bot.get_guild(GUILD_ID)
+        guilds = ([home] if home else []) + list(bot.guilds)
+    else:
+        guilds = bot.guilds
     for g in guilds:
         if g is None:
             continue
@@ -665,4 +675,5 @@ async def on_app_command_error(interaction: discord.Interaction, error):
 # ---------------------------------------------------------------------------
 
 dm_log.install()
+set_guild_id(GUILD_ID)
 bot.run(DISCORD_TOKEN)

@@ -206,6 +206,9 @@ class _CapturingBot:
     def get_channel(self, cid):
         return FakeChannel(channel_id=cid) if cid else None
 
+    def get_guild(self, gid):
+        return None
+
     def get_user(self, uid):
         return FakeUser(uid=uid, name=f'User_{uid}')
 

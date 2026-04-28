@@ -4,6 +4,21 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.22.0] - 2026-04-28
+### Added
+- CI-Pipeline baut bei jedem Push auf `main` ein Dev-Image (`ghcr.io/…:dev`) fuer Nutzer die immer aktuell sein wollen
+- Release-Images bei Git-Tags wie bisher (`x.y.z`, `x.y`, `latest`)
+
+## [2.21.1] - 2026-04-28
+### Fixed
+- `/wochenpost_sub` Admin-Ansicht zeigt jetzt Server-Nicknames statt globale Displaynamen (nutzt `guild.get_member()` statt `fetch_user()`)
+
+## [2.21.0] - 2026-04-28
+### Added
+- `GUILD_ID` in `.env`: Server-ID fuer DM-Berechtigungen — Admins/Moderatoren koennen jetzt auch per DM Admin-Commands ausfuehren
+- `core/permissions.set_guild_id()` zum Setzen der Heim-Server-ID
+- `_display_name_cached()` bevorzugt bei fehlender Guild den Heim-Server fuer Namensaufloesung
+
 ## [2.20.2] - 2026-04-28
 ### Added
 - Eingehende DMs werden im DM-Log mitgeschrieben (`[IN]`-Prefix zur Unterscheidung von ausgehenden Nachrichten)

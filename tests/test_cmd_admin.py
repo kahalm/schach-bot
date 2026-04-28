@@ -701,6 +701,63 @@ def test_dm_log_incoming():
     print()
 
 
+def test_dm_permissions():
+    """Tests fuer DM-Berechtigungen mit GUILD_ID."""
+    print('[DM-Permissions]')
+    from core.permissions import is_privileged
+    from core import permissions
+
+    old_guild_id = permissions._guild_id
+    try:
+        # DM-User + guild_id=0 → False (wie bisher)
+        permissions._guild_id = 0
+        dm_user = FakeUser(uid=42, admin=True)  # FakeUser, KEIN FakeMember
+        ia = make_interaction(user=dm_user)
+        ia.guild = None  # DM-Kontext
+        check('DM + guild_id=0 → False', not is_privileged(ia))
+
+        # DM-User + guild_id gesetzt + Admin auf Server → True
+        permissions._guild_id = 12345
+        admin_member = FakeMember(uid=42, admin=True)
+
+        class _GuildWithAdmin:
+            def get_member(self, uid):
+                return admin_member if uid == 42 else None
+
+        ia = make_interaction(user=FakeUser(uid=42))
+        ia.guild = None
+        ia.client.get_guild = lambda gid: _GuildWithAdmin() if gid == 12345 else None
+        check('DM + guild_id + Admin → True', is_privileged(ia))
+
+        # DM-User + guild_id gesetzt + kein Admin → False
+        normal_member = FakeMember(uid=99, admin=False)
+
+        class _GuildWithNormal:
+            def get_member(self, uid):
+                return normal_member if uid == 99 else None
+
+        ia = make_interaction(user=FakeUser(uid=99))
+        ia.guild = None
+        ia.client.get_guild = lambda gid: _GuildWithNormal() if gid == 12345 else None
+        check('DM + guild_id + kein Admin → False', not is_privileged(ia))
+
+        # DM-User + guild_id gesetzt + Moderator-Rolle → True
+        mod_member = FakeMember(uid=77, admin=False, roles=[FakeRole('Moderator')])
+
+        class _GuildWithMod:
+            def get_member(self, uid):
+                return mod_member if uid == 77 else None
+
+        ia = make_interaction(user=FakeUser(uid=77))
+        ia.guild = None
+        ia.client.get_guild = lambda gid: _GuildWithMod() if gid == 12345 else None
+        check('DM + guild_id + Moderator → True', is_privileged(ia))
+
+    finally:
+        permissions._guild_id = old_guild_id
+    print()
+
+
 def test_suppress_empty_fen():
     """Tests fuer core/log_setup.py _SuppressEmptyFen Filter."""
     print('[SuppressEmptyFen]')

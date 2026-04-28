@@ -36,7 +36,8 @@ from test_cmd_library import (
 from test_cmd_admin import (
     test_daily, test_ignore_kapitel, test_test_cmd, test_announce,
     test_greeted, test_stats, test_dm_log, test_log,
-    test_dm_log_internals, test_dm_log_incoming, test_suppress_empty_fen,
+    test_dm_log_internals, test_dm_log_incoming, test_dm_permissions,
+    test_suppress_empty_fen,
 )
 from test_cmd_chat import (
     test_chat_whitelist, test_chat_clear, test_chat_routing,
@@ -96,6 +97,7 @@ def main():
     test_build_puzzle_embed()
     test_dm_log_internals()
     test_dm_log_incoming()
+    test_dm_permissions()
     test_suppress_empty_fen()
     test_wochenpost_chat_spark()
     test_chat_whitelist()

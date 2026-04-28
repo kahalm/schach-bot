@@ -135,6 +135,19 @@ _bot = None
 _wochenpost_channel_id = 0
 
 
+def _resolve_display_name(uid_int, guild=None):
+    """Server-Nickname aus Cache, Fallback auf globalen User-Cache."""
+    guilds = [guild] if guild else list(_bot.guilds)
+    for g in guilds:
+        if g is None:
+            continue
+        member = g.get_member(uid_int)
+        if member:
+            return member.display_name
+    u = _bot.get_user(uid_int)
+    return u.display_name if u else f'User {uid_int}'
+
+
 def _parse_zeit(raw: str) -> tuple[int, int] | None:
     """Parst Uhrzeit in verschiedenen Formaten zu (hour, minute).
 
@@ -553,11 +566,7 @@ def setup(bot, wochenpost_channel_id: int = 0):
                 for sub_uid, info in subs.items():
                     h = info.get('hour', 17)
                     m = info.get('minute', 0)
-                    try:
-                        member = await _bot.fetch_user(int(sub_uid))
-                        name = member.display_name
-                    except Exception:
-                        name = f'User {sub_uid}'
+                    name = _resolve_display_name(int(sub_uid), interaction.guild)
                     lines.append(f'- **{name}** \u2014 {h}:{m:02d} MEZ/MESZ')
                 desc = '\n'.join(lines)
                 await interaction.response.send_message(
