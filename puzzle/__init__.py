@@ -21,6 +21,8 @@ from .state import (  # noqa: F401
     _get_user_study_id, _get_user_puzzle_count, _set_user_study_id,
     _books_config_cache, _load_books_config, _invalidate_books_config_cache,
     _get_user_training, _set_user_training, _clear_user_training,
+    _last_puzzle_context, _last_channel_puzzle,
+    save_puzzle_context, get_puzzle_context,
 )
 
 # --- PGN-Verarbeitung ---

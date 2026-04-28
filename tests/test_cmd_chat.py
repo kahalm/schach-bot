@@ -169,3 +169,70 @@ def test_chat_no_key():
     print('[chat_no_key]')
     # _client ist None wenn kein Key gesetzt (Standard im Test)
     check('_client ist None im Test', chat_mod._client is None)
+
+
+def test_puzzle_context():
+    """Tests fuer Puzzle-Kontext im KI-Chat."""
+    print('[puzzle_context]')
+    from puzzle.state import (
+        save_puzzle_context, get_puzzle_context,
+        _last_puzzle_context, _last_channel_puzzle,
+    )
+    import puzzle.state as ps
+
+    # Sauberer Zustand
+    _last_puzzle_context.clear()
+    ps._last_channel_puzzle = None
+
+    info_a = {
+        'book': 'Taktik-Buch',
+        'chapter': 'Kapitel 1',
+        'line': 'Linie 5',
+        'fen': 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        'turn': 'Weiss',
+        'solution': '1. e4 e5 2. Sf3',
+        'difficulty': 'Mittel',
+        'line_id': 'taktik.pgn:1.5',
+    }
+
+    # Test: ohne Daten → None
+    check('kein Kontext → None', get_puzzle_context(99) is None)
+
+    # Test: per-User speichern und abrufen
+    save_puzzle_context(42, info_a)
+    check('per-User Kontext abrufbar', get_puzzle_context(42) == info_a)
+
+    # Test: Channel-Fallback (user_id=None)
+    info_b = dict(info_a, book='Endspiel-Buch')
+    save_puzzle_context(None, info_b)
+    check('Channel-Fallback fuer unbekannten User',
+          get_puzzle_context(999) == info_b)
+
+    # Test: per-User hat Vorrang vor Channel-Fallback
+    check('per-User Vorrang vor Channel',
+          get_puzzle_context(42) == info_a)
+
+    # Test: _build_system_prompt mit Kontext
+    prompt = chat_mod._build_system_prompt(42)
+    check('System-Prompt enthaelt Buch', 'Taktik-Buch' in prompt)
+    check('System-Prompt enthaelt FEN', 'rnbqkbnr' in prompt)
+    check('System-Prompt enthaelt Loesung', '1. e4 e5' in prompt)
+    check('System-Prompt enthaelt Hinweis-Regel', 'Hinweisen' in prompt)
+
+    # Test: _build_system_prompt ohne Kontext
+    _last_puzzle_context.clear()
+    ps._last_channel_puzzle = None
+    prompt_plain = chat_mod._build_system_prompt(123)
+    check('ohne Kontext kein FEN', 'FEN' not in prompt_plain)
+
+    # Test: Kontext ohne Loesung (Blind-Modus)
+    info_blind = dict(info_a)
+    del info_blind['solution']
+    save_puzzle_context(50, info_blind)
+    prompt_blind = chat_mod._build_system_prompt(50)
+    check('Blind-Kontext: kein Loesungsblock', 'Loesung:' not in prompt_blind)
+    check('Blind-Kontext: Buch vorhanden', 'Taktik-Buch' in prompt_blind)
+
+    # Aufraemen
+    _last_puzzle_context.clear()
+    ps._last_channel_puzzle = None

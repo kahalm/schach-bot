@@ -40,7 +40,7 @@ from test_cmd_admin import (
 )
 from test_cmd_chat import (
     test_chat_whitelist, test_chat_clear, test_chat_routing,
-    test_chat_history_prune, test_chat_no_key,
+    test_chat_history_prune, test_chat_no_key, test_puzzle_context,
 )
 
 
@@ -102,6 +102,7 @@ def main():
     test_chat_routing()
     test_chat_history_prune()
     test_chat_no_key()
+    test_puzzle_context()
 
     print(f'---\n{h.total - h.failed}/{h.total} checks passed.')
     if h.failed:

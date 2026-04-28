@@ -294,3 +294,23 @@ def _clear_user_training(user_id: int):
             data[key].pop('training', None)
         return data
     atomic_update(USER_STUDIES_FILE, _update)
+
+
+# ---------------------------------------------------------------------------
+# Puzzle-Kontext fuer KI-Chat
+# ---------------------------------------------------------------------------
+_last_puzzle_context: dict[int, dict] = {}   # user_id → puzzle info
+_last_channel_puzzle: dict | None = None      # letztes Channel-Puzzle (global)
+
+
+def save_puzzle_context(user_id: int | None, info: dict):
+    """Speichert Puzzle-Kontext. user_id=None fuer Channel-Posts."""
+    global _last_channel_puzzle
+    _last_channel_puzzle = info
+    if user_id is not None:
+        _last_puzzle_context[user_id] = info
+
+
+def get_puzzle_context(user_id: int) -> dict | None:
+    """Gibt Puzzle-Kontext zurueck: zuerst per-User, dann Channel-Fallback."""
+    return _last_puzzle_context.get(user_id) or _last_channel_puzzle

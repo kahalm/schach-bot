@@ -24,11 +24,29 @@ from puzzle.selection import _list_pgn_files, pick_random_lines, pick_random_bli
 from puzzle.state import (
     _register_puzzle_msg, _endless_sessions, stop_endless,
     _load_books_config, _get_user_study_id, _get_user_puzzle_count, _set_user_study_id,
+    save_puzzle_context,
 )
 
 log = logging.getLogger('schach-bot')
 
 _DISCORD_THREAD_NAME_MAX = 100
+
+
+def _build_puzzle_context(game, turn, diff, line_id, include_solution=True):
+    """Baut ein dict mit Puzzle-Metadaten fuer den KI-Chat-Kontext."""
+    h = dict(game.headers)
+    ctx = {
+        'book': h.get('Event', ''),
+        'chapter': h.get('Black', ''),
+        'line': h.get('White', ''),
+        'fen': game.board().fen(),
+        'turn': 'Weiss' if turn == chess.WHITE else 'Schwarz',
+        'difficulty': diff,
+        'line_id': line_id,
+    }
+    if include_solution:
+        ctx['solution'] = _solution_pgn(game)
+    return ctx
 
 # Eigener Executor fuer Lichess-Uploads (sleep-basiertes Rate-Limiting
 # blockiert sonst den Default-ThreadPool und verzoegert andere to_thread-Calls).
@@ -139,6 +157,7 @@ async def post_next_endless(bot, user_id: int):
             msg = await dm.send(embed=embed)
 
         _register_puzzle_msg(msg.id, line_id)
+        save_puzzle_context(user_id, _build_puzzle_context(game, turn, diff, line_id))
         await msg.edit(view=_fresh_button_view())
 
         # Lösung, Prelude, Lichess-Link
@@ -278,6 +297,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
                 msg = await _resilient_send(target, embed=embed)
             posted_ok += 1
             _register_puzzle_msg(msg.id, lid)
+            save_puzzle_context(user_id, _build_puzzle_context(game, turn, diff, lid))
         except Exception as e:
             log.exception('Puzzle %d/%d (%s) fehlgeschlagen: %s',
                           i + 1, len(puzzles), lid, e)
@@ -406,6 +426,9 @@ async def post_blind_puzzle(channel,
                 msg = await _resilient_send(target, embed=embed)
             posted += 1
             _register_puzzle_msg(msg.id, line_id, mode='blind')
+            save_puzzle_context(user_id,
+                                _build_puzzle_context(puzzle_game, blind_board.turn,
+                                                      diff, line_id, include_solution=False))
         except Exception as e:
             log.exception('Blind-Puzzle (%s) fehlgeschlagen: %s', line_id, e)
             continue

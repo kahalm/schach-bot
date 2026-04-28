@@ -87,14 +87,38 @@ def _save_assistant_response(user_id: int, text: str):
     atomic_update(CHAT_FILE, _update, default=dict)
 
 
+def _build_system_prompt(user_id: int) -> str:
+    """System-Prompt mit optionalem Puzzle-Kontext erweitern."""
+    from puzzle.state import get_puzzle_context
+    system = _SYSTEM_PROMPT
+    ctx = get_puzzle_context(user_id)
+    if ctx:
+        system += (
+            f'\n\nAktuelles Puzzle des Users:\n'
+            f'Buch: {ctx["book"]}\n'
+            f'Kapitel: {ctx["chapter"]}\n'
+            f'Stellung (FEN): {ctx["fen"]}\n'
+            f'{ctx["turn"]} am Zug\n'
+            f'Schwierigkeit: {ctx["difficulty"]}\n'
+        )
+        if ctx.get('solution'):
+            system += f'Loesung: {ctx["solution"]}\n'
+        system += (
+            'Gib die Loesung NICHT ungefragt preis — '
+            'hilf dem User stattdessen mit Hinweisen.'
+        )
+    return system
+
+
 async def _chat_response(user_id: int, text: str) -> str:
     """Sendet Nachricht an Claude API und gibt die Antwort zurueck."""
     messages = await asyncio.to_thread(_append_and_get_history, user_id, text)
+    system = _build_system_prompt(user_id)
     try:
         response = await _client.messages.create(
             model=_MODEL,
             max_tokens=1024,
-            system=_SYSTEM_PROMPT,
+            system=system,
             messages=messages,
         )
         reply = response.content[0].text
