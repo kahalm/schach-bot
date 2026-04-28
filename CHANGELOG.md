@@ -4,6 +4,15 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.26.0] - 2026-04-28
+### Changed
+- `/turnier_pending` zeigt pro pending Event ein eigenes Embed mit Freigeben/Ablehnen-Buttons (statt einer einfachen Liste ohne Aktionen)
+- Gemeinsame Embed-Bau-Logik in `_build_pending_embed()` extrahiert (Review-DMs + `/turnier_pending` nutzen denselben Code)
+
+## [2.25.1] - 2026-04-28
+### Added
+- Erfolgreiche Wochenpost-Reminder-DMs werden jetzt im Log erfasst (`Wochenpost-Reminder an User X gesendet.`)
+
 ## [2.25.0] - 2026-04-28
 ### Changed
 - Neue Turniere werden IMMER als `approved: false` angelegt und muessen per Review-DM freigegeben werden — kein automatisches Posten mehr, weder bei `/turnier_parse` noch beim taeglichen Auto-Parse

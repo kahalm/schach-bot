@@ -930,6 +930,7 @@ async def _run_wochenpost_reminders():
             dm = await user.create_dm()
             msg_text = await _build_reminder_text(int(uid_str), titel, thread_url)
             await dm.send(msg_text)
+            log.info('Wochenpost-Reminder an User %s gesendet.', uid_str)
         except Exception:
             log.warning('Wochenpost-DM an User %s fehlgeschlagen', uid_str)
 

@@ -677,6 +677,25 @@ def setup(bot, tournament_channel_id: int = 0):
 
     # --- Parse-Logik (shared zwischen Command und Auto-Loop) ---------------
 
+    def _build_pending_embed(event: dict) -> discord.Embed:
+        """Baut ein Embed fuer ein pending Event (Review-DMs + /turnier_pending)."""
+        dt = event.get('datum_text', event.get('datum', ''))
+        ort = _shorten_ort(event.get('ort', ''))
+        tags = event.get('tags', [])
+        desc = f"\U0001f4c5 `{dt}`"
+        if ort:
+            desc += f" \u00b7 {ort}"
+        if tags:
+            desc += '\n' + ' '.join(f'`{t}`' for t in tags)
+
+        embed = discord.Embed(
+            title=event.get('name', 'Neues Turnier'),
+            description=desc,
+            color=0xf39c12,  # Orange fuer Pending
+        )
+        embed.set_footer(text=f'Event #{event["id"]}')
+        return embed
+
     async def _notify_reviewers(added_events: list[dict]):
         """Sendet Review-DMs an alle Reviewer fuer neue Events."""
         from commands.turnier_buttons import TurnierReviewView
@@ -696,21 +715,7 @@ def setup(bot, tournament_channel_id: int = 0):
                    and e.get('approved') is False]
 
         for event in pending:
-            dt = event.get('datum_text', event.get('datum', ''))
-            ort = _shorten_ort(event.get('ort', ''))
-            tags = event.get('tags', [])
-            desc = f"\U0001f4c5 `{dt}`"
-            if ort:
-                desc += f" \u00b7 {ort}"
-            if tags:
-                desc += '\n' + ' '.join(f'`{t}`' for t in tags)
-
-            embed = discord.Embed(
-                title=event.get('name', 'Neues Turnier'),
-                description=desc,
-                color=0xf39c12,  # Orange fuer Pending
-            )
-            embed.set_footer(text=f'Event #{event["id"]}')
+            embed = _build_pending_embed(event)
 
             for uid in reviewers:
                 try:
@@ -910,26 +915,14 @@ def setup(bot, tournament_channel_id: int = 0):
                 'Keine ausstehenden Turniere.', ephemeral=True)
             return
 
+        from commands.turnier_buttons import TurnierReviewView
+
         pending.sort(key=lambda e: e.get('datum', ''))
-        lines = []
-        for e in pending:
-            line = f"**#{e['id']}** \u2014 {_format_turnier_line(e)}"
-            lines.append(line)
-
-        desc = '\n'.join(lines)
-        if len(desc) > 4096:
-            desc = desc[:4093] + '...'
-        embed = discord.Embed(
-            title='\U0001f4cb Ausstehende Turniere',
-            description=desc,
-            color=EMBED_COLOR,
-        )
-        reviewers = data.get('reviewers', [])
-        if reviewers:
-            reviewer_list = ', '.join(f'<@{uid}>' for uid in reviewers)
-            embed.set_footer(text=f'Reviewer: {len(reviewers)}')
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
+        for event in pending:
+            embed = _build_pending_embed(event)
+            view = TurnierReviewView()
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
     # --- Reminder-Loop -------------------------------------------------------
 

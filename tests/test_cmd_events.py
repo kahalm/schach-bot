@@ -562,15 +562,19 @@ def test_turnier_review():
                 check('/turnier filtert pending Events',
                       'Testturnier Review' not in desc)
 
-            # /turnier_pending zeigt pending Events
+            # /turnier_pending zeigt pending Events (pro Event ein Embed mit Buttons)
             ia = make_interaction(admin=True)
             run_async(cmd_pending(ia))
-            call = ia.response.calls[0]
-            embed = call.get('embed')
+            check('/turnier_pending → defer', ia.response.calls[0].get('type') == 'defer')
+            check('/turnier_pending → followup', len(ia.followup.calls) >= 1)
+            fu = ia.followup.calls[0]
+            embed = fu.get('embed')
             check('/turnier_pending → Embed', embed is not None)
-            desc = embed.description if embed else ''
             check('/turnier_pending zeigt pending Event',
-                  'Testturnier Review' in desc)
+                  'Testturnier Review' in (embed.title if embed else ''))
+            check('/turnier_pending → View', fu.get('view') is not None)
+            footer = embed.footer.text if embed and embed.footer else ''
+            check('/turnier_pending → Footer Event #', footer.startswith('Event #'))
 
             # /turnier_parse zeigt "pending" im Text
             fu_call = None

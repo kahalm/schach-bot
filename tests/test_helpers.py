@@ -77,6 +77,12 @@ class FakeEmbed:
     def set_footer(self, **kw):
         self._footer = kw
 
+    @property
+    def footer(self):
+        if not self._footer:
+            return None
+        return type('Footer', (), {'text': self._footer.get('text', '')})()
+
     def set_image(self, **kw):
         self._image = kw
 
