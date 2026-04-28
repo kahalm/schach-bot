@@ -4,6 +4,23 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.29.0] - 2026-04-28
+### Changed
+- `display_name_cached()` nach `core/permissions.py` extrahiert — `bot.py` und `wochenpost.py` nutzen jetzt dieselbe Implementierung
+- Wochenpost-Reminder updaten `next` jetzt sofort pro User (nicht mehr gesammelt am Ende) — verhindert Doppel-DMs bei Bot-Crash
+- Reviewer-Liste in `_parse_and_post()` wird jetzt innerhalb des `atomic_update` gelesen (kein TOCTOU-Race mehr)
+- `/kurs` Detailansicht nutzt jetzt gecachten User-Done-Index statt 50k-Zeilen-Scan pro Aufruf
+
+### Fixed
+- `dm_log.py`: Done-Callback loggt Exceptions jetzt statt sie still zu schlucken
+- `event_log.py`: `read_all()` haelt jetzt `_log_lock` um Race mit `rotate_log()` zu verhindern
+- `wanted.py`: `_next_id()` nutzt `.get('id', 0)` statt direktem Key-Zugriff (KeyError bei defektem Eintrag)
+- Thread-Safety: `_lines_cache`, `_ignore_cache`, `_chapter_ignore_cache`, `_books_config_cache`, `_sprueche_cache` mit `threading.Lock` geschuetzt
+
+## [2.28.0] - 2026-04-28
+### Added
+- `/wochenpost_remind` — Admin-Command zum manuellen Senden einer Wochenpost-Erinnerung an einen beliebigen User (unabhaengig vom Abo-Status)
+
 ## [2.27.0] - 2026-04-28
 ### Fixed
 - **Kritisch:** `rotate_log()` in `event_log.py` — `log.info` lag ausserhalb des Locks und referenzierte potenziell undefinierte Variablen bei Early Return

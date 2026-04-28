@@ -1645,3 +1645,77 @@ def test_wochenpost_chat_spark():
 
     finally:
         teardown_temp_config(tmpdir)
+
+
+def test_wochenpost_remind():
+    """Tests fuer /wochenpost_remind: manuelle Erinnerung an beliebigen User."""
+    print('[/wochenpost_remind]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd_remind = _captured_commands.get('wochenpost_remind')
+        check('cmd_wochenpost_remind gefunden', cmd_remind is not None)
+        if not cmd_remind:
+            return
+
+        # 1) Nicht-Admin → Fehler
+        target = FakeMember(uid=55555, name='RemindTarget')
+        ia = make_interaction(admin=False)
+        run_async(cmd_remind(ia, user=target))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('nicht-admin → Fehler', 'admin' in content or 'moderator' in content)
+
+        # 2) Kein Wochenpost vorhanden → Fehler
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [])
+        ia = make_interaction(admin=True)
+        run_async(cmd_remind(ia, user=target))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('kein Wochenpost → Fehler', 'kein' in content)
+
+        # 3) Mit Wochenpost → DM gesendet
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [
+            {'id': 5, 'datum': '2026-04-24', 'titel': '24.04.2026',
+             'text': '', 'url': '', 'pdf_url': '', 'pdf_name': '',
+             'posted': True, 'user': 'Admin',
+             'msg_id': 9999, 'thread_id': 100001},
+        ])
+
+        dm_channel = FakeChannel()
+        target.create_dm = AsyncMock(return_value=dm_channel)
+
+        old_bot = wochenpost_mod._bot
+        old_cid = wochenpost_mod._wochenpost_channel_id
+        fake_bot = MagicMock()
+        fake_channel = FakeChannel(channel_id=88888)
+        fake_bot.get_channel = lambda cid: fake_channel if cid == 88888 else None
+        wochenpost_mod._bot = fake_bot
+        wochenpost_mod._wochenpost_channel_id = 88888
+
+        ia = make_interaction(admin=True)
+        run_async(cmd_remind(ia, user=target))
+        content = (ia.followup.calls[0].get('content') or '') if ia.followup.calls else ''
+        check('remind → Bestaetigung', 'gesendet' in content.lower())
+
+        # DM wurde gesendet mit Titel
+        check('remind → DM gesendet', len(dm_channel.sent) > 0)
+        if dm_channel.sent:
+            dm_text = dm_channel.sent[0].content or ''
+            check('remind DM → Titel', '24.04.2026' in dm_text)
+
+        # 4) DM fehlgeschlagen → Fehlerhinweis
+        target2 = FakeMember(uid=66666, name='BlockedUser')
+        target2.create_dm = AsyncMock(side_effect=Exception('DM blocked'))
+
+        ia = make_interaction(admin=True)
+        run_async(cmd_remind(ia, user=target2))
+        content = (ia.followup.calls[0].get('content') or '').lower() if ia.followup.calls else ''
+        check('DM fehlgeschlagen → Hinweis',
+              'fehlgeschlagen' in content or 'konnte nicht' in content)
+
+        # Aufraumen
+        wochenpost_mod._bot = old_bot
+        wochenpost_mod._wochenpost_channel_id = old_cid
+        atomic_write(wochenpost_mod.WOCHENPOST_FILE, [])
+
+    finally:
+        teardown_temp_config(tmpdir)
+    print()

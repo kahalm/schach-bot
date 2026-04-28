@@ -28,6 +28,7 @@ from test_cmd_events import (
     test_turnier_review,
     test_wochenpost, test_wochenpost_batch, test_wochenpost_buttons,
     test_parse_zeit, test_wochenpost_sub, test_wochenpost_chat_spark,
+    test_wochenpost_remind,
 )
 from test_cmd_library import (
     test_bibliothek, test_tag, test_autor, test_reindex,
@@ -100,6 +101,7 @@ def main():
     test_dm_permissions()
     test_suppress_empty_fen()
     test_wochenpost_chat_spark()
+    test_wochenpost_remind()
     test_chat_whitelist()
     test_chat_clear()
     test_chat_routing()

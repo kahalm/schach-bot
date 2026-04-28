@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import random
+import threading
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 from urllib.parse import urlparse
@@ -26,7 +27,7 @@ from commands.wochenpost_buttons import fresh_view as _fresh_button_view
 from core.datetime_utils import parse_datum as _parse_datum, parse_utc as _parse_utc
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
-from core.permissions import is_privileged
+from core.permissions import is_privileged, display_name_cached
 from core.version import EMBED_COLOR
 
 log = logging.getLogger('schach-bot')
@@ -36,22 +37,24 @@ log = logging.getLogger('schach-bot')
 # ---------------------------------------------------------------------------
 
 _sprueche_cache = None
+_sprueche_lock = threading.Lock()
 
 
 def _random_spruch() -> str:
     """Gibt einen zufaelligen Spruch als formatierten String zurueck."""
     global _sprueche_cache
-    if _sprueche_cache is None:
-        path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                            'assets', 'sprueche.json')
-        try:
-            with open(path, encoding='utf-8') as f:
-                _sprueche_cache = json.load(f)
-        except Exception:
-            _sprueche_cache = []
-    if not _sprueche_cache:
-        return ''
-    s = random.choice(_sprueche_cache)
+    with _sprueche_lock:
+        if _sprueche_cache is None:
+            path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                                'assets', 'sprueche.json')
+            try:
+                with open(path, encoding='utf-8') as f:
+                    _sprueche_cache = json.load(f)
+            except Exception:
+                _sprueche_cache = []
+        if not _sprueche_cache:
+            return ''
+        s = random.choice(_sprueche_cache)
     text = s.get('text', '')
     autor = s.get('autor')
     if autor:
@@ -137,15 +140,7 @@ _wochenpost_channel_id = 0
 
 def _resolve_display_name(uid_int, guild=None):
     """Server-Nickname aus Cache, Fallback auf globalen User-Cache."""
-    guilds = [guild] if guild else list(_bot.guilds)
-    for g in guilds:
-        if g is None:
-            continue
-        member = g.get_member(uid_int)
-        if member:
-            return member.display_name
-    u = _bot.get_user(uid_int)
-    return u.display_name if u else f'User {uid_int}'
+    return display_name_cached(_bot, uid_int, guild)
 
 
 def _parse_zeit(raw: str) -> tuple[int, int] | None:
@@ -738,6 +733,50 @@ def setup(bot, wochenpost_channel_id: int = 0):
                     '\u26a0\ufe0f Du hast kein Wochenpost-Abo.',
                     ephemeral=True)
 
+    # --- /wochenpost_remind (Admin: manuelle Erinnerung) --------------------
+
+    @tree.command(name='wochenpost_remind',
+                  description='Manuelle Wochenpost-Erinnerung an einen User (Admin)')
+    @discord.app_commands.describe(
+        user='User der die Erinnerung bekommen soll')
+    @discord.app_commands.default_permissions(administrator=True)
+    async def cmd_wochenpost_remind(interaction: discord.Interaction,
+                                     user: discord.User):
+        if not is_privileged(interaction):
+            await interaction.response.send_message(
+                '\u26a0\ufe0f Nur fuer Admins/Moderatoren.', ephemeral=True)
+            return
+
+        entry = _get_latest_posted()
+        if entry is None:
+            await interaction.response.send_message(
+                '\u26a0\ufe0f Kein geposteter Wochenpost vorhanden.',
+                ephemeral=True)
+            return
+
+        titel = entry.get('titel', '')
+        thread_id = entry.get('thread_id')
+        channel = _bot.get_channel(_wochenpost_channel_id) if _bot else None
+        guild_id = getattr(getattr(channel, 'guild', None), 'id', None)
+        thread_url = ''
+        if guild_id and thread_id:
+            thread_url = f'https://discord.com/channels/{guild_id}/{thread_id}'
+
+        await interaction.response.defer(ephemeral=True)
+        try:
+            dm = await user.create_dm()
+            msg_text = await _build_reminder_text(user.id, titel, thread_url)
+            await dm.send(msg_text)
+            await interaction.followup.send(
+                f'\u2705 Erinnerung an **{user.display_name}** gesendet.',
+                ephemeral=True)
+        except Exception:
+            log.warning('Manuelle Wochenpost-DM an %s fehlgeschlagen', user.id)
+            await interaction.followup.send(
+                f'\u274c DM an **{user.display_name}** konnte nicht '
+                f'gesendet werden (DMs deaktiviert?).',
+                ephemeral=True)
+
     # --- Scheduled Loop (taeglich 18:00 UTC, postet faellige Eintraege) -----
 
     @tasks.loop(time=time(hour=18, minute=0))
@@ -945,9 +984,7 @@ async def _run_wochenpost_reminders():
     resolved = sub_data.get('resolved', {})
     resolved_users = set(resolved.get(entry_id, []))
 
-    updates = {}
-
-    for uid_str, info in subscribers.items():
+    for uid_str, info in list(subscribers.items()):
         raw_next = info.get('next')
         if not raw_next:
             continue
@@ -959,39 +996,27 @@ async def _run_wochenpost_reminders():
         minute = info.get('minute', 0)
         tomorrow_vienna = (now_vienna + timedelta(days=1)).replace(
             hour=hour, minute=minute, second=0, microsecond=0)
-        tomorrow = tomorrow_vienna.astimezone(timezone.utc)
+        tomorrow_iso = tomorrow_vienna.astimezone(timezone.utc).isoformat()
 
-        # Veroeffentlichungstag → skip
-        if entry_date == today_str:
-            updates[uid_str] = tomorrow.isoformat()
-            continue
+        # DM senden (ausser am Veroeffentlichungstag oder bei bereits resolved)
+        if entry_date != today_str and int(uid_str) not in resolved_users:
+            try:
+                user = await _bot.fetch_user(int(uid_str))
+                dm = await user.create_dm()
+                msg_text = await _build_reminder_text(int(uid_str), titel, thread_url)
+                await dm.send(msg_text)
+                log.info('Wochenpost-Reminder an User %s gesendet.', uid_str)
+            except Exception:
+                log.warning('Wochenpost-DM an User %s fehlgeschlagen', uid_str)
 
-        # Bereits resolved → skip
-        if int(uid_str) in resolved_users:
-            updates[uid_str] = tomorrow.isoformat()
-            continue
-
-        # DM senden
-        try:
-            user = await _bot.fetch_user(int(uid_str))
-            dm = await user.create_dm()
-            msg_text = await _build_reminder_text(int(uid_str), titel, thread_url)
-            await dm.send(msg_text)
-            log.info('Wochenpost-Reminder an User %s gesendet.', uid_str)
-        except Exception:
-            log.warning('Wochenpost-DM an User %s fehlgeschlagen', uid_str)
-
-        updates[uid_str] = tomorrow.isoformat()
-
-    if updates:
-        def _advance(data):
+        # next sofort pro User updaten (kein Duplikat bei Crash)
+        def _advance_one(data, _uid=uid_str, _iso=tomorrow_iso):
             if not isinstance(data, dict):
                 data = _sub_default()
             subs = data.setdefault('subscribers', {})
-            for uid_str, iso in updates.items():
-                if uid_str in subs:
-                    subs[uid_str]['next'] = iso
+            if _uid in subs:
+                subs[_uid]['next'] = _iso
             return data
 
         await asyncio.to_thread(
-            atomic_update, WOCHENPOST_SUB_FILE, _advance, _sub_default)
+            atomic_update, WOCHENPOST_SUB_FILE, _advance_one, _sub_default)
