@@ -21,7 +21,7 @@ from datetime import datetime, time, timezone
 from core import stats, dm_log
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
-from core.permissions import is_privileged, set_guild_id
+from core.permissions import is_privileged, set_guild_id, display_name_cached
 from core.version import VERSION, GIT_SHA, START_TIME, EMBED_COLOR
 
 from dotenv import load_dotenv
@@ -220,23 +220,7 @@ async def on_member_join(member: discord.Member):
 # --- Helpers ---
 
 def _display_name_cached(uid, guild=None):
-    """Server-Nick aus Cache (kein API-Call), Fallback auf globalen User-Cache."""
-    uid_int = int(uid)
-    if guild:
-        guilds = [guild]
-    elif GUILD_ID:
-        home = bot.get_guild(GUILD_ID)
-        guilds = ([home] if home else []) + list(bot.guilds)
-    else:
-        guilds = bot.guilds
-    for g in guilds:
-        if g is None:
-            continue
-        member = g.get_member(uid_int)
-        if member:
-            return member.display_name
-    u = bot.get_user(uid_int)
-    return u.display_name if u else f'User {uid}'
+    return display_name_cached(bot, uid, guild)
 
 
 _MAX_EMBEDS = 10  # Discord-Limit pro Nachricht

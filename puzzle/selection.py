@@ -4,6 +4,7 @@ import io
 import os
 import random
 import logging
+import threading
 
 import chess
 import chess.pgn
@@ -83,6 +84,7 @@ _FATAL_STATUS = (
 
 _lines_cache: list[tuple[str, chess.pgn.Game]] | None = None
 _lines_cache_fp: tuple | None = None
+_lines_lock = threading.Lock()
 
 
 def _books_fingerprint() -> tuple:
@@ -108,8 +110,9 @@ def _books_fingerprint() -> tuple:
 def clear_lines_cache() -> None:
     """In-Memory-Cache löschen. Nächster ``load_all_lines()`` parst neu."""
     global _lines_cache, _lines_cache_fp
-    _lines_cache = None
-    _lines_cache_fp = None
+    with _lines_lock:
+        _lines_cache = None
+        _lines_cache_fp = None
     _invalidate_books_config_cache()
     _invalidate_ignore_cache()
     _invalidate_chapter_ignore_cache()
@@ -121,15 +124,17 @@ def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
 
     fp = _books_fingerprint()
 
-    # 1) In-Memory-Cache
-    if _lines_cache is not None and _lines_cache_fp == fp:
-        return _lines_cache
+    with _lines_lock:
+        # 1) In-Memory-Cache
+        if _lines_cache is not None and _lines_cache_fp == fp:
+            return _lines_cache
 
-    # 2) Volles Re-Parse
+    # 2) Volles Re-Parse (ausserhalb des Locks — kann laenger dauern)
     lines = _parse_all_lines()
 
-    _lines_cache = lines
-    _lines_cache_fp = fp
+    with _lines_lock:
+        _lines_cache = lines
+        _lines_cache_fp = fp
     log.info('Puzzle-Linien geparst: %d Linien', len(lines))
 
     return lines

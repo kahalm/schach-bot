@@ -1,4 +1,4 @@
-"""Zentrale Berechtigungspruefung: Admin oder Moderator-Rolle."""
+"""Zentrale Berechtigungspruefung und User-Hilfsfunktionen."""
 
 import discord
 
@@ -10,6 +10,29 @@ def set_guild_id(gid: int):
     """Setzt die Heim-Server-ID fuer DM-Berechtigungen."""
     global _guild_id
     _guild_id = gid
+
+
+def display_name_cached(bot, uid, guild=None):
+    """Server-Nick aus Cache (kein API-Call), Fallback auf globalen User-Cache.
+
+    Bevorzugt bei fehlender Guild den Heim-Server (GUILD_ID) fuer Namensaufloesung.
+    """
+    uid_int = int(uid)
+    if guild:
+        guilds = [guild]
+    elif _guild_id:
+        home = bot.get_guild(_guild_id)
+        guilds = ([home] if home else []) + list(bot.guilds)
+    else:
+        guilds = bot.guilds
+    for g in guilds:
+        if g is None:
+            continue
+        member = g.get_member(uid_int)
+        if member:
+            return member.display_name
+    u = bot.get_user(uid_int)
+    return u.display_name if u else f'User {uid}'
 
 
 def is_privileged(interaction: discord.Interaction) -> bool:

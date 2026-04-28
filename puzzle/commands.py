@@ -195,15 +195,7 @@ async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
             # Persönlich abgehakte Puzzles (✅ oder ❌, netto >0)
             from core import event_log as _elog
             uid = interaction.user.id
-            _net: dict[str, int] = {}
-            for entry in await asyncio.to_thread(_elog.read_all):
-                if entry.get('user') != uid:
-                    continue
-                if entry.get('emoji') not in ('✅', '❌'):
-                    continue
-                lid_e = entry.get('line_id') or ''
-                _net[lid_e] = _net.get(lid_e, 0) + entry.get('delta', 0)
-            user_done: set[str] = {lid_e for lid_e, n in _net.items() if n > 0}
+            user_done = await asyncio.to_thread(_elog.user_done_puzzles, uid)
 
             # Kapitel aufbauen: round-Prefix → (name, total, done)
             chapter_ignored = _pkg._load_chapter_ignore_list()

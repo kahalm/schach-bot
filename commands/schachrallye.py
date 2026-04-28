@@ -735,14 +735,12 @@ def setup(bot, tournament_channel_id: int = 0):
         new_events = await asyncio.to_thread(_fetch_termine)
 
         added: list[dict] = []
-
-        # Reviewer-Liste VOR dem Merge lesen
-        pre_data = atomic_read(TURNIER_FILE, default=_fresh_default)
-        reviewers = pre_data.get('reviewers', [])
+        merge_result = {}
 
         def _merge(data):
             if not isinstance(data, dict) or 'events' not in data:
                 data = _fresh_default()
+            merge_result['reviewers'] = data.get('reviewers', [])
             existing = {(e['datum'], e.get('name', '')) for e in data['events']}
             for t in new_events:
                 if (t['datum'], t['name']) in existing:
@@ -766,6 +764,7 @@ def setup(bot, tournament_channel_id: int = 0):
             return data
 
         atomic_update(TURNIER_FILE, _merge)
+        reviewers = merge_result.get('reviewers', [])
 
         if added:
             if reviewers:

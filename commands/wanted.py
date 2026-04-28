@@ -20,7 +20,7 @@ _MAX_ENTRIES = 100
 def _next_id(entries: list) -> int:
     if not entries:
         return 1
-    return max(e['id'] for e in entries) + 1
+    return max(e.get('id', 0) for e in entries) + 1
 
 
 def setup(bot: commands.Bot):

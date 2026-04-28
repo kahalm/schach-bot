@@ -4,6 +4,7 @@ Puzzle-/Study-/Training-State, Books-Config-Cache."""
 import json
 import logging
 import os
+import threading
 import time as _time_mod
 from collections import OrderedDict
 from datetime import date as _date
@@ -55,18 +56,21 @@ def get_puzzle_mode(msg_id: int) -> str | None:
 # Ignore-System
 # ---------------------------------------------------------------------------
 _ignore_cache: set[str] | None = None
+_ignore_lock = threading.Lock()
 
 
 def _load_ignore_list() -> set[str]:
     global _ignore_cache
-    if _ignore_cache is None:
-        _ignore_cache = set(atomic_read(IGNORE_FILE, default=list))
-    return _ignore_cache
+    with _ignore_lock:
+        if _ignore_cache is None:
+            _ignore_cache = set(atomic_read(IGNORE_FILE, default=list))
+        return _ignore_cache
 
 
 def _invalidate_ignore_cache():
     global _ignore_cache
-    _ignore_cache = None
+    with _ignore_lock:
+        _ignore_cache = None
 
 
 def ignore_puzzle(line_id: str):
@@ -88,19 +92,22 @@ def unignore_puzzle(line_id: str):
 
 
 _chapter_ignore_cache: set[str] | None = None
+_chapter_ignore_lock = threading.Lock()
 
 
 def _load_chapter_ignore_list() -> set[str]:
     """Lädt ignorierte Kapitel als Set von '<filename>:<chapter_prefix>'."""
     global _chapter_ignore_cache
-    if _chapter_ignore_cache is None:
-        _chapter_ignore_cache = set(atomic_read(CHAPTER_IGNORE_FILE, default=list))
-    return _chapter_ignore_cache
+    with _chapter_ignore_lock:
+        if _chapter_ignore_cache is None:
+            _chapter_ignore_cache = set(atomic_read(CHAPTER_IGNORE_FILE, default=list))
+        return _chapter_ignore_cache
 
 
 def _invalidate_chapter_ignore_cache():
     global _chapter_ignore_cache
-    _chapter_ignore_cache = None
+    with _chapter_ignore_lock:
+        _chapter_ignore_cache = None
 
 
 def _is_chapter_ignored(line_id: str, chapter_ignored: set[str]) -> bool:
@@ -246,25 +253,28 @@ def _set_user_study_id(user_id: int, study_id: str, count: int, total: int):
 
 
 _books_config_cache: dict | None = None
+_books_config_lock = threading.Lock()
 
 
 def _load_books_config() -> dict:
     """Lädt books.json mit Metadaten (z.B. difficulty) pro PGN-Datei."""
     global _books_config_cache
-    if _books_config_cache is not None:
+    with _books_config_lock:
+        if _books_config_cache is not None:
+            return _books_config_cache
+        p = os.path.join(BOOKS_DIR, 'books.json')
+        try:
+            with open(p, encoding='utf-8') as f:
+                _books_config_cache = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            _books_config_cache = {}
         return _books_config_cache
-    p = os.path.join(BOOKS_DIR, 'books.json')
-    try:
-        with open(p, encoding='utf-8') as f:
-            _books_config_cache = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        _books_config_cache = {}
-    return _books_config_cache
 
 
 def _invalidate_books_config_cache():
     global _books_config_cache
-    _books_config_cache = None
+    with _books_config_lock:
+        _books_config_cache = None
 
 
 def _get_user_training(user_id: int) -> dict | None:

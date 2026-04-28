@@ -77,28 +77,73 @@ def log_reaction(user_id: int,
         with _log_lock:
             with open(REACTION_LOG_FILE, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+            _invalidate_user_done_cache()
     except OSError as e:
         log.warning('Reaction-Log Schreibfehler: %s', e)
 
 
 _MAX_LOG_LINES = 50_000
 
+# ---------------------------------------------------------------------------
+# User-Done-Index: cached Netto-Reaktionen pro User + Line
+# ---------------------------------------------------------------------------
+_user_done_cache: dict[int, set[str]] | None = None
+
+
+def _invalidate_user_done_cache():
+    """Invalidiert den User-Done-Cache (nach neuer Reaktion)."""
+    global _user_done_cache
+    _user_done_cache = None
+
+
+def user_done_puzzles(user_id: int) -> set[str]:
+    """Gibt Set von line_ids zurueck die der User als erledigt markiert hat (netto > 0).
+
+    Baut bei Bedarf einen gecachten Index ueber alle User auf.
+    """
+    global _user_done_cache
+    with _log_lock:
+        if _user_done_cache is not None:
+            return _user_done_cache.get(user_id, set())
+
+    # Index aufbauen (ausserhalb des Locks, da read_all den Lock selbst holt)
+    entries = read_all()
+    net: dict[int, dict[str, int]] = {}
+    for e in entries:
+        uid = e.get('user')
+        emoji = e.get('emoji')
+        if uid is None or emoji not in ('\u2705', '\u274c'):
+            continue
+        lid = e.get('line_id') or ''
+        user_net = net.setdefault(uid, {})
+        user_net[lid] = user_net.get(lid, 0) + e.get('delta', 0)
+
+    result: dict[int, set[str]] = {}
+    for uid, lines in net.items():
+        result[uid] = {lid for lid, n in lines.items() if n > 0}
+
+    with _log_lock:
+        _user_done_cache = result
+
+    return result.get(user_id, set())
+
 
 def read_all(limit: int = _MAX_LOG_LINES) -> list[dict]:
     """Liest das JSONL-Log (neueste `limit` Eintraege)."""
     entries: deque[dict] = deque(maxlen=limit)
-    try:
-        with open(REACTION_LOG_FILE, encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    entries.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-    except FileNotFoundError:
-        pass
+    with _log_lock:
+        try:
+            with open(REACTION_LOG_FILE, encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entries.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+        except FileNotFoundError:
+            pass
     return list(entries)
 
 
