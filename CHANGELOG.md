@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.22.1] - 2026-04-28
+### Added
+- `/version` zeigt jetzt den Git-SHA des laufenden Builds an (`v2.22.1 (abc1234)`) — erleichtert die Identifikation von Dev-Images
+- Dockerfile uebergibt `GIT_SHA` als Build-Arg/ENV, CI-Pipeline setzt ihn automatisch
+
 ## [2.22.0] - 2026-04-28
 ### Added
 - CI-Pipeline baut bei jedem Push auf `main` ein Dev-Image (`ghcr.io/…:dev`) fuer Nutzer die immer aktuell sein wollen

@@ -21,4 +21,7 @@ USER botuser
 HEALTHCHECK --interval=60s --timeout=5s --start-period=30s --retries=3 \
   CMD ["python", "healthcheck.py"]
 
+ARG GIT_SHA=dev
+ENV GIT_SHA=$GIT_SHA
+
 CMD ["python", "bot.py"]

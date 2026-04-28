@@ -21,7 +21,7 @@ from core import stats, dm_log
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 from core.permissions import is_privileged, set_guild_id
-from core.version import VERSION, START_TIME, EMBED_COLOR
+from core.version import VERSION, GIT_SHA, START_TIME, EMBED_COLOR
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -438,8 +438,9 @@ async def cmd_help(interaction: discord.Interaction, bereich: str = ''):
 @tree.command(name='version', description='Aktuelle Bot-Version und Uptime anzeigen')
 async def cmd_version(interaction: discord.Interaction):
     ts = int(START_TIME.timestamp())
+    sha_short = GIT_SHA[:7] if GIT_SHA != 'dev' else 'dev'
     await interaction.response.send_message(
-        f'♟️ **Schach-Bot** v{VERSION}\n'
+        f'♟️ **Schach-Bot** v{VERSION} ({sha_short})\n'
         f'🔄 Letzter Restart: <t:{ts}:f> (<t:{ts}:R>)',
         ephemeral=True)
 
