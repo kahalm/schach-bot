@@ -11,6 +11,7 @@ log = log_setup.setup()
 
 import asyncio
 import io
+import math
 import discord
 from discord.ext import tasks, commands
 import json
@@ -119,7 +120,7 @@ def _write_health():
         'status': 'ok',
         'version': VERSION,
         'ts': datetime.now(timezone.utc).isoformat(),
-        'latency_ms': round(bot.latency * 1000) if bot.latency else None,
+        'latency_ms': round(bot.latency * 1000) if bot.latency and math.isfinite(bot.latency) else None,
         'guilds': len(bot.guilds),
     }
     os.makedirs(os.path.dirname(HEALTH_FILE), exist_ok=True)
@@ -153,7 +154,10 @@ async def on_ready():
             if attempt == 4:
                 log.error('tree.sync() endgültig fehlgeschlagen — Commands evtl. nicht verfügbar')
     log.info('Bot online als %s v%s', bot.user, VERSION)
-    await asyncio.to_thread(_write_health)
+    try:
+        await asyncio.to_thread(_write_health)
+    except Exception:
+        log.warning('health.json schreiben fehlgeschlagen (on_ready)')
     puzzle_task.start()
     _health_loop.start()
     bot._task_loops['puzzle_task'] = puzzle_task
@@ -168,7 +172,7 @@ async def on_message(message: discord.Message):
         return
 
     # Eingehende DM loggen
-    dm_log.log_incoming(message.author.id, message.content or '[kein Text]')
+    await asyncio.to_thread(dm_log.log_incoming, message.author.id, message.content or '[kein Text]')
 
     # Erste DM → Bot stellt sich vor
     user_id = message.author.id

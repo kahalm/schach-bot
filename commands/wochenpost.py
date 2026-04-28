@@ -596,6 +596,13 @@ def setup(bot, wochenpost_channel_id: int = 0):
                 ephemeral=True)
             return
 
+        if zeit is None:
+            await interaction.response.send_message(
+                '\u26a0\ufe0f Bitte Uhrzeit angeben. '
+                'Beispiele: `/wochenpost_sub zeit:17`, `/wochenpost_sub zeit:17:30`.',
+                ephemeral=True)
+            return
+
         parsed = _parse_zeit(zeit)
         if parsed is None:
             await interaction.response.send_message(
@@ -705,11 +712,17 @@ def setup(bot, wochenpost_channel_id: int = 0):
 
     @tasks.loop(time=time(hour=18, minute=0))
     async def _wochenpost_loop():
-        await run_wochenpost()
+        try:
+            await run_wochenpost()
+        except Exception:
+            log.exception('Wochenpost-Loop fehlgeschlagen')
 
     @tasks.loop(minutes=30)
     async def _wochenpost_sub_loop():
-        await _run_wochenpost_reminders()
+        try:
+            await _run_wochenpost_reminders()
+        except Exception:
+            log.exception('Wochenpost-Sub-Loop fehlgeschlagen')
 
     @bot.listen('on_ready')
     async def _start_wochenpost_loop():

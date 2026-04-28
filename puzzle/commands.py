@@ -104,6 +104,7 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
                 pgn_moves = _pkg._solution_pgn(puzzle_game)
                 if pgn_moves:
                     await _pkg._send_optional(dm, f'Lösung des Puzzles: ||`{pgn_moves}`||', label=f'Blind-Lösung {line_id}')
+                stats.inc(target_uid, 'blind_puzzles')
                 dest = f'an {target_user.mention}' if user else 'dir'
                 await interaction.followup.send(f'🙈 Blind-Puzzle `{line_id}:blind:{_blind_moves}` {dest} per DM gesendet.', ephemeral=True)
                 return
@@ -178,7 +179,7 @@ async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
 
         # --- Detailansicht für ein einzelnes Buch ---
         if buch > 0:
-            sorted_books = sorted(set(lid.split(':')[0] for lid, _ in all_lines))
+            sorted_books = _pkg._list_pgn_files()
             if buch > len(sorted_books):
                 await interaction.followup.send(
                     f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die Liste.',
@@ -283,7 +284,7 @@ async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
             return
 
         embed = discord.Embed(title='📚 Puzzle-Bücher', color=0x7fa650)
-        sorted_books = sorted(total_per_book)
+        sorted_books = _pkg._list_pgn_files()
         for i, book in enumerate(sorted_books[:25], 1):
             name  = _pkg._clean_book_name(book)
             total = total_per_book[book]

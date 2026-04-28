@@ -99,7 +99,7 @@ async def post_next_endless(bot, user_id: int):
     session['_sending'] = True
     try:
         book_filename = session['book']
-        results = pick_random_lines(1, book_filename)
+        results = await asyncio.to_thread(pick_random_lines, 1, book_filename)
         if not results:
             # Keine Puzzles mehr → Session beenden
             try:
@@ -221,7 +221,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
                 )
                 return 0
 
-    results = pick_random_lines(count, book_filename)
+    results = await asyncio.to_thread(pick_random_lines, count, book_filename)
     if not results:
         await channel.send('⚠️ Keine Puzzle-Linien gefunden. Bitte .pgn-Dateien in den `books/`-Ordner legen.')
         return 0

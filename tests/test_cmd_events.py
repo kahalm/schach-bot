@@ -1372,6 +1372,12 @@ def test_wochenpost_sub():
         check('admin sub user → hour=10',
               sub_data['subscribers']['88888']['hour'] == 10)
 
+        # 3c2) Admin subscribed anderen User OHNE zeit → Fehler (nicht crash)
+        ia = make_interaction(admin=True)
+        run_async(cmd_sub(ia, user=other))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('admin sub user ohne zeit → Fehler', 'ungueltig' in content or 'uhrzeit' in content)
+
         # 3d) Admin unsubscribed anderen User
         ia = make_interaction(admin=True)
         run_async(cmd_unsub(ia, user=other))

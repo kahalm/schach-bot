@@ -21,7 +21,16 @@ _bot = None
 
 @tasks.loop(minutes=1)
 async def _reminder_loop():
+    try:
+        await _reminder_loop_inner()
+    except Exception:
+        log.exception('Reminder-Loop fehlgeschlagen')
+
+
+async def _reminder_loop_inner():
     data = atomic_read(REMINDER_FILE)
+    if not isinstance(data, dict):
+        return
     now = datetime.now(timezone.utc)
     updated_nexts: dict[str, str] = {}
 

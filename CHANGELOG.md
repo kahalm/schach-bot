@@ -4,6 +4,31 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.24.0] - 2026-04-28
+### Fixed
+- Rallye-Reminder pingte niemanden — Mentions standen im Embed-Description statt als `content` (Discord ignoriert Mentions in Embeds)
+- `_write_health()` crashte bei `float('inf')` Latenz (vor erstem Heartbeat-ACK) mit `OverflowError` — verhinderte Start von `puzzle_task` und `_health_loop`
+- Task-Loops (`_wochenpost_loop`, `_wochenpost_sub_loop`, `_rallye_reminder`) hatten kein top-level try/except — eine Exception killte den Loop permanent und lautlos
+- `_reminder_loop` crashte wenn `reminder.json` valides JSON aber kein Dict enthielt (z.B. `[]`) — isinstance-Guard ergaenzt
+- `dm_log.log_incoming()` blockierte den Event-Loop (synchroner `atomic_update` ohne `to_thread`)
+- `upload_to_lichess` kuerzte Chapter-Name nicht auf 70 Zeichen — Lichess-API konnte rejecten (im Multi-Upload war es korrekt)
+- Inkonsistenter PGN-Export: Single-Upload nutzte `comments=False`, Multi-Upload `comments=True` — Gamebook-Inhalte waren unterschiedlich
+- `/puzzle id:X:blind:N` trackte keine `blind_puzzles`-Statistik — `stats.inc()` fehlte
+- `pick_random_lines` blockierte den Event-Loop (synchroner PGN-Parse + JSON-I/O) — auf `asyncio.to_thread` umgestellt
+- Buch-Nummerierung divergierte zwischen `/kurs` (aus geparsten Lines) und `/train`/`/puzzle buch:N` (aus Dateisystem) — `/kurs` nutzt jetzt `_list_pgn_files()`
+- `/schachrallye_add` Bestaetigung war nicht ephemeral (oeffentlich sichtbar)
+- `turnier_buttons.py` Reject-Pfad schrieb bei fehlender turnier.json ein leeres `{}` statt der Default-Struktur
+- `/test modus:lichess` zeigte Cooldown permanent als aktiv (pruefte Datei-Existenz statt `_lichess_rate_limited()`)
+- Context-Chapter-Name konnte 78 Zeichen werden (Prefix "Partie: " + 70 Zeichen) — Limit korrekt berechnet
+- `_SuppressEmptyFen.write()` gab `None` statt `int` zurueck — verletzte `TextIO`-Protokoll
+
+## [2.23.0] - 2026-04-28
+### Fixed
+- `_post_approved_event` aus `setup()`-Closure auf Modul-Ebene verschoben — Import aus `turnier_buttons.py` schlug fehl, Approve-Flow war komplett kaputt
+- Shallow Copy von `_DEFAULT` durch `_fresh_default()` ersetzt — verschachtelte Listen/Dicts wurden zwischen allen Aufrufen geteilt (Shared-State-Bug)
+- `TurnierReviewView` wird jetzt pro Reviewer-DM neu erstellt — Discord.py bindet eine View an eine Nachricht, eine geteilte Instanz fuer mehrere DMs funktioniert nicht
+- `/wochenpost_sub user:@someone` ohne `zeit`-Parameter crashte mit `AttributeError: 'NoneType' object has no attribute 'strip'` — fehlende None-Pruefung ergaenzt
+
 ## [2.22.1] - 2026-04-28
 ### Added
 - `/version` zeigt jetzt den Git-SHA des laufenden Builds an (`v2.22.1 (abc1234)`) — erleichtert die Identifikation von Dev-Images

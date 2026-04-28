@@ -17,9 +17,10 @@ class _SuppressEmptyFen:
     def write(self, s):
         if not any(p in s for p in self._SUPPRESS):
             try:
-                self._s.write(s)
+                return self._s.write(s)
             except (UnicodeEncodeError, UnicodeDecodeError):
-                self._s.write(s.encode('ascii', 'replace').decode('ascii'))
+                return self._s.write(s.encode('ascii', 'replace').decode('ascii'))
+        return len(s)
 
     def flush(self):
         self._s.flush()

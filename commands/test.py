@@ -253,9 +253,10 @@ def _run_lichess() -> list[CheckResult]:
         checks.append(CheckResult('Token gueltig', False, str(e)[:200]))
 
     # Cooldown-Status
-    from puzzle.state import LICHESS_COOLDOWN_FILE
-    cooldown = atomic_read(LICHESS_COOLDOWN_FILE, default=dict)
-    if cooldown:
+    from puzzle.lichess import _lichess_rate_limited
+    if _lichess_rate_limited():
+        from puzzle.state import LICHESS_COOLDOWN_FILE
+        cooldown = atomic_read(LICHESS_COOLDOWN_FILE, default=dict)
         until = cooldown.get('until', '')
         checks.append(CheckResult('Cooldown', False, f'Aktiv bis {until}'))
     else:

@@ -100,13 +100,13 @@ def upload_to_lichess(game: chess.pgn.Game,
         log.info('Lichess-Upload übersprungen (Cooldown noch %ds).', remaining)
         return None
     try:
-        pgn_text = _export_pgn_for_lichess(game, comments=False)
+        pgn_text = _export_pgn_for_lichess(game)
     except Exception as e:
         log.error('PGN-Export fehlgeschlagen: %s', e)
         return None
 
     h = dict(game.headers)
-    line_name  = h.get('White', h.get('Event', 'Puzzle'))
+    line_name  = h.get('White', h.get('Event', 'Puzzle'))[:_LICHESS_CHAPTER_NAME_MAX]
     event_name = h.get('Event', 'Puzzle')
     orientation = 'black' if game.board().turn == chess.BLACK else 'white'
     today      = _date.today().strftime('%d.%m.%Y')
@@ -121,8 +121,9 @@ def upload_to_lichess(game: chess.pgn.Game,
             context_pgn = _export_pgn_for_lichess(context_game)
             ch = dict(context_game.headers)
             ctx_title = ch.get('White', ch.get('Event', 'Partie'))
-            if len(ctx_title) > _LICHESS_CHAPTER_NAME_MAX:
-                ctx_title = ctx_title[:_LICHESS_CHAPTER_NAME_MAX - 3] + '...'
+            max_ctx = _LICHESS_CHAPTER_NAME_MAX - len('Partie: ')
+            if len(ctx_title) > max_ctx:
+                ctx_title = ctx_title[:max_ctx - 3] + '...'
             context_name = f'Partie: {ctx_title}'
         except Exception as e:
             log.warning('Kontext-PGN-Export fehlgeschlagen: %s', e)

@@ -88,14 +88,14 @@ async def _handle_review(interaction: discord.Interaction, action: str):
 
     await interaction.response.defer()
 
-    from commands.schachrallye import TURNIER_FILE, _DEFAULT
+    from commands.schachrallye import TURNIER_FILE, _fresh_default
 
     if action == 'approve':
         event_data = [None]
 
         def _approve(data):
             if not isinstance(data, dict) or 'events' not in data:
-                data = _DEFAULT.copy()
+                data = _fresh_default()
             for e in data['events']:
                 if e['id'] == event_id:
                     e['approved'] = True
@@ -132,7 +132,7 @@ async def _handle_review(interaction: discord.Interaction, action: str):
 
         def _reject(data):
             if not isinstance(data, dict) or 'events' not in data:
-                return data
+                return _fresh_default()
             before = len(data['events'])
             data['events'] = [e for e in data['events'] if e['id'] != event_id]
             found[0] = len(data['events']) < before
