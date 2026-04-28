@@ -71,6 +71,12 @@ def _append(user_id: int, text: str):
     atomic_update(DM_LOG_FILE, _update)
 
 
+def log_incoming(user_id: int, text: str):
+    """Eingehende User-DM im Log festhalten (mit [IN]-Prefix)."""
+    short = text[:300] + ('…' if len(text) > 300 else '')
+    _append(user_id, f'[IN] {short}')
+
+
 _installed = False
 
 

@@ -163,6 +163,9 @@ async def on_message(message: discord.Message):
     if not isinstance(message.channel, discord.DMChannel):
         return
 
+    # Eingehende DM loggen
+    dm_log.log_incoming(message.author.id, message.content or '[kein Text]')
+
     # Erste DM → Bot stellt sich vor
     user_id = message.author.id
     should_greet = False

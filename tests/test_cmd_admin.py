@@ -665,6 +665,42 @@ def test_dm_log_internals():
     print()
 
 
+def test_dm_log_incoming():
+    """Tests fuer core/dm_log.py log_incoming()."""
+    print('[dm_log log_incoming]')
+    import core.dm_log as dm_log_mod
+
+    tmpdir = setup_temp_config()
+    try:
+        import os
+        old_file = dm_log_mod.DM_LOG_FILE
+        dm_log_mod.DM_LOG_FILE = os.path.join(tmpdir, 'dm_log.json')
+        try:
+            # log_incoming schreibt Eintrag mit [IN] Prefix
+            dm_log_mod.log_incoming(55555, 'Hallo Bot')
+            data = atomic_read(dm_log_mod.DM_LOG_FILE)
+            entries = data.get('55555', [])
+            check('log_incoming → Eintrag vorhanden', len(entries) == 1)
+            check('log_incoming → [IN] Prefix', entries[0]['text'].startswith('[IN] '))
+            check('log_incoming → Text enthalten', 'Hallo Bot' in entries[0]['text'])
+
+            # Langer Text wird gekuerzt
+            long_text = 'Y' * 400
+            dm_log_mod.log_incoming(55555, long_text)
+            data = atomic_read(dm_log_mod.DM_LOG_FILE)
+            entries = data.get('55555', [])
+            check('log_incoming → 2 Eintraege', len(entries) == 2)
+            last = entries[1]['text']
+            # [IN] + space + 300 chars + ellipsis = 306
+            check('log_incoming → langer Text gekuerzt', last.endswith('…'))
+            check('log_incoming → max 306 Zeichen', len(last) == 306)
+        finally:
+            dm_log_mod.DM_LOG_FILE = old_file
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_suppress_empty_fen():
     """Tests fuer core/log_setup.py _SuppressEmptyFen Filter."""
     print('[SuppressEmptyFen]')

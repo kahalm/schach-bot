@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.20.2] - 2026-04-28
+### Added
+- Eingehende DMs werden im DM-Log mitgeschrieben (`[IN]`-Prefix zur Unterscheidung von ausgehenden Nachrichten)
+
 ## [2.20.1] - 2026-04-28
 ### Added
 - `/wochenpost_sub` ohne Parameter zeigt jetzt den Status an: normaler User sieht eigenen Abo-Status (aktiv/inaktiv + Uhrzeit), Admins sehen alle aktiven Abos
