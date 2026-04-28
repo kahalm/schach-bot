@@ -351,11 +351,22 @@ def setup(bot, wochenpost_channel_id: int = 0):
                     ephemeral=True)
                 return
 
-        pdf_url = ''
         pdf_name = ''
+        pdf_path = ''
         if pdf is not None:
-            pdf_url = pdf.url
             pdf_name = pdf.filename
+            # PDF sofort herunterladen (Discord CDN URLs verfallen)
+            try:
+                pdf_data = await pdf.read()
+                pdf_dir = os.path.join(CONFIG_DIR, 'wochenpost_pdfs')
+                os.makedirs(pdf_dir, exist_ok=True)
+                # Temp-Name, wird nach ID-Vergabe umbenannt
+                _tmp_pdf_data = pdf_data
+            except Exception as e:
+                log.warning('PDF-Download von Discord fehlgeschlagen: %s', e)
+                _tmp_pdf_data = None
+        else:
+            _tmp_pdf_data = None
 
         d_fmt = d.strftime('%d.%m.%Y')
 
@@ -365,8 +376,9 @@ def setup(bot, wochenpost_channel_id: int = 0):
             'titel': d_fmt,
             'text': text[:2000],
             'url': url[:500],
-            'pdf_url': pdf_url,
+            'pdf_url': '',
             'pdf_name': pdf_name,
+            'pdf_path': '',
             'posted': False,
             'user': interaction.user.display_name,
         }
@@ -382,6 +394,24 @@ def setup(bot, wochenpost_channel_id: int = 0):
             return entries
 
         atomic_update(WOCHENPOST_FILE, _add, default=list)
+
+        # PDF lokal speichern (nach ID-Vergabe)
+        if _tmp_pdf_data and pdf_name:
+            pdf_dir = os.path.join(CONFIG_DIR, 'wochenpost_pdfs')
+            os.makedirs(pdf_dir, exist_ok=True)
+            safe_name = f"{result['id']}_{pdf_name}"
+            pdf_path = os.path.join(pdf_dir, safe_name)
+            try:
+                with open(pdf_path, 'wb') as f:
+                    f.write(_tmp_pdf_data)
+                def _set_pdf_path(entries):
+                    for e in entries:
+                        if e.get('id') == result['id']:
+                            e['pdf_path'] = pdf_path
+                    return entries
+                atomic_update(WOCHENPOST_FILE, _set_pdf_path, default=list)
+            except Exception as e:
+                log.warning('PDF-Speichern fehlgeschlagen: %s', e)
 
         # Vergangenes oder heutiges Datum → sofort posten
         today = date.today()
@@ -795,10 +825,24 @@ async def _post_entry(channel, entry: dict):
     if desc_parts:
         embed.description = '\n\n'.join(desc_parts)
 
-    # PDF runterladen falls vorhanden (max 25 MB)
+    # PDF laden (lokal oder Fallback auf URL fuer alte Eintraege)
     _PDF_MAX_BYTES = 25 * 1024 * 1024
     file = None
-    if entry.get('pdf_url'):
+    pdf_path = entry.get('pdf_path', '')
+    pdf_url = entry.get('pdf_url', '')
+    if pdf_path and os.path.isfile(pdf_path):
+        try:
+            def _read_local_pdf(path):
+                with open(path, 'rb') as f:
+                    return f.read()
+            data = await asyncio.to_thread(_read_local_pdf, pdf_path)
+            file = discord.File(
+                io.BytesIO(data),
+                filename=entry.get('pdf_name', 'datei.pdf'),
+            )
+        except Exception as e:
+            log.warning('Wochenpost PDF-Lesen fehlgeschlagen: %s', e)
+    elif pdf_url:
         try:
             def _download_pdf(url):
                 resp = requests.get(url, timeout=30, stream=True)
@@ -812,7 +856,7 @@ async def _post_entry(channel, entry: dict):
                     chunks.append(chunk)
                 return b''.join(chunks)
 
-            data = await asyncio.to_thread(_download_pdf, entry['pdf_url'])
+            data = await asyncio.to_thread(_download_pdf, pdf_url)
             file = discord.File(
                 io.BytesIO(data),
                 filename=entry.get('pdf_name', 'datei.pdf'),
@@ -904,7 +948,10 @@ async def _run_wochenpost_reminders():
     updates = {}
 
     for uid_str, info in subscribers.items():
-        next_time = _parse_utc(info['next'])
+        raw_next = info.get('next')
+        if not raw_next:
+            continue
+        next_time = _parse_utc(raw_next)
         if now < next_time:
             continue
 

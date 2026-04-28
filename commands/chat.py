@@ -151,8 +151,17 @@ def setup(bot: commands.Bot):
 
         async with message.channel.typing():
             response = await _chat_response(message.author.id, message.content)
-            # Discord-Limit: 2000 Zeichen
-            await message.channel.send(response[:2000])
+            # Discord-Limit: 2000 Zeichen (sauber am Satzende kuerzen)
+            if len(response) > 2000:
+                cut = response[:1997]
+                # Am letzten Satzende abschneiden (oder Wortgrenze)
+                for sep in ('.', '\n', ' '):
+                    idx = cut.rfind(sep)
+                    if idx > 1500:
+                        cut = cut[:idx + 1]
+                        break
+                response = cut + '...'
+            await message.channel.send(response)
 
     # --- /chat_whitelist ---
 

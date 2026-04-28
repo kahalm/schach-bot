@@ -711,6 +711,7 @@ def test_wochenpost():
         fake_pdf = MagicMock()
         fake_pdf.url = 'https://cdn.discord.com/test.pdf'
         fake_pdf.filename = 'test.pdf'
+        fake_pdf.read = AsyncMock(return_value=b'%PDF-fake-content')
         ia = make_interaction(admin=True)
         run_async(cmd_add(ia, datum='08.05.2026', pdf=fake_pdf))
         content = ia.response.calls[0].get('content') or ''
@@ -718,7 +719,7 @@ def test_wochenpost():
         check('add mit PDF → Name im Text', 'test.pdf' in content)
         entries = atomic_read(wochenpost_mod.WOCHENPOST_FILE, default=list)
         check('JSON hat 2 Eintraege', len(entries) == 2)
-        check('PDF-URL gespeichert', entries[1]['pdf_url'] == 'https://cdn.discord.com/test.pdf')
+        check('PDF lokal gespeichert', entries[1].get('pdf_path', '') != '')
         check('PDF-Name gespeichert', entries[1]['pdf_name'] == 'test.pdf')
 
         # Test: Liste anzeigen

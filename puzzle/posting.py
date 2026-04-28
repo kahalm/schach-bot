@@ -352,7 +352,7 @@ async def post_blind_puzzle(channel,
         )
         return
 
-    results = pick_random_blind_lines(count, book_filename, moves)
+    results = await asyncio.to_thread(pick_random_blind_lines, count, book_filename, moves)
     if not results:
         if not any(m.get('blind') for m in config.values()):
             await channel.send(

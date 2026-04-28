@@ -35,7 +35,10 @@ async def _reminder_loop_inner():
     updated_nexts: dict[str, str] = {}
 
     for uid_str, entry in list(data.items()):
-        next_time = _parse_utc(entry['next'])
+        raw_next = entry.get('next')
+        if not raw_next:
+            continue
+        next_time = _parse_utc(raw_next)
         if now < next_time:
             continue
 

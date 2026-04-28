@@ -360,7 +360,7 @@ def setup(bot, tournament_channel_id: int = 0):
         lines = []
         for e in future:
             d = _parse_stored(e['datum'])
-            ts = int(datetime(d.year, d.month, d.day, tzinfo=timezone.utc).timestamp())
+            ts = int(datetime(d.year, d.month, d.day, 12, 0, tzinfo=timezone.utc).timestamp())
             name = e.get('name', '')
             ort = _shorten_ort(e.get('ort', ''))
             if name:
@@ -428,7 +428,7 @@ def setup(bot, tournament_channel_id: int = 0):
             return data
 
         atomic_update(TURNIER_FILE, _add)
-        ts = int(datetime(d.year, d.month, d.day, tzinfo=timezone.utc).timestamp())
+        ts = int(datetime(d.year, d.month, d.day, 12, 0, tzinfo=timezone.utc).timestamp())
         await interaction.response.send_message(
             f"\u2705 Termin #{result['id']} angelegt: <t:{ts}:D> in **{ort}**",
             ephemeral=True)
@@ -966,7 +966,7 @@ def setup(bot, tournament_channel_id: int = 0):
             if (d - today).days <= 7:
                 remind_ids.append(event['id'])
                 mentions = ' '.join(f'<@{uid}>' for uid in subs)
-                ts = int(datetime(d.year, d.month, d.day, tzinfo=timezone.utc).timestamp())
+                ts = int(datetime(d.year, d.month, d.day, 12, 0, tzinfo=timezone.utc).timestamp())
                 name = event.get('name', '')
                 ort = _shorten_ort(event.get('ort', ''))
                 desc_text = f'**Termin #{event["id"]}**'

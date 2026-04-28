@@ -122,4 +122,4 @@ def rotate_log():
         except BaseException:
             os.unlink(tmp)
             raise
-    log.info('Reaction-Log rotiert: %d → %d Zeilen', len(lines), len(trimmed))
+        log.info('Reaction-Log rotiert: %d → %d Zeilen', len(lines), len(trimmed))

@@ -181,12 +181,12 @@ async def on_message(message: discord.Message):
     def _check_and_greet(data):
         nonlocal should_greet
         greeted = data.get('greeted', [])
-        greeted_set = set(greeted)
-        if user_id in greeted_set:
+        if user_id in set(greeted):
             return data  # bereits begrüßt
         should_greet = True
         greeted.append(user_id)
-        data['greeted'] = greeted
+        # Deduplizieren (bereinigt historisch gewachsene Listen)
+        data['greeted'] = list(dict.fromkeys(greeted))
         return data
 
     await asyncio.to_thread(atomic_update, DM_STATE_FILE, _check_and_greet, dict)

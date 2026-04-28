@@ -4,6 +4,21 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.27.0] - 2026-04-28
+### Fixed
+- **Kritisch:** `rotate_log()` in `event_log.py` — `log.info` lag ausserhalb des Locks und referenzierte potenziell undefinierte Variablen bei Early Return
+- **PDF-Verlust:** Discord CDN URLs fuer Wochenpost-PDFs verfallen nach Stunden — PDFs werden jetzt sofort lokal gespeichert (`config/wochenpost_pdfs/`)
+- **Turnier-Review:** Kein Permission-Check bei Review-Buttons — jetzt nur noch konfigurierte Reviewer duerfen freigeben/ablehnen
+- **Datums-Anzeige:** `<t:...:D>` Timestamps nutzten UTC Mitternacht — User in westlichen Zeitzonen sahen den Vortag. Jetzt UTC Mittag (12:00)
+- **Event Loop blockiert:** `pick_random_blind_lines` lief synchron statt via `asyncio.to_thread` — blockierte den Event Loop bei PGN-Parsing
+- **Reminder-Crash:** Fehlender `next`-Key in `reminder.json` oder `wochenpost_sub.json` crashte die gesamte Reminder-Iteration
+- **DM-Log:** Untracked `asyncio.create_task` konnte "Task exception was never retrieved" Warnungen ausloesen
+- **Chat-Truncation:** Claude-Antworten ueber 2000 Zeichen koennen jetzt nicht mehr mitten im Markdown abgeschnitten werden
+- **Lichess-Executor:** `/test` nutzte den Default-ThreadPool fuer Lichess-Uploads statt den dedizierten `_lichess_executor`
+
+### Changed
+- `greeted`-Liste in `dm_state.json` wird bei Schreibvorgaengen automatisch dedupliziert
+
 ## [2.26.0] - 2026-04-28
 ### Changed
 - `/turnier_pending` zeigt pro pending Event ein eigenes Embed mit Freigeben/Ablehnen-Buttons (statt einer einfachen Liste ohne Aktionen)

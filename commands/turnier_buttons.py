@@ -66,6 +66,15 @@ def _disabled_view() -> TurnierReviewView:
 
 async def _handle_review(interaction: discord.Interaction, action: str):
     """Callback fuer Approve/Reject-Buttons."""
+    # Permission-Check: nur konfigurierte Reviewer duerfen handeln
+    from commands.schachrallye import TURNIER_FILE, _fresh_default
+    data = atomic_read(TURNIER_FILE, default=dict)
+    reviewers = data.get('reviewers', [])
+    if reviewers and interaction.user.id not in reviewers:
+        await interaction.response.send_message(
+            'Du bist kein konfigurierter Reviewer.', ephemeral=True)
+        return
+
     # Event-ID aus Embed-Footer parsen
     msg = interaction.message
     if not msg or not msg.embeds:
@@ -87,8 +96,6 @@ async def _handle_review(interaction: discord.Interaction, action: str):
         return
 
     await interaction.response.defer()
-
-    from commands.schachrallye import TURNIER_FILE, _fresh_default
 
     if action == 'approve':
         event_data = [None]

@@ -26,6 +26,7 @@ from puzzle.embed import build_puzzle_embed
 from puzzle.rendering import _render_board
 from puzzle.state import _load_books_config
 from puzzle.lichess import upload_to_lichess
+from puzzle.posting import _lichess_executor
 
 log = logging.getLogger('schach-bot')
 
@@ -436,7 +437,7 @@ class _PuzzleSelect(discord.ui.Select):
         # Lichess-Upload
         loop = asyncio.get_running_loop()
         puzzle_url = await loop.run_in_executor(
-            None, lambda: upload_to_lichess(game, context_game=context))
+            _lichess_executor, lambda: upload_to_lichess(game, context_game=context))
 
         if puzzle_url:
             embed.add_field(
@@ -622,7 +623,7 @@ async def _run_snapshots(interaction, kurs, show_puzzle, show_lichess):
         if show_lichess:
             loop = asyncio.get_running_loop()
             lichess_url = await loop.run_in_executor(
-                None, lambda _g=g, _c=ctx: upload_to_lichess(_g, context_game=_c))
+                _lichess_executor, lambda _g=g, _c=ctx: upload_to_lichess(_g, context_game=_c))
             if lichess_url:
                 parts.append(lichess_url)
 
@@ -704,7 +705,7 @@ async def _trigger_test_reminders(interaction, bot):
                         name = ev.get('name', f'Termin #{ev.get("id", "?")}')
                         try:
                             d = datetime.strptime(ev['datum'], '%Y-%m-%d').date()
-                            ts = int(datetime(d.year, d.month, d.day, tzinfo=timezone.utc).timestamp())
+                            ts = int(datetime(d.year, d.month, d.day, 12, 0, tzinfo=timezone.utc).timestamp())
                             lines.append(f'**{name}** \u2014 <t:{ts}:D>')
                         except Exception:
                             lines.append(f'**{name}** \u2014 {ev.get("datum", "")}')

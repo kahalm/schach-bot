@@ -98,7 +98,8 @@ def install():
             user_id   = recipient.id if recipient else None
             if user_id:
                 text = _describe(*args, **kwargs)
-                asyncio.create_task(asyncio.to_thread(_append, user_id, text))
+                task = asyncio.create_task(asyncio.to_thread(_append, user_id, text))
+                task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
         except Exception as e:
             log.warning('DM-Log fehlgeschlagen: %s', e)
         return result
