@@ -295,6 +295,14 @@ def test_schachrallye():
                 events_after = len(atomic_read(schachrallye_mod.TURNIER_FILE, default=dict).get('events', []))
                 check('neues Event selbes Datum → importiert', events_after == events_before + 1)
 
+                # Events freigeben fuer /turnier-Anzeige
+                from core.json_store import atomic_update as _au
+                def _approve_imported(data):
+                    for e in data.get('events', []):
+                        e['approved'] = True
+                    return data
+                _au(schachrallye_mod.TURNIER_FILE, _approve_imported)
+
                 # /turnier zeigt Turniere mit Link
                 ia = make_interaction()
                 run_async(cmd_turnier(ia))
@@ -603,8 +611,8 @@ def test_turnier_review():
             tdata = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
             auto_events = [e for e in tdata.get('events', [])
                            if e.get('name') == 'Auto-Approve Turnier']
-            check('kein Reviewer → approved=true',
-                  len(auto_events) == 1 and auto_events[0].get('approved') is True)
+            check('kein Reviewer → approved=false (Review noetig)',
+                  len(auto_events) == 1 and auto_events[0].get('approved') is False)
         finally:
             schachrallye_mod.requests.get = old_fetch
 

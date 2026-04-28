@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.25.0] - 2026-04-28
+### Changed
+- Neue Turniere werden IMMER als `approved: false` angelegt und muessen per Review-DM freigegeben werden — kein automatisches Posten mehr, weder bei `/turnier_parse` noch beim taeglichen Auto-Parse
+
 ## [2.24.0] - 2026-04-28
 ### Fixed
 - Rallye-Reminder pingte niemanden — Mentions standen im Embed-Description statt als `content` (Discord ignoriert Mentions in Embeds)

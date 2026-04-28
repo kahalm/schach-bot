@@ -733,7 +733,7 @@ def setup(bot, tournament_channel_id: int = 0):
 
         # Reviewer-Liste VOR dem Merge lesen
         pre_data = atomic_read(TURNIER_FILE, default=_fresh_default)
-        has_reviewers = bool(pre_data.get('reviewers', []))
+        reviewers = pre_data.get('reviewers', [])
 
         def _merge(data):
             if not isinstance(data, dict) or 'events' not in data:
@@ -751,7 +751,7 @@ def setup(bot, tournament_channel_id: int = 0):
                     'ort': t['ort'],
                     'link': t.get('link', ''),
                     'tags': t.get('tags', []),
-                    'approved': not has_reviewers,
+                    'approved': False,
                 }
                 if 'schachrallye' in t.get('tags', []):
                     entry['reminded'] = False
@@ -763,13 +763,11 @@ def setup(bot, tournament_channel_id: int = 0):
         atomic_update(TURNIER_FILE, _merge)
 
         if added:
-            if has_reviewers:
-                # Review-DMs senden, NICHT direkt posten
+            if reviewers:
                 await _notify_reviewers(added)
             else:
-                # Kein Reviewer → direkt posten (bisheriges Verhalten)
-                for a in added:
-                    await _post_approved_event(a)
+                log.warning('Neue Turniere warten auf Freigabe, aber keine Reviewer konfiguriert. '
+                            'Nutze /turnier_review zum Subscriben.')
 
         return added
 
@@ -791,21 +789,16 @@ def setup(bot, tournament_channel_id: int = 0):
                 f'\u274c Fehler beim Laden von {RALLYE_URL}: {e}', ephemeral=True)
             return
 
-        # Pruefen ob Reviewer vorhanden sind (fuer Status-Meldung)
-        cur_data = atomic_read(TURNIER_FILE, default=dict)
-        has_reviewers = bool(cur_data.get('reviewers', []))
-
         if added:
             rallye_added = [a for a in added if 'schachrallye' in a.get('tags', [])]
             turnier_added = [a for a in added if 'schachrallye' not in a.get('tags', [])]
-            suffix = ' (pending)' if has_reviewers else ''
             parts = []
             if rallye_added:
                 lines = [_format_turnier_line(a) for a in rallye_added]
-                parts.append(f"**Rallye** \u2014 {len(rallye_added)} neu{suffix}:\n" + '\n'.join(lines))
+                parts.append(f"**Rallye** \u2014 {len(rallye_added)} neu (pending):\n" + '\n'.join(lines))
             if turnier_added:
                 lines = [_format_turnier_line(a) for a in turnier_added]
-                parts.append(f"**Turniere** \u2014 {len(turnier_added)} neu{suffix}:\n" + '\n'.join(lines))
+                parts.append(f"**Turniere** \u2014 {len(turnier_added)} neu (pending):\n" + '\n'.join(lines))
             desc = '\n\n'.join(parts)
             if len(desc) > 4096:
                 desc = desc[:4093] + '...'
