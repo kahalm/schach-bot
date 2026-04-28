@@ -534,8 +534,53 @@ def setup(bot, wochenpost_channel_id: int = 0):
         zeit='Uhrzeit MEZ/MESZ (z.B. 17, 17:30, 1730)',
         user='Anderen User subscriben (Admin/Mod)')
     async def cmd_wochenpost_sub(interaction: discord.Interaction,
-                                  zeit: str = '17',
+                                  zeit: str = None,
                                   user: discord.User = None):
+        # Status-Anzeige ohne Parameter
+        if zeit is None and user is None:
+            sub_data = await asyncio.to_thread(
+                atomic_read, WOCHENPOST_SUB_FILE, _sub_default)
+            subs = sub_data.get('subscribers', {})
+            uid = str(interaction.user.id)
+
+            if is_privileged(interaction):
+                # Admin: alle aktiven Abos auflisten
+                if not subs:
+                    await interaction.response.send_message(
+                        'Keine aktiven Wochenpost-Abos.', ephemeral=True)
+                    return
+                lines = []
+                for sub_uid, info in subs.items():
+                    h = info.get('hour', 17)
+                    m = info.get('minute', 0)
+                    try:
+                        member = await _bot.fetch_user(int(sub_uid))
+                        name = member.display_name
+                    except Exception:
+                        name = f'User {sub_uid}'
+                    lines.append(f'- **{name}** \u2014 {h}:{m:02d} MEZ/MESZ')
+                desc = '\n'.join(lines)
+                await interaction.response.send_message(
+                    f'**{len(subs)} aktive(s) Wochenpost-Abo(s):**\n{desc}',
+                    ephemeral=True)
+            else:
+                # Normaler User: eigenen Status
+                if uid in subs:
+                    info = subs[uid]
+                    h = info.get('hour', 17)
+                    m = info.get('minute', 0)
+                    await interaction.response.send_message(
+                        f'Dein Wochenpost-Abo ist **aktiv** \u2014 '
+                        f'taeglich um **{h}:{m:02d} MEZ/MESZ**.\n'
+                        f'Abbestellen: `/wochenpost_unsub`',
+                        ephemeral=True)
+                else:
+                    await interaction.response.send_message(
+                        'Du hast kein aktives Wochenpost-Abo.\n'
+                        'Abonnieren: `/wochenpost_sub zeit:17`',
+                        ephemeral=True)
+            return
+
         if user and not is_privileged(interaction):
             await interaction.response.send_message(
                 '\u26a0\ufe0f Nur Admins/Moderatoren koennen andere User subscriben.',

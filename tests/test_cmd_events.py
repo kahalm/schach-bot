@@ -1220,6 +1220,53 @@ def test_wochenpost_sub():
         if not all([cmd_sub, cmd_unsub]):
             return
 
+        # 0a) Status ohne Abo (normaler User) → inaktiv
+        user = FakeMember(uid=11111, name='SubUser')
+        ia = make_interaction(user=user)
+        run_async(cmd_sub(ia))
+        content = ia.response.calls[0].get('content') or ''
+        check('status ohne Abo → kein aktives', 'kein aktives' in content.lower())
+        check('status ohne Abo → Hinweis', 'wochenpost_sub' in content)
+
+        # 0b) Status mit Abo (normaler User) → aktiv + Zeit
+        ia = make_interaction(user=user)
+        run_async(cmd_sub(ia, zeit='17'))
+        ia = make_interaction(user=user)
+        run_async(cmd_sub(ia))
+        content = ia.response.calls[0].get('content') or ''
+        check('status mit Abo → aktiv', 'aktiv' in content.lower())
+        check('status mit Abo → 17:00', '17:00' in content)
+
+        # 0c) Status Admin leer → keine aktiven
+        # Erst alles leeren
+        atomic_write(wochenpost_mod.WOCHENPOST_SUB_FILE, {})
+        ia = make_interaction(admin=True)
+        run_async(cmd_sub(ia))
+        content = ia.response.calls[0].get('content') or ''
+        check('admin status leer → keine aktiven',
+              'keine aktiven' in content.lower())
+
+        # 0d) Status Admin mit Abos → zeigt Anzahl
+        ia = make_interaction(user=user)
+        run_async(cmd_sub(ia, zeit='17'))
+        other_sub = FakeMember(uid=22222, name='SubUser2')
+        ia = make_interaction(user=other_sub)
+        run_async(cmd_sub(ia, zeit='9'))
+
+        old_bot = wochenpost_mod._bot
+        fake_bot = MagicMock()
+        fake_bot.fetch_user = AsyncMock(side_effect=lambda uid:
+            FakeMember(uid=uid, name=f'User{uid}'))
+        wochenpost_mod._bot = fake_bot
+        ia = make_interaction(admin=True)
+        run_async(cmd_sub(ia))
+        content = ia.response.calls[0].get('content') or ''
+        check('admin status → Anzahl', '2 aktive' in content)
+        wochenpost_mod._bot = old_bot
+
+        # Aufraumen fuer folgende Tests
+        atomic_write(wochenpost_mod.WOCHENPOST_SUB_FILE, {})
+
         # 1) Sub Default → Bestaetigung, JSON korrekt (hour=17)
         user = FakeMember(uid=11111, name='SubUser')
         ia = make_interaction(user=user)

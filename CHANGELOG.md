@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.20.1] - 2026-04-28
+### Added
+- `/wochenpost_sub` ohne Parameter zeigt jetzt den Status an: normaler User sieht eigenen Abo-Status (aktiv/inaktiv + Uhrzeit), Admins sehen alle aktiven Abos
+
+## [2.20.0] - 2026-04-27
+### Added
+- Puzzle-Kontext fuer KI-Chat: Claude kennt jetzt das zuletzt gestellte Puzzle (Buch, Kapitel, FEN, Loesung, Schwierigkeit) und kann sinnvoll darauf eingehen
+- System-Prompt wird dynamisch um Puzzle-Metadaten erweitert (per-User mit Channel-Fallback)
+- Bei Blind-Puzzles wird die Loesung bewusst nicht mitgegeben
+
 ## [2.19.1] - 2026-04-27
 ### Changed
 - KI-Chat vorerst fuer alle User freigeschaltet (Whitelist-Check deaktiviert)
