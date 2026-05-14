@@ -97,13 +97,31 @@ services:
   schach-bot:
     build: .
     restart: unless-stopped
-    env_file: .env
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - GUILD_ID=${GUILD_ID:-0}
+      - CHANNEL_ID=${CHANNEL_ID}
+      - LICHESS_TOKEN=${LICHESS_TOKEN}
+      - PUZZLE_STUDY_ID=${PUZZLE_STUDY_ID}
+      - BOOKS_DIR=books
+      - PUZZLE_HOUR=${PUZZLE_HOUR:-9}
+      - PUZZLE_MINUTE=${PUZZLE_MINUTE:-0}
+      - TOURNAMENT_CHANNEL_ID=${TOURNAMENT_CHANNEL_ID:-0}
+      - WOCHENPOST_CHANNEL_ID=${WOCHENPOST_CHANNEL_ID:-0}
+      - LIBRARY_INDEX=/app/library/index.txt
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - SFTPGO_BASE_URL=${SFTPGO_BASE_URL}
+      - SFTPGO_SHARE_ID=${SFTPGO_SHARE_ID}
+      - SFTPGO_SHARE_PASSWORD=${SFTPGO_SHARE_PASSWORD}
     volumes:
       - ./config:/app/config
       - ./books:/app/books
+      - ./library:/app/library
     mem_limit: 512m
     cpus: 0.5
 ```
+
+Die `${VAR}`-Syntax liest Werte aus der Umgebung (z.B. Stack-Manager wie Portainer/Dockge) oder einer `.env`-Datei im selben Verzeichnis.
 
 ```bash
 # Starten
@@ -119,7 +137,7 @@ git pull && docker compose down && docker compose up -d --build
 docker compose down
 ```
 
-`config/` und `books/` werden als Volumes gemountet und bleiben beim Rebuild erhalten.
+`config/`, `books/` und `library/` werden als Volumes gemountet und bleiben beim Rebuild erhalten.
 
 ### Images (CI/CD)
 
