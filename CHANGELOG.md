@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.29.2] - 2026-05-14
+### Fixed
+- `_load_sidecar()`: Sidecar-JSONs die ein Array statt ein Objekt enthalten werden jetzt ignoriert statt `AttributeError: 'list' object has no attribute 'get'` beim `/reindex` auszulösen
+
+## [2.29.1] - 2026-04-28
+### Fixed
+- `/wochenpost_remind` und automatischer Reminder: Entry-URL (Lichess-Study-Link) wird jetzt in der DM mitgeschickt
+
 ## [2.29.0] - 2026-04-28
 ### Changed
 - `display_name_cached()` nach `core/permissions.py` extrahiert — `bot.py` und `wochenpost.py` nutzen jetzt dieselbe Implementierung

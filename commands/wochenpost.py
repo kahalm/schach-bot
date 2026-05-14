@@ -107,7 +107,9 @@ async def _try_chat_spark(uid: int, spruch: str, titel: str) -> str | None:
         return None
 
 
-async def _build_reminder_text(uid: int, titel: str, thread_url: str = '') -> str:
+async def _build_reminder_text(uid: int, titel: str,
+                               thread_url: str = '',
+                               url: str = '') -> str:
     """Baut den DM-Text fuer einen Wochenpost-Reminder.
 
     Wird sowohl vom produktiven Loop als auch von /test verwendet.
@@ -119,6 +121,8 @@ async def _build_reminder_text(uid: int, titel: str, thread_url: str = '') -> st
     else:
         msg = f'{spruch}\n\n' if spruch else ''
     msg += f'\U0001f4ec Mache deine \u00dcbungen! \u2192 **{titel}**'
+    if url:
+        msg += f'\n{url}'
     if thread_url:
         msg += f'\n{thread_url}'
     return msg
@@ -755,6 +759,7 @@ def setup(bot, wochenpost_channel_id: int = 0):
             return
 
         titel = entry.get('titel', '')
+        entry_url = entry.get('url', '')
         thread_id = entry.get('thread_id')
         channel = _bot.get_channel(_wochenpost_channel_id) if _bot else None
         guild_id = getattr(getattr(channel, 'guild', None), 'id', None)
@@ -765,7 +770,8 @@ def setup(bot, wochenpost_channel_id: int = 0):
         await interaction.response.defer(ephemeral=True)
         try:
             dm = await user.create_dm()
-            msg_text = await _build_reminder_text(user.id, titel, thread_url)
+            msg_text = await _build_reminder_text(user.id, titel, thread_url,
+                                                  url=entry_url)
             await dm.send(msg_text)
             await interaction.followup.send(
                 f'\u2705 Erinnerung an **{user.display_name}** gesendet.',
@@ -964,6 +970,7 @@ async def _run_wochenpost_reminders():
     entry_date = entry.get('datum', '')
     thread_id = entry.get('thread_id')
     titel = entry.get('titel', '')
+    entry_url = entry.get('url', '')
 
     # Guild-ID fuer Thread-Link
     channel = _bot.get_channel(_wochenpost_channel_id)
@@ -1003,7 +1010,8 @@ async def _run_wochenpost_reminders():
             try:
                 user = await _bot.fetch_user(int(uid_str))
                 dm = await user.create_dm()
-                msg_text = await _build_reminder_text(int(uid_str), titel, thread_url)
+                msg_text = await _build_reminder_text(int(uid_str), titel,
+                                                              thread_url, url=entry_url)
                 await dm.send(msg_text)
                 log.info('Wochenpost-Reminder an User %s gesendet.', uid_str)
             except Exception:

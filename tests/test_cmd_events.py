@@ -1671,10 +1671,11 @@ def test_wochenpost_remind():
         content = (ia.response.calls[0].get('content') or '').lower()
         check('kein Wochenpost → Fehler', 'kein' in content)
 
-        # 3) Mit Wochenpost → DM gesendet
+        # 3) Mit Wochenpost → DM gesendet (inkl. URL)
         atomic_write(wochenpost_mod.WOCHENPOST_FILE, [
             {'id': 5, 'datum': '2026-04-24', 'titel': '24.04.2026',
-             'text': '', 'url': '', 'pdf_url': '', 'pdf_name': '',
+             'text': '', 'url': 'https://lichess.org/study/abc123',
+             'pdf_url': '', 'pdf_name': '',
              'posted': True, 'user': 'Admin',
              'msg_id': 9999, 'thread_id': 100001},
         ])
@@ -1695,11 +1696,12 @@ def test_wochenpost_remind():
         content = (ia.followup.calls[0].get('content') or '') if ia.followup.calls else ''
         check('remind → Bestaetigung', 'gesendet' in content.lower())
 
-        # DM wurde gesendet mit Titel
+        # DM wurde gesendet mit Titel und URL
         check('remind → DM gesendet', len(dm_channel.sent) > 0)
         if dm_channel.sent:
             dm_text = dm_channel.sent[0].content or ''
             check('remind DM → Titel', '24.04.2026' in dm_text)
+            check('remind DM → URL', 'lichess.org/study/abc123' in dm_text)
 
         # 4) DM fehlgeschlagen → Fehlerhinweis
         target2 = FakeMember(uid=66666, name='BlockedUser')
