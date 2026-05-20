@@ -398,11 +398,13 @@ def test_tool_analyze_move():
         r = _analyze_move_sync('e4', 42)
     check('korrekter SAN → is_correct', r.get('is_correct') is True)
     check('korrekter SAN → user_move_san', r.get('user_move_san') == 'e4')
+    check('korrekter SAN → opponent_reply_san', r.get('opponent_reply_san') == 'e5')
 
     # 2. Korrekter Zug (UCI)
     with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle):
         r = _analyze_move_sync('e2e4', 42)
     check('korrekter UCI → is_correct', r.get('is_correct') is True)
+    check('korrekter UCI → opponent_reply_san', r.get('opponent_reply_san') == 'e5')
 
     # 3. Falscher Zug + Cloud-Eval Mock
     mock_cloud = {
@@ -447,7 +449,14 @@ def test_tool_analyze_move():
     check('FEN-Override → is_correct=False (keine Loesung)', r.get('is_correct') is False)
     check('FEN-Override → user_move_san', r.get('user_move_san') == 'e5')
 
-    # 8. Async-Handler
+    # 8. Korrekter Zug ohne Gegenzug (Loesung hat nur 1 Zug)
+    ctx_single = dict(ctx_puzzle, solution='e4')
+    with patch('puzzle.state.get_puzzle_context', return_value=ctx_single):
+        r = _analyze_move_sync('e4', 42)
+    check('einzelzug → is_correct', r.get('is_correct') is True)
+    check('einzelzug → kein opponent_reply', 'opponent_reply_san' not in r)
+
+    # 9. Async-Handler
     with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle):
         result_str = run_async(_tool_analyze_move(
             {'move': 'e4'}, {'user_id': 42}))

@@ -441,8 +441,15 @@ def _analyze_move_sync(move_str: str, user_id: int, fen_override: str | None = N
             if game and game.variations:
                 first_sol_move = game.variations[0].move
             if first_sol_move and move == first_sol_move:
-                return {'is_correct': True, 'user_move_san': user_move_san,
-                        'message': 'Der Zug ist korrekt!'}
+                result = {'is_correct': True, 'user_move_san': user_move_san,
+                          'message': 'Der Zug ist korrekt!'}
+                # Gegenzug aus Loesung extrahieren
+                first_node = game.variations[0]
+                if first_node.variations:
+                    reply_move = first_node.variations[0].move
+                    sol_board.push(first_sol_move)
+                    result['opponent_reply_san'] = sol_board.san(reply_move)
+                return result
             solution_first_san = sol_board.san(first_sol_move) if first_sol_move else None
         except Exception:
             solution_first_san = None

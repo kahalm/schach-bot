@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.33.1] - 2026-05-20
+### Changed
+- `analyze_move`: Bei korrektem Zug wird jetzt auch der Gegenzug aus der Loesung zurueckgegeben (`opponent_reply_san`), damit Claude die Fortsetzung erklaeren kann
+
 ## [2.33.0] - 2026-05-20
 ### Added
 - `analyze_move` Chat-Tool: Claude kann jetzt Zugvorschlaege des Users im Puzzle-Kontext pruefen — validiert den Zug, vergleicht mit der Loesung und holt bei falschen Zuegen eine Stockfish-Bewertung via Lichess Cloud-Eval API
