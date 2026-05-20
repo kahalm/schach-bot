@@ -42,7 +42,9 @@ _SYSTEM_PROMPT = (
     'Halte deine Antworten kompakt (max. 3-4 Absaetze), '
     'ausser der User bittet explizit um eine ausfuehrliche Erklaerung.\n\n'
     'Du hast Zugriff auf Tools um Puzzles zu senden, Training zu verwalten '
-    'und Buecher vorzuschlagen. Nutze sie wenn der User danach fragt.'
+    'und Buecher vorzuschlagen. Nutze sie wenn der User danach fragt.\n'
+    'Wenn der User einen konkreten Zug vorschlaegt (z.B. "Sf3?" oder "was ist mit e4?"), '
+    'nutze das analyze_move Tool um den Zug zu pruefen und eine fundierte Antwort zu geben.'
 )
 
 

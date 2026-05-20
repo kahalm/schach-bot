@@ -49,6 +49,7 @@ from test_cmd_chat_tools import (
     test_tool_set_training, test_tool_suggest_book, test_tool_send_puzzle,
     test_tool_send_next, test_tool_error_handling, test_history_tool_blocks,
     test_history_backward_compat, test_tool_loop_limit, test_system_prompt_tools,
+    test_tool_analyze_move, test_uci_line_to_san,
 )
 
 
@@ -127,6 +128,8 @@ def main():
     test_history_backward_compat()
     test_tool_loop_limit()
     test_system_prompt_tools()
+    test_tool_analyze_move()
+    test_uci_line_to_san()
 
     print(f'---\n{h.total - h.failed}/{h.total} checks passed.')
     if h.failed:

@@ -15,7 +15,7 @@ from commands.chat_tools import TOOLS, execute_tool
 def test_tool_schemas():
     """Validiert dass alle Tool-Schemas korrekt aufgebaut sind."""
     print('[chat_tool_schemas]')
-    check('6 Tools definiert', len(TOOLS) == 6)
+    check('7 Tools definiert', len(TOOLS) == 7)
     names = set()
     for tool in TOOLS:
         check(f'Tool {tool["name"]} hat name', 'name' in tool)
@@ -25,7 +25,7 @@ def test_tool_schemas():
               tool['input_schema'].get('type') == 'object')
         names.add(tool['name'])
     expected = {'list_books', 'suggest_book', 'get_training_status',
-                'set_training', 'send_puzzle', 'send_next'}
+                'set_training', 'send_puzzle', 'send_next', 'analyze_move'}
     check('Alle erwarteten Tool-Namen vorhanden', names == expected)
 
 
@@ -373,3 +373,101 @@ def test_system_prompt_tools():
     prompt = chat_mod._SYSTEM_PROMPT
     check('System-Prompt enthaelt Tool-Hinweis', 'Tools' in prompt)
     check('System-Prompt enthaelt Puzzles', 'Puzzles' in prompt)
+    check('System-Prompt enthaelt analyze_move-Hinweis', 'analyze_move' in prompt)
+
+
+def test_tool_analyze_move():
+    """Test fuer analyze_move Tool-Handler — 7 Faelle."""
+    print('[tool_analyze_move]')
+    from commands.chat_tools import _analyze_move_sync, _tool_analyze_move
+
+    # Puzzle-FEN: Weiss am Zug, Loesung beginnt mit e4
+    fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+    solution = 'e4 e5 Nf3'
+    ctx_puzzle = {
+        'fen': fen,
+        'solution': solution,
+        'book': 'Test',
+        'chapter': 'Kap 1',
+        'turn': 'Weiss',
+        'difficulty': 'Anfaenger',
+    }
+
+    # 1. Korrekter Zug (SAN)
+    with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle):
+        r = _analyze_move_sync('e4', 42)
+    check('korrekter SAN → is_correct', r.get('is_correct') is True)
+    check('korrekter SAN → user_move_san', r.get('user_move_san') == 'e4')
+
+    # 2. Korrekter Zug (UCI)
+    with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle):
+        r = _analyze_move_sync('e2e4', 42)
+    check('korrekter UCI → is_correct', r.get('is_correct') is True)
+
+    # 3. Falscher Zug + Cloud-Eval Mock
+    mock_cloud = {
+        'depth': 36,
+        'pvs': [{'cp': 50, 'moves': 'e7e5 g1f3 b8c6'}],
+    }
+    with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle), \
+         patch('commands.chat_tools._fetch_cloud_eval', return_value=mock_cloud):
+        r = _analyze_move_sync('d4', 42)
+    check('falscher Zug → is_correct=False', r.get('is_correct') is False)
+    check('falscher Zug → eval_cp', 'eval_cp' in r)
+    check('falscher Zug → eval_cp invertiert', r.get('eval_cp') == -50)
+    check('falscher Zug → best_line_san', 'best_line_san' in r)
+    check('falscher Zug → solution_first_move', r.get('solution_first_move') == 'e4')
+    check('falscher Zug → depth', r.get('depth') == 36)
+
+    # 4. Falscher Zug + Cloud-Eval 404 (None)
+    with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle), \
+         patch('commands.chat_tools._fetch_cloud_eval', return_value=None):
+        r = _analyze_move_sync('a3', 42)
+    check('ohne Cloud-Eval → is_correct=False', r.get('is_correct') is False)
+    check('ohne Cloud-Eval → solution_first_move', r.get('solution_first_move') == 'e4')
+    check('ohne Cloud-Eval → kein eval_cp', 'eval_cp' not in r)
+
+    # 5. Ungueltiger Zug
+    with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle):
+        r = _analyze_move_sync('Zx9', 42)
+    check('ungueltiger Zug → error', 'error' in r)
+    check('ungueltiger Zug → Meldung', 'Zx9' in r.get('error', ''))
+
+    # 6. Kein Puzzle-Kontext
+    with patch('puzzle.state.get_puzzle_context', return_value=None):
+        r = _analyze_move_sync('e4', 99)
+    check('kein Puzzle → error', 'error' in r)
+    check('kein Puzzle → Meldung', 'Puzzle' in r.get('error', ''))
+
+    # 7. FEN-Override
+    override_fen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1'
+    with patch('commands.chat_tools._fetch_cloud_eval', return_value=None):
+        r = _analyze_move_sync('e5', 42, fen_override=override_fen)
+    check('FEN-Override → kein error', 'error' not in r)
+    check('FEN-Override → is_correct=False (keine Loesung)', r.get('is_correct') is False)
+    check('FEN-Override → user_move_san', r.get('user_move_san') == 'e5')
+
+    # 8. Async-Handler
+    with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle):
+        result_str = run_async(_tool_analyze_move(
+            {'move': 'e4'}, {'user_id': 42}))
+        r = json.loads(result_str)
+    check('async handler → is_correct', r.get('is_correct') is True)
+
+
+def test_uci_line_to_san():
+    """Test fuer UCI→SAN Konvertierung mit echtem python-chess."""
+    print('[uci_line_to_san]')
+    from commands.chat_tools import _uci_line_to_san
+
+    # Startstellung nach 1.e4
+    fen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1'
+    san = _uci_line_to_san(fen, 'e7e5 g1f3 b8c6')
+    check('UCI→SAN 3 Zuege', len(san) == 3)
+    check('UCI→SAN erster Zug', san[0] == 'e5')
+    check('UCI→SAN zweiter Zug', san[1] == 'Nf3')
+    check('UCI→SAN dritter Zug', san[2] == 'Nc6')
+
+    # Leerer String
+    san_empty = _uci_line_to_san(fen, '')
+    check('UCI→SAN leer → leere Liste', san_empty == [])

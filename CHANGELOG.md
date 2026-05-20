@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.33.0] - 2026-05-20
+### Added
+- `analyze_move` Chat-Tool: Claude kann jetzt Zugvorschlaege des Users im Puzzle-Kontext pruefen — validiert den Zug, vergleicht mit der Loesung und holt bei falschen Zuegen eine Stockfish-Bewertung via Lichess Cloud-Eval API
+- System-Prompt um `analyze_move`-Hinweis ergaenzt: Claude nutzt das Tool automatisch wenn ein Zug vorgeschlagen wird
+
 ## [2.32.0] - 2026-05-20
 ### Added
 - Chat-Tools: KI-Schachtrainer kann jetzt per Anthropic Tool Use echte Bot-Funktionen ausfuehren — Puzzles senden (`send_puzzle`, `send_next`), Training verwalten (`set_training`, `get_training_status`) und Buecher vorschlagen (`list_books`, `suggest_book`)

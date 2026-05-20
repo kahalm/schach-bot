@@ -1,11 +1,13 @@
 """Chat-Tools: Anthropic Tool-Use Definitionen + Executor fuer den KI-Chat.
 
-6 Tools die Claude im DM-Chat aufrufen kann:
+7 Tools die Claude im DM-Chat aufrufen kann:
 - list_books, suggest_book, get_training_status (read-only)
 - set_training (write)
 - send_puzzle, send_next (side-effect)
+- analyze_move (Zuganalyse mit Lichess Cloud-Eval)
 """
 
+import asyncio
 import json
 import logging
 
@@ -119,6 +121,28 @@ TOOLS = [
                 },
             },
             'required': [],
+        },
+    },
+    {
+        'name': 'analyze_move',
+        'description': (
+            'Analysiert einen Schachzug im Puzzle-Kontext. '
+            'Prueft ob er korrekt ist und holt bei falschen Zuegen '
+            'eine Engine-Bewertung.'
+        ),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'move': {
+                    'type': 'string',
+                    'description': 'Zug in SAN oder UCI',
+                },
+                'fen': {
+                    'type': 'string',
+                    'description': 'Optionaler FEN-Override',
+                },
+            },
+            'required': ['move'],
         },
     },
 ]
@@ -322,6 +346,148 @@ async def _tool_send_next(tool_input, ctx) -> str:
 
 
 # ---------------------------------------------------------------------------
+# analyze_move: Zuganalyse mit Lichess Cloud-Eval
+# ---------------------------------------------------------------------------
+
+def _fetch_cloud_eval(fen: str) -> dict | None:
+    """Holt Stockfish-Bewertung von Lichess Cloud-Eval API.
+
+    Gibt dict mit 'depth', 'pvs' bei Erfolg, None bei 404/Fehler.
+    """
+    import requests
+    from puzzle.lichess import LICHESS_API_TIMEOUT
+
+    try:
+        resp = requests.get(
+            'https://lichess.org/api/cloud-eval',
+            params={'fen': fen, 'multiPv': 1},
+            timeout=LICHESS_API_TIMEOUT,
+        )
+        if resp.status_code == 200:
+            return resp.json()
+        return None
+    except Exception:
+        return None
+
+
+def _uci_line_to_san(fen: str, uci_moves_str: str) -> list[str]:
+    """Konvertiert eine UCI-Zugfolge in SAN-Notation.
+
+    >>> _uci_line_to_san('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1', 'e7e5 g1f3')
+    ['e5', 'Nf3']
+    """
+    import chess
+    board = chess.Board(fen)
+    san_moves = []
+    for uci_str in uci_moves_str.strip().split():
+        move = chess.Move.from_uci(uci_str)
+        san_moves.append(board.san(move))
+        board.push(move)
+    return san_moves
+
+
+def _analyze_move_sync(move_str: str, user_id: int, fen_override: str | None = None) -> dict:
+    """Sync-Kernlogik: Zug parsen, gegen Loesung pruefen, Cloud-Eval holen."""
+    import chess
+
+    from puzzle.state import get_puzzle_context
+
+    # FEN bestimmen
+    if fen_override:
+        fen = fen_override
+        solution = None
+    else:
+        ctx = get_puzzle_context(user_id)
+        if not ctx:
+            return {'error': 'Kein aktives Puzzle vorhanden.'}
+        fen = ctx.get('fen')
+        solution = ctx.get('solution')
+
+    if not fen:
+        return {'error': 'Keine FEN-Stellung verfuegbar.'}
+
+    board = chess.Board(fen)
+
+    # Zug parsen: erst SAN, dann UCI
+    move = None
+    try:
+        move = board.parse_san(move_str)
+    except (chess.InvalidMoveError, chess.IllegalMoveError, chess.AmbiguousMoveError):
+        pass
+
+    if move is None:
+        try:
+            move = chess.Move.from_uci(move_str)
+            if move not in board.legal_moves:
+                move = None
+        except (chess.InvalidMoveError, ValueError):
+            move = None
+
+    if move is None:
+        return {'error': f'Ungueltiger Zug: {move_str}'}
+
+    user_move_san = board.san(move)
+
+    # Gegen Loesung pruefen
+    if solution:
+        # Ersten Zug der Loesung extrahieren
+        sol_board = chess.Board(fen)
+        try:
+            import io
+            import chess.pgn
+            pgn_str = f'[FEN "{fen}"]\n\n{solution}'
+            game = chess.pgn.read_game(io.StringIO(pgn_str))
+            first_sol_move = None
+            if game and game.variations:
+                first_sol_move = game.variations[0].move
+            if first_sol_move and move == first_sol_move:
+                return {'is_correct': True, 'user_move_san': user_move_san,
+                        'message': 'Der Zug ist korrekt!'}
+            solution_first_san = sol_board.san(first_sol_move) if first_sol_move else None
+        except Exception:
+            solution_first_san = None
+    else:
+        solution_first_san = None
+
+    # Falscher Zug → Cloud-Eval nach dem Zug
+    board.push(move)
+    eval_fen = board.fen()
+    cloud = _fetch_cloud_eval(eval_fen)
+
+    result = {'is_correct': False, 'user_move_san': user_move_san}
+    if solution_first_san:
+        result['solution_first_move'] = solution_first_san
+
+    if cloud and cloud.get('pvs'):
+        pv = cloud['pvs'][0]
+        result['depth'] = cloud.get('depth', 0)
+        # Eval aus Sicht des Ziehenden (invertieren, da jetzt Gegner dran)
+        if 'cp' in pv:
+            result['eval_cp'] = -pv['cp']
+        elif 'mate' in pv:
+            result['eval_mate'] = -pv['mate']
+        # Beste Antwort / Linie
+        moves_uci = pv.get('moves', '')
+        if moves_uci:
+            san_line = _uci_line_to_san(eval_fen, moves_uci)
+            if san_line:
+                result['best_response_san'] = san_line[0]
+                result['best_line_san'] = ' '.join(san_line)
+
+    return result
+
+
+async def _tool_analyze_move(tool_input, ctx) -> str:
+    move_str = tool_input.get('move', '')
+    fen_override = tool_input.get('fen')
+    user_id = ctx.get('user_id', 0)
+
+    result = await asyncio.to_thread(
+        _analyze_move_sync, move_str, user_id, fen_override)
+    return json.dumps(result, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
 # Dispatcher
 # ---------------------------------------------------------------------------
 
@@ -332,6 +498,7 @@ _HANDLERS = {
     'set_training': _tool_set_training,
     'send_puzzle': _tool_send_puzzle,
     'send_next': _tool_send_next,
+    'analyze_move': _tool_analyze_move,
 }
 
 
