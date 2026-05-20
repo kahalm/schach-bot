@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.34.0] - 2026-05-20
+### Changed
+- System-Prompt ueberarbeitet: Claude erfindet keine eigenen Analysen mehr, nutzt immer das `analyze_move`-Tool, haelt Antworten bei Zuegen kurz (nur Widerlegung + Frage)
+- Widerlegungs-Flow: Bei falschem Zug nennt Claude die beste Antwort und fragt was der User dann spielt — max. 3 Runden, dann Hinweis. Bei richtigem Zug loben.
+- `analyze_move` gibt bei falschen Zuegen `fen_after_response` zurueck (FEN nach User-Zug + Gegenzug), damit Claude Folgezuege analysieren kann
+
 ## [2.33.3] - 2026-05-20
 ### Changed
 - `analyze_move`: Deutsche Figurenbuchstaben (D=Q, S=N, T=R, L=B) und Annotationen (+, #, !, ?) werden jetzt akzeptiert — z.B. "Sf3!", "Dxf7+" oder "Lc4" funktionieren wie "Nf3", "Qxf7", "Bc4"

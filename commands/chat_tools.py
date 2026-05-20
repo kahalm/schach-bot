@@ -128,7 +128,8 @@ TOOLS = [
         'description': (
             'Analysiert einen Schachzug im Puzzle-Kontext. '
             'Prueft ob er korrekt ist und holt bei falschen Zuegen '
-            'eine Engine-Bewertung.'
+            'eine Engine-Bewertung. Gibt bei falschen Zuegen '
+            'fen_after_response zurueck fuer Folgezug-Analyse.'
         ),
         'input_schema': {
             'type': 'object',
@@ -500,6 +501,11 @@ def _analyze_move_sync(move_str: str, user_id: int, fen_override: str | None = N
             if san_line:
                 result['best_response_san'] = san_line[0]
                 result['best_line_san'] = ' '.join(san_line)
+                # FEN nach User-Zug + Gegenzug fuer Folgezug-Analyse
+                response_uci = moves_uci.strip().split()[0]
+                response_move = chess.Move.from_uci(response_uci)
+                board.push(response_move)
+                result['fen_after_response'] = board.fen()
 
     return result
 

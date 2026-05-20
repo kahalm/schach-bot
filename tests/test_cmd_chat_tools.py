@@ -420,6 +420,13 @@ def test_tool_analyze_move():
     check('falscher Zug → best_line_san', 'best_line_san' in r)
     check('falscher Zug → solution_first_move', r.get('solution_first_move') == 'e4')
     check('falscher Zug → depth', r.get('depth') == 36)
+    check('falscher Zug → fen_after_response', 'fen_after_response' in r)
+    # FEN nach d4 e5: Stellung nach beiden Zuegen
+    import chess as _chess
+    _b = _chess.Board(fen)
+    _b.push_san('d4')
+    _b.push_san('e5')
+    check('falscher Zug → fen_after_response korrekt', r['fen_after_response'] == _b.fen())
 
     # 4. Falscher Zug + Cloud-Eval 404 (None)
     with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle), \
@@ -428,6 +435,7 @@ def test_tool_analyze_move():
     check('ohne Cloud-Eval → is_correct=False', r.get('is_correct') is False)
     check('ohne Cloud-Eval → solution_first_move', r.get('solution_first_move') == 'e4')
     check('ohne Cloud-Eval → kein eval_cp', 'eval_cp' not in r)
+    check('ohne Cloud-Eval → kein fen_after_response', 'fen_after_response' not in r)
 
     # 5. Ungueltiger Zug
     with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle):
