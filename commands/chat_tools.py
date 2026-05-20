@@ -386,6 +386,20 @@ def _uci_line_to_san(fen: str, uci_moves_str: str) -> list[str]:
     return san_moves
 
 
+_GERMAN_PIECES = {'D': 'Q', 'S': 'N', 'T': 'R', 'L': 'B'}
+
+
+def _normalize_move(move_str: str) -> str:
+    """Normalisiert Zug-Eingabe: deutsche Figurenbuchstaben + Annotationen.
+
+    D→Q, S→N, T→R, L→B. Trailing +, #, !, ? werden entfernt.
+    """
+    s = move_str.strip().rstrip('+#!?')
+    if s and s[0] in _GERMAN_PIECES:
+        s = _GERMAN_PIECES[s[0]] + s[1:]
+    return s
+
+
 def _analyze_move_sync(move_str: str, user_id: int, fen_override: str | None = None) -> dict:
     """Sync-Kernlogik: Zug parsen, gegen Loesung pruefen, Cloud-Eval holen."""
     import chess
@@ -408,16 +422,22 @@ def _analyze_move_sync(move_str: str, user_id: int, fen_override: str | None = N
 
     board = chess.Board(fen)
 
-    # Zug parsen: erst SAN, dann UCI
+    # Normalisierung: deutsche Notation + Annotationen
+    normalized = _normalize_move(move_str)
+
+    # Zug parsen: erst SAN (original + normalisiert), dann UCI
     move = None
-    try:
-        move = board.parse_san(move_str)
-    except (chess.InvalidMoveError, chess.IllegalMoveError, chess.AmbiguousMoveError):
-        pass
+    for candidate in (move_str.strip(), normalized):
+        try:
+            move = board.parse_san(candidate)
+            break
+        except (chess.InvalidMoveError, chess.IllegalMoveError,
+                chess.AmbiguousMoveError, ValueError):
+            pass
 
     if move is None:
         try:
-            move = chess.Move.from_uci(move_str)
+            move = chess.Move.from_uci(move_str.strip())
             if move not in board.legal_moves:
                 move = None
         except (chess.InvalidMoveError, ValueError):

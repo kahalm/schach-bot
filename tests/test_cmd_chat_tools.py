@@ -456,12 +456,61 @@ def test_tool_analyze_move():
     check('einzelzug → is_correct', r.get('is_correct') is True)
     check('einzelzug → kein opponent_reply', 'opponent_reply_san' not in r)
 
-    # 9. Async-Handler
+    # 9. Deutsche Notation: Sf3 → Nf3
+    ctx_nf3 = dict(ctx_puzzle, solution='Nf3 Nc6')
+    with patch('puzzle.state.get_puzzle_context', return_value=ctx_nf3):
+        r = _analyze_move_sync('Sf3', 42)
+    check('deutsch S → is_correct', r.get('is_correct') is True)
+    check('deutsch S → user_move_san=Nf3', r.get('user_move_san') == 'Nf3')
+
+    # 10. Deutsche Notation: alle Figuren
+    # D=Q, T=R, L=B — teste mit falschem Zug (Zug ist legal aber nicht Loesung)
+    with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle), \
+         patch('commands.chat_tools._fetch_cloud_eval', return_value=None):
+        r = _analyze_move_sync('Sf3', 42)
+    check('deutsch Sf3 falsch → is_correct=False', r.get('is_correct') is False)
+    check('deutsch Sf3 falsch → user_move_san=Nf3', r.get('user_move_san') == 'Nf3')
+
+    # 11. Annotationen werden ignoriert: e4+ → e4
+    with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle):
+        r = _analyze_move_sync('e4+', 42)
+    check('e4+ → is_correct', r.get('is_correct') is True)
+
+    # 12. Annotation #
+    with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle):
+        r = _analyze_move_sync('e4#', 42)
+    check('e4# → is_correct', r.get('is_correct') is True)
+
+    # 13. Deutsch + Annotation: Sf3!
+    with patch('puzzle.state.get_puzzle_context', return_value=ctx_nf3):
+        r = _analyze_move_sync('Sf3!', 42)
+    check('Sf3! → is_correct', r.get('is_correct') is True)
+
+    # 14. Async-Handler
     with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle):
         result_str = run_async(_tool_analyze_move(
             {'move': 'e4'}, {'user_id': 42}))
         r = json.loads(result_str)
     check('async handler → is_correct', r.get('is_correct') is True)
+
+
+def test_normalize_move():
+    """Test fuer _normalize_move: deutsche Notation + Annotationen."""
+    print('[normalize_move]')
+    from commands.chat_tools import _normalize_move
+
+    check('Sf3 → Nf3', _normalize_move('Sf3') == 'Nf3')
+    check('Dxf7 → Qxf7', _normalize_move('Dxf7') == 'Qxf7')
+    check('Td1 → Rd1', _normalize_move('Td1') == 'Rd1')
+    check('Lc4 → Bc4', _normalize_move('Lc4') == 'Bc4')
+    check('Nf3 bleibt Nf3', _normalize_move('Nf3') == 'Nf3')
+    check('e4 bleibt e4', _normalize_move('e4') == 'e4')
+    check('Qxf7+ → Qxf7', _normalize_move('Qxf7+') == 'Qxf7')
+    check('Sf3# → Nf3', _normalize_move('Sf3#') == 'Nf3')
+    check('e4! → e4', _normalize_move('e4!') == 'e4')
+    check('Dxf7+! → Qxf7', _normalize_move('Dxf7+!') == 'Qxf7')
+    check('O-O bleibt', _normalize_move('O-O') == 'O-O')
+    check('Leerzeichen getrimmt', _normalize_move(' Sf3 ') == 'Nf3')
 
 
 def test_uci_line_to_san():
