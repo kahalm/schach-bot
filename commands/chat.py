@@ -1,6 +1,7 @@
 """KI-Schachtrainer: Claude-Chat per DM fuer whitelisted User."""
 
 import asyncio
+import json
 import logging
 import os
 
@@ -10,6 +11,7 @@ from discord.ext import commands
 from core.paths import CONFIG_DIR
 from core.json_store import atomic_read, atomic_update
 from core.permissions import is_privileged
+from commands.chat_tools import TOOLS, execute_tool
 
 log = logging.getLogger('schach-bot')
 
@@ -27,6 +29,8 @@ if _CLAUDE_API_KEY:
 
 _MODEL = 'claude-sonnet-4-6'
 _MAX_HISTORY = 20  # 10 Austausche (user + assistant)
+_MAX_TOOL_ROUNDS = 5
+_NOT_GIVEN = None  # Sentinel: tools weglassen wenn kein Channel
 
 _SYSTEM_PROMPT = (
     'Du bist ein strenger, aber lustiger Schachtrainer. '
@@ -36,7 +40,9 @@ _SYSTEM_PROMPT = (
     'aber immer mit einem Augenzwinkern. '
     'Du liebst Taktik, hasst passive Zuege und zitierst gerne alte Meister. '
     'Halte deine Antworten kompakt (max. 3-4 Absaetze), '
-    'ausser der User bittet explizit um eine ausfuehrliche Erklaerung.'
+    'ausser der User bittet explizit um eine ausfuehrliche Erklaerung.\n\n'
+    'Du hast Zugriff auf Tools um Puzzles zu senden, Training zu verwalten '
+    'und Buecher vorzuschlagen. Nutze sie wenn der User danach fragt.'
 )
 
 
@@ -73,11 +79,27 @@ def _append_and_get_history(user_id: int, text: str) -> list[dict]:
 
 def _save_assistant_response(user_id: int, text: str):
     """Speichert die Assistant-Antwort in der History."""
+    _save_history_entry(user_id, {'role': 'assistant', 'content': text})
+
+
+def _save_response_blocks(user_id: int, content_blocks):
+    """Speichert Assistant-Content inkl. tool_use-Blocks in der History."""
+    serialized = _serialize(content_blocks)
+    _save_history_entry(user_id, {'role': 'assistant', 'content': serialized})
+
+
+def _save_tool_results(user_id: int, tool_results: list[dict]):
+    """Speichert tool_result-Blocks als User-Nachricht in der History."""
+    _save_history_entry(user_id, {'role': 'user', 'content': tool_results})
+
+
+def _save_history_entry(user_id: int, entry: dict):
+    """Generischer Helper zum Speichern eines History-Eintrags."""
     def _update(data):
         history = data.setdefault('history', {})
         uid_key = str(user_id)
         msgs = history.setdefault(uid_key, [])
-        msgs.append({'role': 'assistant', 'content': text})
+        msgs.append(entry)
         if len(msgs) > _MAX_HISTORY:
             msgs[:] = msgs[-_MAX_HISTORY:]
         while msgs and msgs[0]['role'] != 'user':
@@ -85,6 +107,40 @@ def _save_assistant_response(user_id: int, text: str):
         return data
 
     atomic_update(CHAT_FILE, _update, default=dict)
+
+
+def _serialize(content_blocks) -> list[dict]:
+    """Anthropic ContentBlocks -> JSON-serialisierbare Dicts."""
+    result = []
+    for block in content_blocks:
+        if hasattr(block, 'type'):
+            if block.type == 'text':
+                result.append({'type': 'text', 'text': block.text})
+            elif block.type == 'tool_use':
+                result.append({
+                    'type': 'tool_use',
+                    'id': block.id,
+                    'name': block.name,
+                    'input': block.input,
+                })
+            else:
+                result.append({'type': block.type})
+        elif isinstance(block, dict):
+            result.append(block)
+        else:
+            result.append({'type': 'text', 'text': str(block)})
+    return result
+
+
+def _extract_text(content_blocks) -> str:
+    """Text-Blocks aus Response extrahieren und zusammenfuegen."""
+    parts = []
+    for block in content_blocks:
+        if hasattr(block, 'type') and block.type == 'text':
+            parts.append(block.text)
+        elif isinstance(block, dict) and block.get('type') == 'text':
+            parts.append(block.get('text', ''))
+    return '\n'.join(parts) if parts else ''
 
 
 def _build_system_prompt(user_id: int) -> str:
@@ -110,24 +166,58 @@ def _build_system_prompt(user_id: int) -> str:
     return system
 
 
-async def _chat_response(user_id: int, text: str) -> str:
-    """Sendet Nachricht an Claude API und gibt die Antwort zurueck."""
+async def _chat_response(user_id: int, text: str, channel=None) -> str:
+    """Sendet Nachricht an Claude API und gibt die Antwort zurueck.
+
+    channel – DM-Channel fuer Tool-Ausfuehrung (None = keine Tools).
+    """
     messages = await asyncio.to_thread(_append_and_get_history, user_id, text)
     system = _build_system_prompt(user_id)
+
     try:
-        response = await _client.messages.create(
-            model=_MODEL,
-            max_tokens=1024,
-            system=system,
-            messages=messages,
-        )
-        reply = response.content[0].text
+        for _ in range(_MAX_TOOL_ROUNDS):
+            api_kwargs = dict(
+                model=_MODEL,
+                max_tokens=1024,
+                system=system,
+                messages=messages,
+            )
+            if channel:
+                api_kwargs['tools'] = TOOLS
+
+            response = await _client.messages.create(**api_kwargs)
+
+            await asyncio.to_thread(
+                _save_response_blocks, user_id, response.content)
+            messages.append({
+                'role': 'assistant',
+                'content': _serialize(response.content),
+            })
+
+            if response.stop_reason != 'tool_use':
+                return _extract_text(response.content)
+
+            # Tools ausfuehren
+            ctx = {'user_id': user_id, 'channel': channel}
+            results = []
+            for block in response.content:
+                if hasattr(block, 'type') and block.type == 'tool_use':
+                    result_str = await execute_tool(block.name, block.input, ctx)
+                    results.append({
+                        'type': 'tool_result',
+                        'tool_use_id': block.id,
+                        'content': result_str,
+                    })
+
+            await asyncio.to_thread(
+                _save_tool_results, user_id, results)
+            messages.append({'role': 'user', 'content': results})
+
+        return 'Anfrage konnte nicht vollstaendig bearbeitet werden.'
+
     except Exception as e:
         log.exception('Claude API Fehler fuer User %s', user_id)
-        reply = 'Entschuldigung, da ist etwas schiefgelaufen. Versuche es spaeter nochmal.'
-
-    await asyncio.to_thread(_save_assistant_response, user_id, reply)
-    return reply
+        return 'Entschuldigung, da ist etwas schiefgelaufen. Versuche es spaeter nochmal.'
 
 
 def setup(bot: commands.Bot):
@@ -150,7 +240,8 @@ def setup(bot: commands.Bot):
             return
 
         async with message.channel.typing():
-            response = await _chat_response(message.author.id, message.content)
+            response = await _chat_response(
+                message.author.id, message.content, channel=message.channel)
             # Discord-Limit: 2000 Zeichen (sauber am Satzende kuerzen)
             if len(response) > 2000:
                 cut = response[:1997]

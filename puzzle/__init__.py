@@ -70,6 +70,7 @@ from .posting import (  # noqa: F401
 from .commands import (  # noqa: F401
     _cmd_puzzle, _cmd_buecher, _cmd_train, _cmd_next,
     _cmd_endless, _cmd_ignore_kapitel, setup,
+    send_next_training,
 )
 
 # Button-View fuer persistente Registrierung in bot.on_ready()

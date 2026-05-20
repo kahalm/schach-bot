@@ -3,72 +3,96 @@
     "difficulty": "Meister",
     "rating": 5,
     "blind": true,
-    "random": true
+    "random": true,
+    "tags": ["Taktik", "Muster"],
+    "description": "100 taktische Muster die jeder Spieler kennen muss"
   },
   "1001 Deadly Checkmates_firstkey.pgn": {
     "difficulty": "Anfänger",
     "rating": 3,
     "blind": false,
-    "random": true
+    "random": true,
+    "tags": ["Taktik", "Mattsetzen"],
+    "description": "1001 Mattaufgaben zum Trainieren der Mustererkennung"
   },
   "The Checkmate Patterns Manual_firstkey.pgn": {
     "difficulty": "Anfänger",
     "rating": 6,
     "blind": true,
-    "random": true
+    "random": true,
+    "tags": ["Taktik", "Mattsetzen", "Muster"],
+    "description": "Umfassendes Handbuch zu Mattmustern"
   },
   "The Ultimate Chess Puzzle Book_firstkey.pgn": {
     "difficulty": "Meister",
     "rating": 2,
     "blind": false,
-    "random": false
+    "random": false,
+    "tags": ["Taktik"],
+    "description": "Anspruchsvolle Puzzle-Sammlung fuer Meisterspieler"
   },
   "The Chess Coach Companion Intermediate Syllabus_firstkey.pgn": {
     "difficulty": "Fortgeschritten",
     "rating": 5,
     "blind": false,
-    "random": false
+    "random": false,
+    "tags": ["Strategie", "Taktik"],
+    "description": "Lehrplan fuer fortgeschrittene Spieler mit Trainer-Begleitung"
   },
   "The Fundamentals 3 Chess Evolution_firstkey.pgn": {
     "difficulty": "Fortgeschritten",
     "rating": 7,
     "blind": false,
-    "random": false
+    "random": false,
+    "tags": ["Strategie", "Mittelspiel"],
+    "description": "Dritter Teil der Fundamentals-Reihe: Schach-Evolution"
   },
   "World Champion Calculation Training - Part 1 Steinitz, Lasker, Capablanca, Alekhine_firstkey.pgn": {
     "difficulty": "Meister",
     "rating": 6,
     "blind": false,
-    "random": false
+    "random": false,
+    "tags": ["Taktik", "Berechnung"],
+    "description": "Berechnungstraining anhand von Weltmeister-Partien (Teil 1)"
   },
   "The Art of Exchanging Pieces_firstkey.pgn": {
     "difficulty": "Fortgeschritten",
     "rating": 4,
     "blind": true,
-    "random": true
+    "random": true,
+    "tags": ["Strategie", "Abtausch"],
+    "description": "Die Kunst des Figurentauschs"
   },
   "Basic Endgames_firstkey.pgn": {
     "difficulty": "Anfänger",
     "rating": 5,
     "blind": true,
-    "random": false
+    "random": false,
+    "tags": ["Endspiel"],
+    "description": "Grundlegende Endspiele fuer Einsteiger"
   },
   "The Fundamentals 1 Build Up Your Chess_firstkey.pgn": {
     "difficulty": "Anfänger",
     "rating": 7,
     "blind": true,
-    "random": false
+    "random": false,
+    "tags": ["Strategie", "Grundlagen"],
+    "description": "Erster Teil der Fundamentals-Reihe: Schach aufbauen"
   },
   "The Fundamentals 2 Boost Your Chess_firstkey.pgn": {
     "difficulty": "Fortgeschritten",
     "rating": 7,
     "blind": false,
-    "random": false
+    "random": false,
+    "tags": ["Strategie", "Mittelspiel"],
+    "description": "Zweiter Teil der Fundamentals-Reihe: Schach verbessern"
   },
   "1001 Chess Exercises For Club Players_firstkey.pgn": {
     "difficulty": "Fortgeschritten",
     "rating": 6,
     "blind": false,
-    "random": true
+    "random": true,
+    "tags": ["Taktik"],
+    "description": "1001 Uebungen fuer Vereinsspieler"
   }
 }

@@ -4,6 +4,15 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.32.0] - 2026-05-20
+### Added
+- Chat-Tools: KI-Schachtrainer kann jetzt per Anthropic Tool Use echte Bot-Funktionen ausfuehren — Puzzles senden (`send_puzzle`, `send_next`), Training verwalten (`set_training`, `get_training_status`) und Buecher vorschlagen (`list_books`, `suggest_book`)
+- Neue Datei `commands/chat_tools.py` mit 6 Tool-Schemas und Executor
+- `send_next_training()` als wiederverwendbare Funktion aus `/next` extrahiert
+- `books.json` um optionale Felder `tags` und `description` pro Buch erweitert
+- Tool-Use-Loop in `commands/chat.py` mit max. 5 Runden pro Nachricht
+- History-Format erweitert fuer Tool-Use-Blocks (backward-kompatibel mit alten String-Eintraegen)
+
 ## [2.31.1] - 2026-05-20
 ### Fixed
 - Tests: Hardcodierte Datumswerte in Turnier-Parse-Tests durch dynamische Zukunftsdaten ersetzt — Tests liefen nach dem 14.05.2026 fehl

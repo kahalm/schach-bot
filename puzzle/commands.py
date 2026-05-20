@@ -387,31 +387,32 @@ async def _cmd_train(interaction: discord.Interaction, buch: int = None):
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 
-async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
-    await interaction.response.defer(ephemeral=True)
-    user_id = interaction.user.id
-    anzahl = max(1, min(anzahl, 20))
+async def send_next_training(channel, user_id: int, count: int = 1) -> dict:
+    """Sendet naechste Training-Puzzles. Gibt Status-Dict zurueck.
+
+    Returns: {'sent': int, 'new_position': int, 'total': int,
+              'book': str, 'finished': bool}
+    """
+    count = max(1, min(count, 20))
 
     training = _pkg._get_user_training(user_id)
     if not training:
-        await interaction.followup.send(
-            '⚠️ Kein Trainingsbuch gewählt. Nutze `/train <buch>` zuerst.',
-            ephemeral=True)
-        return
+        return {'sent': 0, 'new_position': 0, 'total': 0, 'book': '', 'finished': False,
+                'error': 'Kein Trainingsbuch gewaehlt.'}
 
     book_filename = training['book']
     position = training.get('position', 0)
 
-    results = await asyncio.to_thread(_pkg.pick_sequential_lines, book_filename, position, anzahl)
+    results = await asyncio.to_thread(_pkg.pick_sequential_lines, book_filename, position, count)
+    all_book_lines = await asyncio.to_thread(_pkg.load_all_lines)
+    total_in_book = sum(1 for lid, _ in all_book_lines
+                        if lid.startswith(book_filename + ':'))
+
     if not results:
         name = _pkg._clean_book_name(book_filename)
-        # Position auf 0 zurücksetzen
         _pkg._set_user_training(user_id, book_filename, 0)
-        await interaction.followup.send(
-            f'✅ Alle Linien in **{name}** durchgearbeitet! '
-            f'Nutze `/train` erneut zum Zurücksetzen oder wähle ein neues Buch.',
-            ephemeral=True)
-        return
+        return {'sent': 0, 'new_position': 0, 'total': total_in_book,
+                'book': name, 'finished': True}
 
     # Position updaten
     new_position = position + len(results)
@@ -436,7 +437,7 @@ async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
     upload_pairs = [(g, c) for g, c, _, _, _ in puzzles]
     urls = await _pkg._upload_puzzles_async(upload_pairs, reuse_study_id=reuse_study_id)
 
-    # Studie-ID + Zähler speichern
+    # Studie-ID + Zaehler speichern
     first_url = urls[0] if urls else None
     sid = _pkg._extract_study_id(first_url) if first_url else None
     if sid:
@@ -445,11 +446,6 @@ async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
                            base_total + len(puzzles))
 
     # DM senden
-    dm = await interaction.user.create_dm()
-    all_book_lines = await asyncio.to_thread(_pkg.load_all_lines)
-    total_in_book = sum(1 for lid, _ in all_book_lines
-                        if lid.startswith(book_filename + ':'))
-
     from puzzle.buttons import fresh_view as _fresh_button_view
 
     puzzle_count = 0
@@ -458,7 +454,6 @@ async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
         is_chapter = context is None  # kein [%tqu] → Kapitel
 
         if is_chapter:
-            # Kapitel: Züge offen anzeigen, keine Puzzle-Buttons
             h = dict(game.headers)
             chapter_name = h.get('White', h.get('Event', 'Kapitel'))
             embed = discord.Embed(
@@ -469,9 +464,9 @@ async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
             pgn_moves = _pkg._solution_pgn(game)
             if pgn_moves:
                 embed.add_field(name='Züge', value=f'`{pgn_moves}`', inline=False)
-            msg = await dm.send(embed=embed)
+            msg = await channel.send(embed=embed)
             if puzzle_url:
-                await dm.send(f'[Auf Lichess ansehen]({puzzle_url})')
+                await channel.send(f'[Auf Lichess ansehen]({puzzle_url})')
         else:
             puzzle_count += 1
             puzzle_num = base_count + puzzle_count
@@ -489,21 +484,52 @@ async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
             if img:
                 file = discord.File(img, filename='board.png')
                 embed.set_image(url='attachment://board.png')
-                msg = await dm.send(file=file, embed=embed)
+                msg = await channel.send(file=file, embed=embed)
             else:
-                msg = await dm.send(embed=embed)
+                msg = await channel.send(embed=embed)
             _pkg._register_puzzle_msg(msg.id, lid)
             await msg.edit(view=_fresh_button_view())
 
-            # PGN-Lösung, Prelude, Lichess-Link
-            await _pkg._send_puzzle_followups(dm, game, context, puzzle_url, lid)
+            # PGN-Loesung, Prelude, Lichess-Link
+            await _pkg._send_puzzle_followups(channel, game, context, puzzle_url, lid)
 
     if puzzle_count:
         stats.inc(user_id, 'puzzles', puzzle_count)
     name = _pkg._clean_book_name(book_filename)
+
+    return {'sent': len(results), 'new_position': new_position,
+            'total': total_in_book, 'book': name, 'finished': False}
+
+
+async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
+    await interaction.response.defer(ephemeral=True)
+    user_id = interaction.user.id
+
+    training = _pkg._get_user_training(user_id)
+    if not training:
+        await interaction.followup.send(
+            '⚠️ Kein Trainingsbuch gewählt. Nutze `/train <buch>` zuerst.',
+            ephemeral=True)
+        return
+
+    dm = await interaction.user.create_dm()
+    result = await send_next_training(dm, user_id, anzahl)
+
+    if result.get('error'):
+        await interaction.followup.send(
+            f'⚠️ {result["error"]}', ephemeral=True)
+        return
+
+    if result['finished']:
+        await interaction.followup.send(
+            f'✅ Alle Linien in **{result["book"]}** durchgearbeitet! '
+            f'Nutze `/train` erneut zum Zurücksetzen oder wähle ein neues Buch.',
+            ephemeral=True)
+        return
+
     await interaction.followup.send(
-        f'✅ {len(results)} Linie(n) aus **{name}** per DM gesendet '
-        f'({new_position}/{total_in_book}).',
+        f'✅ {result["sent"]} Linie(n) aus **{result["book"]}** per DM gesendet '
+        f'({result["new_position"]}/{result["total"]}).',
         ephemeral=True)
 
 
