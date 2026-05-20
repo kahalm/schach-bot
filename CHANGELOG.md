@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.31.1] - 2026-05-20
+### Fixed
+- Tests: Hardcodierte Datumswerte in Turnier-Parse-Tests durch dynamische Zukunftsdaten ersetzt — Tests liefen nach dem 14.05.2026 fehl
+
 ## [2.31.0] - 2026-05-20
 ### Added
 - Spieler-Tagging bei Turnier-Freigabe: "Freigeben"-Button oeffnet jetzt ein Modal mit optionalem Spieler-Feld (kommagetrennt). Aufgeloeste Spieler werden im Channel-Post als Mentions getaggt. Nicht-aufloesbare Namen werden als Warnung im DM-Embed angezeigt.

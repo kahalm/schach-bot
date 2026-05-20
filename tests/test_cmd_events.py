@@ -165,16 +165,25 @@ def test_schachrallye():
             # Fake-HTML mit Rallye, Turnier+Link, Training, OeM (letzte 2 = rausgefiltert)
             future2 = (date.today() + timedelta(days=60)).strftime('%d.%m.%Y')
             future3 = (date.today() + timedelta(days=90)).strftime('%d.%m.%Y')
+            future4 = date.today() + timedelta(days=70)
+            future4_str = future4.strftime('%d.%m.%Y')
+            future5_start = date.today() + timedelta(days=80)
+            future5_end = future5_start + timedelta(days=4)
+            future5_range = f'{future5_start.day}.-{future5_end.day}.{future5_end.strftime("%m.%Y")}'
+            past_date = (date.today() - timedelta(days=30)).strftime('%d.%m.%Y')
+            past_range_start = date.today() - timedelta(days=20)
+            past_range_end = past_range_start + timedelta(days=3)
+            past_range = f'{past_range_start.strftime("%d.%m.")}-{past_range_end.strftime("%d.%m.%Y")}'  # z.B. "30.04.-03.05.2026"
             fake_html = (
                 '<table>'
                 '<tr><th>Datum</th><th>Veranstaltung</th><th>Ort</th></tr>'
                 f'<tr><td>{future2}</td><td>5. Jugendschachrallye</td>'
                 '<td>SK Jenbach</td></tr>'
-                '<tr><td>14.05.2026</td>'
+                f'<tr><td>{future4_str}</td>'
                 '<td><a href="https://example.com/ausschreibung.pdf">'
                 'Staatsmeisterschaft Schnellschach</a></td>'
                 '<td>PlusCity Linz</td></tr>'
-                '<tr><td>20.-24.05.2026</td><td>Mannschaftsturnier</td>'
+                f'<tr><td>{future5_range}</td><td>Mannschaftsturnier</td>'
                 '<td>Leutasch</td></tr>'
                 f'<tr><td>{future3}</td><td>Offenes Blitzturnier</td>'
                 '<td>Innsbruck</td></tr>'
@@ -184,9 +193,9 @@ def test_schachrallye():
                 '<td>Schwaz</td></tr>'
                 f'<tr><td>{future2}</td><td>Blitzschach-Einzelmeisterschaft U08-U18</td>'
                 '<td>Innsbruck</td></tr>'
-                '<tr><td>26.04.2026</td><td>Kadertraining Gruppe Bauer</td>'
+                f'<tr><td>{past_date}</td><td>Kadertraining Gruppe Bauer</td>'
                 '<td>Kufstein</td></tr>'
-                '<tr><td>22.05.-25.05.2026</td>'
+                f'<tr><td>{past_range}</td>'
                 '<td>Österreichische Meisterschaften U08/ U10</td>'
                 '<td>Fuerstenfeld</td></tr>'
                 '</table>'
@@ -266,7 +275,7 @@ def test_schachrallye():
                 # Datumsbereich korrekt geparst?
                 mannschaft = [e for e in all_events if 'Mannschaft' in e.get('name', '')]
                 check('parse → Datumsbereich geparst',
-                      len(mannschaft) == 1 and mannschaft[0].get('datum_text') == '20.-24.05.2026')
+                      len(mannschaft) == 1 and mannschaft[0].get('datum_text') == future5_range)
                 check('parse → kein Link wenn keiner da',
                       len(mannschaft) == 1 and mannschaft[0].get('link', '') == '')
 
