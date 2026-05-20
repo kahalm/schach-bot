@@ -64,6 +64,7 @@ from .posting import (  # noqa: F401
     _send_puzzle_followups, post_next_endless,
     _resilient_send, _send_optional,
     post_puzzle, post_blind_puzzle,
+    _build_puzzle_context,
 )
 
 # --- Slash-Commands ---

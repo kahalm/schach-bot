@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.33.2] - 2026-05-20
+### Fixed
+- Puzzle-Kontext fehlte nach `/puzzle id:`, `/puzzle id:blind:` und `/next` — der KI-Chat hatte keine Info zum aktiven Puzzle. `save_puzzle_context()` wird jetzt in allen Puzzle-Sende-Pfaden aufgerufen.
+
 ## [2.33.1] - 2026-05-20
 ### Changed
 - `analyze_move`: Bei korrektem Zug wird jetzt auch der Gegenzug aus der Loesung zurueckgegeben (`opponent_reply_san`), damit Claude die Fortsetzung erklaeren kann

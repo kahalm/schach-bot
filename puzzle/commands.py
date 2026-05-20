@@ -96,6 +96,9 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
                 else:
                     msg = await _pkg._resilient_send(dm, embed=embed)
                 _pkg._register_puzzle_msg(msg.id, line_id, mode='blind')
+                _pkg.save_puzzle_context(target_uid,
+                    _pkg._build_puzzle_context(puzzle_game, blind_board.turn,
+                                               diff, line_id, include_solution=False))
                 try:
                     from puzzle.buttons import fresh_view as _fresh_button_view
                     await msg.edit(view=_fresh_button_view())
@@ -137,6 +140,7 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
             else:
                 msg = await dm.send(embed=embed)
             _pkg._register_puzzle_msg(msg.id, line_id)
+            _pkg.save_puzzle_context(target_uid, _pkg._build_puzzle_context(game, turn, diff, line_id))
             from puzzle.buttons import fresh_view as _fresh_button_view
             await msg.edit(view=_fresh_button_view())
 
@@ -488,6 +492,7 @@ async def send_next_training(channel, user_id: int, count: int = 1) -> dict:
             else:
                 msg = await channel.send(embed=embed)
             _pkg._register_puzzle_msg(msg.id, lid)
+            _pkg.save_puzzle_context(user_id, _pkg._build_puzzle_context(game, turn, d, lid))
             await msg.edit(view=_fresh_button_view())
 
             # PGN-Loesung, Prelude, Lichess-Link
