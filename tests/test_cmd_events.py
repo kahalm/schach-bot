@@ -659,6 +659,178 @@ def test_turnier_review():
     print()
 
 
+def test_turnier_approve_modal():
+    """Tests fuer Spieler-Tagging bei Turnier-Freigabe (Modal)."""
+    print('[turnier_approve_modal]')
+    tmpdir = setup_temp_config()
+    try:
+        from commands.turnier_buttons import (
+            _handle_review, _execute_approve, _resolve_player_names,
+            TurnierApproveModal, configure as _configure_buttons,
+        )
+        from core.json_store import atomic_update, atomic_write
+
+        # Setup: Bot mit Guild-Members konfigurieren
+        fake_channel = FakeChannel(channel_id=55555)
+
+        class FakeGuild:
+            def __init__(self, members):
+                self.members = members
+
+        member_max = FakeMember(uid=1001, name='Max')
+        member_lisa = FakeMember(uid=1002, name='Lisa')
+        member_thomas = FakeMember(uid=1003, name='Thomas')
+        fake_guild = FakeGuild([member_max, member_lisa, member_thomas])
+
+        fake_bot = MagicMock()
+        fake_bot.guilds = [fake_guild]
+        fake_bot.get_channel = lambda cid: fake_channel if cid == 55555 else None
+        fake_bot.get_user = lambda uid: FakeMember(uid=uid, name=f'User_{uid}')
+        _configure_buttons(fake_bot, 55555)
+
+        # Auch schachrallye Modul konfigurieren
+        old_bot = schachrallye_mod._bot
+        old_cid = schachrallye_mod._tournament_channel_id
+        schachrallye_mod._bot = fake_bot
+        schachrallye_mod._tournament_channel_id = 55555
+
+        # Event anlegen (pending)
+        event_data = {
+            "events": [
+                {"id": 42, "datum": "2026-07-01", "datum_text": "01.07.2026",
+                 "name": "Testturnier Modal", "ort": "Innsbruck",
+                 "link": "", "tags": ["schnellschach"], "approved": False},
+            ],
+            "subscribers": {"schnellschach": [9999]},
+            "reviewers": [11111],
+            "next_id": 43,
+        }
+        atomic_write(schachrallye_mod.TURNIER_FILE, event_data)
+
+        # --- Test 1: Approve-Button oeffnet Modal (statt direktem Approve) ---
+        fake_embed = h.FakeEmbed(title='Testturnier Modal')
+        fake_embed.set_footer(text='Event #42')
+        fake_msg = MagicMock()
+        fake_msg.embeds = [fake_embed]
+
+        ia = make_interaction(user=FakeMember(uid=11111, name='Admin', admin=True))
+        ia.message = fake_msg
+        run_async(_handle_review(ia, 'approve'))
+        check('Approve → Modal geoeffnet',
+              len(ia.response.calls) == 1
+              and ia.response.calls[0].get('type') == 'send_modal')
+        modal = ia.response.calls[0].get('modal')
+        check('Modal ist TurnierApproveModal',
+              isinstance(modal, TurnierApproveModal))
+
+        # --- Test 2: _resolve_player_names findet Guild-Member ---
+        found_ids, not_found = _resolve_player_names(fake_bot, ['Max', 'Lisa'])
+        check('resolve findet Max + Lisa',
+              1001 in found_ids and 1002 in found_ids and len(not_found) == 0)
+
+        # Case-insensitive
+        found_ids2, not_found2 = _resolve_player_names(fake_bot, ['max', 'THOMAS'])
+        check('resolve case-insensitive',
+              1001 in found_ids2 and 1003 in found_ids2)
+
+        # Nicht-aufloesbar
+        found_ids3, not_found3 = _resolve_player_names(fake_bot, ['Max', 'Xyz'])
+        check('resolve nicht-aufloesbar',
+              1001 in found_ids3 and 'Xyz' in not_found3)
+
+        # --- Test 3: Leeres Spieler-Feld → normales Approve ohne extra Mentions ---
+        # Reset event to pending
+        atomic_write(schachrallye_mod.TURNIER_FILE, event_data)
+        fake_channel.sent.clear()
+
+        fake_embed2 = h.FakeEmbed(title='Testturnier Modal')
+        fake_embed2.set_footer(text='Event #42')
+        fake_msg2 = MagicMock()
+        fake_msg2.embeds = [fake_embed2]
+
+        ia2 = make_interaction(user=FakeMember(uid=11111, name='Admin', admin=True))
+        ia2.edit_original_response = AsyncMock()
+        run_async(_execute_approve(ia2, fake_msg2, 42, ''))
+
+        # Channel-Post gesendet?
+        check('Leeres Feld → Channel-Post gesendet', len(fake_channel.sent) >= 1)
+        # Nur Subscriber-Mentions, keine extra
+        post_content = fake_channel.sent[-1].content or '' if fake_channel.sent else ''
+        check('Leeres Feld → nur Subscriber-Mentions',
+              '<@9999>' in post_content)
+        check('Leeres Feld → kein extra Mention',
+              '<@1001>' not in post_content and '<@1002>' not in post_content)
+
+        # DM-Embed: freigegeben ohne Spieler-Suffix
+        check('Leeres Feld → Titel "freigegeben"',
+              'freigegeben' in (fake_embed2.title or ''))
+        check('Leeres Feld → kein Spieler im Titel',
+              'Spieler' not in (fake_embed2.title or ''))
+
+        # --- Test 4: Mit Spielernamen → extra Mentions im Channel-Post ---
+        # Reset
+        def _reset(data):
+            for e in data.get('events', []):
+                if e['id'] == 42:
+                    e['approved'] = False
+            return data
+        atomic_update(schachrallye_mod.TURNIER_FILE, _reset)
+        fake_channel.sent.clear()
+
+        fake_embed3 = h.FakeEmbed(title='Testturnier Modal')
+        fake_embed3.set_footer(text='Event #42')
+        fake_msg3 = MagicMock()
+        fake_msg3.embeds = [fake_embed3]
+
+        ia3 = make_interaction(user=FakeMember(uid=11111, name='Admin', admin=True))
+        ia3.edit_original_response = AsyncMock()
+        run_async(_execute_approve(ia3, fake_msg3, 42, 'Max, Lisa'))
+
+        check('Mit Spielern → Channel-Post gesendet', len(fake_channel.sent) >= 1)
+        post_content3 = fake_channel.sent[-1].content or '' if fake_channel.sent else ''
+        check('Mit Spielern → Max getaggt', '<@1001>' in post_content3)
+        check('Mit Spielern → Lisa getaggt', '<@1002>' in post_content3)
+        check('Mit Spielern → Subscriber auch getaggt', '<@9999>' in post_content3)
+
+        # DM-Embed: freigegeben mit Spieler-Suffix
+        check('Mit Spielern → Titel enthaelt Spieler',
+              'Spieler: Max, Lisa' in (fake_embed3.title or ''))
+
+        # --- Test 5: Nicht-aufloesbare Namen → Warnung im DM-Embed ---
+        def _reset2(data):
+            for e in data.get('events', []):
+                if e['id'] == 42:
+                    e['approved'] = False
+            return data
+        atomic_update(schachrallye_mod.TURNIER_FILE, _reset2)
+        fake_channel.sent.clear()
+
+        fake_embed4 = h.FakeEmbed(title='Testturnier Modal')
+        fake_embed4.set_footer(text='Event #42')
+        fake_msg4 = MagicMock()
+        fake_msg4.embeds = [fake_embed4]
+
+        ia4 = make_interaction(user=FakeMember(uid=11111, name='Admin', admin=True))
+        ia4.edit_original_response = AsyncMock()
+        run_async(_execute_approve(ia4, fake_msg4, 42, 'Max, Xyz'))
+
+        check('Nicht-aufloesbar → Warnung in Description',
+              'Nicht gefunden: Xyz' in (fake_embed4.description or ''))
+        check('Nicht-aufloesbar → Max trotzdem getaggt',
+              '<@1001>' in (fake_channel.sent[-1].content or '') if fake_channel.sent else False)
+        check('Nicht-aufloesbar → Titel zeigt nur aufgeloeste Spieler',
+              'Spieler: Max' in (fake_embed4.title or '')
+              and 'Xyz' not in (fake_embed4.title or '').split('Spieler:')[1] if 'Spieler:' in (fake_embed4.title or '') else False)
+
+        # Aufraumen
+        schachrallye_mod._bot = old_bot
+        schachrallye_mod._tournament_channel_id = old_cid
+
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_wochenpost():
     """Tests fuer /wochenpost, /wochenpost_add, /wochenpost_del + Loop."""
     print('[/wochenpost]')

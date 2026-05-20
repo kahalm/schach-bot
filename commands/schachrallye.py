@@ -282,7 +282,7 @@ def _fetch_termine() -> list[dict]:
 # Post-Logik (Modul-Ebene, importiert von turnier_buttons.py)
 # ---------------------------------------------------------------------------
 
-async def _post_approved_event(event: dict):
+async def _post_approved_event(event: dict, extra_mention_ids: set | None = None):
     """Postet ein freigegebenes Event im Tournament-Channel mit Mentions."""
     if not _tournament_channel_id:
         return
@@ -304,6 +304,8 @@ async def _post_approved_event(event: dict):
     mention_ids = set()
     for t in tags:
         mention_ids.update(subs_data.get(t, []))
+    if extra_mention_ids:
+        mention_ids.update(extra_mention_ids)
     mention_text = (' '.join(f'<@{uid}>' for uid in mention_ids)
                     if mention_ids else '')
     embed = discord.Embed(

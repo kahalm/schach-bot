@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.31.0] - 2026-05-20
+### Added
+- Spieler-Tagging bei Turnier-Freigabe: "Freigeben"-Button oeffnet jetzt ein Modal mit optionalem Spieler-Feld (kommagetrennt). Aufgeloeste Spieler werden im Channel-Post als Mentions getaggt. Nicht-aufloesbare Namen werden als Warnung im DM-Embed angezeigt.
+
 ## [2.30.0] - 2026-05-14
 ### Changed
 - `docker-compose.yml`: `env_file` durch `environment` mit `${VAR}`-Syntax ersetzt — kompatibel mit Stack-Managern (Portainer, Dockge, Arcane)

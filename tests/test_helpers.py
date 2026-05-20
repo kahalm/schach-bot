@@ -135,9 +135,30 @@ class FakeButton:
         self.row = kw.get('row')
         self.callback = None
 
+
+class FakeModal:
+    def __init__(self, **kw):
+        self.title = kw.get('title', '')
+        self.children = []
+
+    def add_item(self, item):
+        self.children.append(item)
+
+
+class FakeTextInput:
+    def __init__(self, **kw):
+        self.label = kw.get('label', '')
+        self.placeholder = kw.get('placeholder', '')
+        self.required = kw.get('required', True)
+        self.style = kw.get('style', None)
+        self.default = kw.get('default', '')
+        self.value = ''
+
 _ui.View = FakeView
 _ui.Select = FakeSelect
 _ui.Button = FakeButton
+_ui.Modal = FakeModal
+_ui.TextInput = FakeTextInput
 _ui.button = lambda **kw: _passthrough_single
 
 # discord.ext.commands
@@ -225,7 +246,7 @@ class _CapturingBot:
 
     @property
     def guilds(self):
-        return []
+        return self._guilds if hasattr(self, '_guilds') else []
 
     @property
     def user(self):
@@ -248,6 +269,9 @@ class FakeResponse:
 
     async def edit_message(self, **kwargs):
         self.calls.append({'type': 'edit_message', **kwargs})
+
+    async def send_modal(self, modal):
+        self.calls.append({'type': 'send_modal', 'modal': modal})
 
 
 class FakeFollowup:
