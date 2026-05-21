@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.34.4] - 2026-05-21
+### Fixed
+- Puzzle-Kontext wird jetzt auf Disk persistiert (`config/puzzle_context.json`) — ueberlebt Bot-Neustarts. Vorher ging der Kontext bei jedem Restart verloren und `analyze_move` meldete "Kein aktives Puzzle vorhanden."
+
 ## [2.34.3] - 2026-05-21
 ### Fixed
 - `_uci_line_to_san` fängt ungültige UCI-Züge ab statt ValueError-Crash

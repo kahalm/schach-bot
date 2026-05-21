@@ -309,21 +309,43 @@ def _clear_user_training(user_id: int):
 # ---------------------------------------------------------------------------
 # Puzzle-Kontext fuer KI-Chat
 # ---------------------------------------------------------------------------
-_PUZZLE_CTX_CAP = 200  # max. Eintraege im Puzzle-Kontext-Cache
+PUZZLE_CONTEXT_FILE = os.path.join(CONFIG_DIR, 'puzzle_context.json')
+
+_PUZZLE_CTX_CAP = 200  # max. Eintraege im In-Memory-Cache
 _last_puzzle_context: OrderedDict[int, dict] = OrderedDict()  # user_id → puzzle info
 _last_channel_puzzle: dict | None = None      # letztes Channel-Puzzle (global)
 
 
 def save_puzzle_context(user_id: int | None, info: dict):
-    """Speichert Puzzle-Kontext. user_id=None fuer Channel-Posts."""
+    """Speichert Puzzle-Kontext (In-Memory + Disk). user_id=None fuer Channel-Posts."""
     global _last_channel_puzzle
     _last_channel_puzzle = info
     if user_id is not None:
         _last_puzzle_context[user_id] = info
         while len(_last_puzzle_context) > _PUZZLE_CTX_CAP:
             _last_puzzle_context.popitem(last=False)
+        # Auf Disk persistieren (ueberlebt Bot-Neustarts)
+        def _persist(data):
+            data[str(user_id)] = info
+            # Disk-Datei ebenfalls begrenzen
+            if len(data) > _PUZZLE_CTX_CAP:
+                keys = list(data.keys())
+                for k in keys[:len(data) - _PUZZLE_CTX_CAP]:
+                    del data[k]
+            return data
+        atomic_update(PUZZLE_CONTEXT_FILE, _persist)
 
 
 def get_puzzle_context(user_id: int) -> dict | None:
-    """Gibt Puzzle-Kontext zurueck: zuerst per-User, dann Channel-Fallback."""
-    return _last_puzzle_context.get(user_id) or _last_channel_puzzle
+    """Gibt Puzzle-Kontext zurueck: In-Memory → Disk → Channel-Fallback."""
+    ctx = _last_puzzle_context.get(user_id)
+    if ctx:
+        return ctx
+    # Fallback: von Disk laden (nach Bot-Neustart)
+    disk = atomic_read(PUZZLE_CONTEXT_FILE)
+    if isinstance(disk, dict):
+        ctx = disk.get(str(user_id))
+        if ctx:
+            _last_puzzle_context[user_id] = ctx
+            return ctx
+    return _last_channel_puzzle

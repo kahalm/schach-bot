@@ -396,6 +396,7 @@ def setup_temp_config():
     _patch_file_constant('commands.elo', 'ELO_FILE', tmpdir)
     # resourcen/youtube nutzen jetzt _collection._json_path() mit CONFIG_DIR zur Laufzeit
     _patch_file_constant('commands.wanted', 'WANTED_FILE', tmpdir)
+    _patch_file_constant('puzzle.state', 'PUZZLE_CONTEXT_FILE', tmpdir)
     _patch_file_constant('commands.reminder', 'REMINDER_FILE', tmpdir)
     _patch_file_constant('commands.schachrallye', 'TURNIER_FILE', tmpdir)
     _patch_file_constant('commands.wochenpost', 'WOCHENPOST_FILE', tmpdir)
