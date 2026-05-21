@@ -366,8 +366,10 @@ def _fetch_cloud_eval(fen: str) -> dict | None:
         )
         if resp.status_code == 200:
             return resp.json()
+        log.debug('Cloud-Eval %d fuer FEN %s', resp.status_code, fen)
         return None
-    except Exception:
+    except Exception as e:
+        log.debug('Cloud-Eval Fehler fuer FEN %s: %s', fen, e)
         return None
 
 
@@ -381,7 +383,14 @@ def _uci_line_to_san(fen: str, uci_moves_str: str) -> list[str]:
     board = chess.Board(fen)
     san_moves = []
     for uci_str in uci_moves_str.strip().split():
-        move = chess.Move.from_uci(uci_str)
+        try:
+            move = chess.Move.from_uci(uci_str)
+        except (chess.InvalidMoveError, ValueError):
+            log.debug('Ungueltiger UCI-Zug: %r', uci_str)
+            break
+        if move not in board.legal_moves:
+            log.debug('Illegaler UCI-Zug: %r in FEN %s', uci_str, board.fen())
+            break
         san_moves.append(board.san(move))
         board.push(move)
     return san_moves
@@ -523,17 +532,20 @@ def _analyze_move_sync(move_str: str, user_id: int, fen_override: str | None = N
         elif 'mate' in pv:
             result['eval_mate'] = -pv['mate']
         # Beste Antwort / Linie
-        moves_uci = pv.get('moves', '')
+        moves_uci = pv.get('moves', '').strip()
         if moves_uci:
             san_line = _uci_line_to_san(eval_fen, moves_uci)
             if san_line:
                 result['best_response_san'] = san_line[0]
                 result['best_line_san'] = ' '.join(san_line)
                 # FEN nach User-Zug + Gegenzug fuer Folgezug-Analyse
-                response_uci = moves_uci.strip().split()[0]
-                response_move = chess.Move.from_uci(response_uci)
-                board.push(response_move)
-                result['fen_after_response'] = board.fen()
+                uci_parts = moves_uci.split()
+                try:
+                    response_move = chess.Move.from_uci(uci_parts[0])
+                    board.push(response_move)
+                    result['fen_after_response'] = board.fen()
+                except (chess.InvalidMoveError, ValueError) as e:
+                    log.debug('Cloud-Eval Gegenzug ungueltig: %s', e)
 
     return result
 

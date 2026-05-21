@@ -309,7 +309,8 @@ def _clear_user_training(user_id: int):
 # ---------------------------------------------------------------------------
 # Puzzle-Kontext fuer KI-Chat
 # ---------------------------------------------------------------------------
-_last_puzzle_context: dict[int, dict] = {}   # user_id → puzzle info
+_PUZZLE_CTX_CAP = 200  # max. Eintraege im Puzzle-Kontext-Cache
+_last_puzzle_context: OrderedDict[int, dict] = OrderedDict()  # user_id → puzzle info
 _last_channel_puzzle: dict | None = None      # letztes Channel-Puzzle (global)
 
 
@@ -319,6 +320,8 @@ def save_puzzle_context(user_id: int | None, info: dict):
     _last_channel_puzzle = info
     if user_id is not None:
         _last_puzzle_context[user_id] = info
+        while len(_last_puzzle_context) > _PUZZLE_CTX_CAP:
+            _last_puzzle_context.popitem(last=False)
 
 
 def get_puzzle_context(user_id: int) -> dict | None:

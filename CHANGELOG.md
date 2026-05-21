@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.34.3] - 2026-05-21
+### Fixed
+- `_uci_line_to_san` fängt ungültige UCI-Züge ab statt ValueError-Crash
+- `_analyze_move_sync` Crash bei leerer/whitespace-only PV-Zeile von Lichess Cloud-Eval behoben
+- Logging in `_fetch_cloud_eval` bei Fehlern und non-200 Responses
+- Memory-Limit (200 Einträge) für `_last_puzzle_context` — verhindert unbegrenztes Wachstum
+
+### Added
+- Tests: leere PV, whitespace PV, ungültiger UCI, Rochade, Promotion, Matt-Eval, leere pvs-Liste
+
 ## [2.34.2] - 2026-05-21
 ### Fixed
 - `analyze_move` Solution-Parsing robuster: Fallback auf direktes SAN-Token-Parsing wenn PGN-Parser versagt (z.B. bei Zugnummern-Mismatch). Vorher wurden korrekte Zuege faelschlich als falsch gemeldet.

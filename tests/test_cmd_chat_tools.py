@@ -584,3 +584,77 @@ def test_uci_line_to_san():
     # Leerer String
     san_empty = _uci_line_to_san(fen, '')
     check('UCI→SAN leer → leere Liste', san_empty == [])
+
+    # Nur Whitespace
+    san_ws = _uci_line_to_san(fen, '   ')
+    check('UCI→SAN whitespace → leere Liste', san_ws == [])
+
+    # Ungueltiger UCI mittendrin → bricht ab, gibt bisherige Zuege zurueck
+    san_bad = _uci_line_to_san(fen, 'e7e5 XXXX b8c6')
+    check('UCI→SAN bad mid → 1 Zug', len(san_bad) == 1)
+    check('UCI→SAN bad mid → erster Zug ok', san_bad[0] == 'e5')
+
+    # Rochade
+    fen_castle = 'r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1'
+    san_castle = _uci_line_to_san(fen_castle, 'e1g1')
+    check('UCI→SAN Rochade', len(san_castle) == 1)
+    check('UCI→SAN Rochade → O-O', san_castle[0] == 'O-O')
+
+    # Promotion
+    fen_promo = '8/P7/8/8/8/8/8/4K2k w - - 0 1'
+    san_promo = _uci_line_to_san(fen_promo, 'a7a8q')
+    check('UCI→SAN Promotion', len(san_promo) == 1)
+    check('UCI→SAN Promotion → a8=Q+', san_promo[0] == 'a8=Q+')
+
+
+def test_analyze_move_edge_cases():
+    """Test fuer analyze_move Edge Cases: leere PV, Matt-Eval."""
+    print('[analyze_move_edge_cases]')
+    from commands.chat_tools import _analyze_move_sync
+
+    fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+    solution = 'e4 e5 Nf3'
+    ctx_puzzle = {
+        'fen': fen, 'solution': solution,
+        'book': 'Test', 'chapter': 'Kap 1',
+        'turn': 'Weiss', 'difficulty': 'Anfaenger',
+    }
+
+    # 1. Cloud-Eval mit leerer moves-Zeile
+    mock_empty_pv = {'depth': 30, 'pvs': [{'cp': 10, 'moves': ''}]}
+    with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle), \
+         patch('commands.chat_tools._fetch_cloud_eval', return_value=mock_empty_pv):
+        r = _analyze_move_sync('d4', 42)
+    check('leere PV → kein Crash', 'error' not in r)
+    check('leere PV → is_correct=False', r.get('is_correct') is False)
+    check('leere PV → kein best_response_san', 'best_response_san' not in r)
+    check('leere PV → kein fen_after_response', 'fen_after_response' not in r)
+
+    # 2. Cloud-Eval mit whitespace-only moves
+    mock_ws_pv = {'depth': 30, 'pvs': [{'cp': 10, 'moves': '   '}]}
+    with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle), \
+         patch('commands.chat_tools._fetch_cloud_eval', return_value=mock_ws_pv):
+        r = _analyze_move_sync('d4', 42)
+    check('whitespace PV → kein Crash', 'error' not in r)
+    check('whitespace PV → kein best_response_san', 'best_response_san' not in r)
+
+    # 3. Matt-Eval (mate statt cp)
+    mock_mate = {
+        'depth': 40,
+        'pvs': [{'mate': -3, 'moves': 'e7e5 g1f3 b8c6'}],
+    }
+    with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle), \
+         patch('commands.chat_tools._fetch_cloud_eval', return_value=mock_mate):
+        r = _analyze_move_sync('d4', 42)
+    check('matt eval → eval_mate vorhanden', 'eval_mate' in r)
+    check('matt eval → eval_mate invertiert', r.get('eval_mate') == 3)
+    check('matt eval → kein eval_cp', 'eval_cp' not in r)
+    check('matt eval → best_response_san', r.get('best_response_san') == 'e5')
+
+    # 4. Cloud-Eval mit leerer pvs-Liste
+    mock_no_pvs = {'depth': 30, 'pvs': []}
+    with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle), \
+         patch('commands.chat_tools._fetch_cloud_eval', return_value=mock_no_pvs):
+        r = _analyze_move_sync('d4', 42)
+    check('leere pvs → kein Crash', 'error' not in r)
+    check('leere pvs → kein eval_cp', 'eval_cp' not in r)
