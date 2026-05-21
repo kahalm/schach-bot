@@ -52,6 +52,7 @@ from test_cmd_chat_tools import (
     test_history_backward_compat, test_tool_loop_limit, test_system_prompt_tools,
     test_tool_analyze_move, test_parse_first_solution_move,
     test_normalize_move, test_uci_line_to_san, test_analyze_move_edge_cases,
+    test_tool_get_version, test_tool_get_help, test_tool_get_release_notes,
 )
 
 
@@ -136,6 +137,9 @@ def main():
     test_normalize_move()
     test_uci_line_to_san()
     test_analyze_move_edge_cases()
+    test_tool_get_version()
+    test_tool_get_help()
+    test_tool_get_release_notes()
 
     print(f'---\n{h.total - h.failed}/{h.total} checks passed.')
     if h.failed:

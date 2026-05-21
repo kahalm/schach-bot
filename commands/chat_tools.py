@@ -1,7 +1,8 @@
 """Chat-Tools: Anthropic Tool-Use Definitionen + Executor fuer den KI-Chat.
 
-7 Tools die Claude im DM-Chat aufrufen kann:
+10 Tools die Claude im DM-Chat aufrufen kann:
 - list_books, suggest_book, get_training_status (read-only)
+- get_version, get_help, get_release_notes (read-only, Info)
 - set_training (write)
 - send_puzzle, send_next (side-effect)
 - analyze_move (Zuganalyse mit Lichess Cloud-Eval)
@@ -144,6 +145,46 @@ TOOLS = [
                 },
             },
             'required': ['move'],
+        },
+    },
+    {
+        'name': 'get_version',
+        'description': 'Gibt Bot-Version, Git-SHA und Uptime/Startzeit zurueck.',
+        'input_schema': {'type': 'object', 'properties': {}, 'required': []},
+    },
+    {
+        'name': 'get_help',
+        'description': (
+            'Zeigt verfuegbare Slash-Commands. '
+            'Optional nach Bereich filtern: puzzle, bibliothek, community, info.'
+        ),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'bereich': {
+                    'type': 'string',
+                    'description': 'Optionaler Bereich: puzzle, bibliothek, community, info',
+                },
+            },
+            'required': [],
+        },
+    },
+    {
+        'name': 'get_release_notes',
+        'description': 'Zeigt die letzten Aenderungen/Release-Notes aus dem Changelog.',
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'version': {
+                    'type': 'string',
+                    'description': 'Optionale bestimmte Version (z.B. "2.34.0")',
+                },
+                'anzahl': {
+                    'type': 'integer',
+                    'description': 'Anzahl Versionen (1-10, Standard: 3)',
+                },
+            },
+            'required': [],
         },
     },
 ]
@@ -561,6 +602,63 @@ async def _tool_analyze_move(tool_input, ctx) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Info-Tools: get_version, get_help, get_release_notes
+# ---------------------------------------------------------------------------
+
+async def _tool_get_version(tool_input, ctx) -> str:
+    from core.version import VERSION, GIT_SHA, START_TIME
+    return json.dumps({
+        'version': VERSION,
+        'git_sha': GIT_SHA,
+        'start_time': START_TIME.isoformat(),
+    }, ensure_ascii=False)
+
+
+async def _tool_get_help(tool_input, ctx) -> str:
+    from bot import _help_fields
+    bereich = tool_input.get('bereich', '').lower().strip()
+    if bereich:
+        title, fields = _help_fields(bereich, is_admin=False)
+        if not fields:
+            return json.dumps({
+                'error': f'Unbekannter Bereich: {bereich}',
+                'verfuegbar': ['puzzle', 'bibliothek', 'community', 'info'],
+            }, ensure_ascii=False)
+        return json.dumps({
+            'bereich': title,
+            'commands': [{'name': name, 'description': value}
+                         for name, value in fields],
+        }, ensure_ascii=False)
+    # Uebersicht aller Bereiche
+    bereiche = {}
+    for b in ('puzzle', 'bibliothek', 'community', 'info'):
+        title, fields = _help_fields(b, is_admin=False)
+        bereiche[b] = {
+            'titel': title,
+            'commands': [name for name, _ in fields],
+        }
+    return json.dumps(bereiche, ensure_ascii=False)
+
+
+async def _tool_get_release_notes(tool_input, ctx) -> str:
+    from commands.release_notes import _parse_changelog
+    entries = _parse_changelog()
+    if not entries:
+        return json.dumps({'error': 'Kein Changelog gefunden.'}, ensure_ascii=False)
+    version = tool_input.get('version', '')
+    if version:
+        entries = [e for e in entries if e['version'] == version]
+        if not entries:
+            return json.dumps(
+                {'error': f'Version {version} nicht im Changelog.'},
+                ensure_ascii=False)
+    else:
+        anzahl = max(1, min(tool_input.get('anzahl', 3), 10))
+        entries = entries[:anzahl]
+    return json.dumps(entries, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
 # Dispatcher
 # ---------------------------------------------------------------------------
 
@@ -572,6 +670,9 @@ _HANDLERS = {
     'send_puzzle': _tool_send_puzzle,
     'send_next': _tool_send_next,
     'analyze_move': _tool_analyze_move,
+    'get_version': _tool_get_version,
+    'get_help': _tool_get_help,
+    'get_release_notes': _tool_get_release_notes,
 }
 
 

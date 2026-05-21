@@ -15,7 +15,7 @@ from commands.chat_tools import TOOLS, execute_tool
 def test_tool_schemas():
     """Validiert dass alle Tool-Schemas korrekt aufgebaut sind."""
     print('[chat_tool_schemas]')
-    check('7 Tools definiert', len(TOOLS) == 7)
+    check('10 Tools definiert', len(TOOLS) == 10)
     names = set()
     for tool in TOOLS:
         check(f'Tool {tool["name"]} hat name', 'name' in tool)
@@ -25,7 +25,8 @@ def test_tool_schemas():
               tool['input_schema'].get('type') == 'object')
         names.add(tool['name'])
     expected = {'list_books', 'suggest_book', 'get_training_status',
-                'set_training', 'send_puzzle', 'send_next', 'analyze_move'}
+                'set_training', 'send_puzzle', 'send_next', 'analyze_move',
+                'get_version', 'get_help', 'get_release_notes'}
     check('Alle erwarteten Tool-Namen vorhanden', names == expected)
 
 
@@ -658,3 +659,105 @@ def test_analyze_move_edge_cases():
         r = _analyze_move_sync('d4', 42)
     check('leere pvs → kein Crash', 'error' not in r)
     check('leere pvs → kein eval_cp', 'eval_cp' not in r)
+
+
+def test_tool_get_version():
+    """Test fuer get_version Tool-Handler."""
+    print('[tool_get_version]')
+    from commands.chat_tools import _tool_get_version
+    result_str = run_async(_tool_get_version({}, {}))
+    result = json.loads(result_str)
+    check('get_version hat version', 'version' in result)
+    check('get_version hat git_sha', 'git_sha' in result)
+    check('get_version hat start_time', 'start_time' in result)
+    check('get_version version ist String', isinstance(result['version'], str))
+    check('get_version version nicht leer', len(result['version']) > 0)
+
+
+def test_tool_get_help():
+    """Test fuer get_help Tool-Handler."""
+    print('[tool_get_help]')
+    from commands.chat_tools import _tool_get_help
+
+    # Mock _help_fields um circular import zu vermeiden
+    fake_fields = {
+        'puzzle': ('🧩 Puzzles', [('/puzzle', 'Puzzle senden'), ('/kurs', 'Kurse anzeigen')]),
+        'bibliothek': ('📚 Bibliothek', [('/bibliothek', 'Suchen')]),
+        'community': ('🌐 Community', [('/elo', 'Elo setzen')]),
+        'info': ('ℹ️ Info', [('/version', 'Version'), ('/help', 'Hilfe')]),
+    }
+
+    def mock_help_fields(bereich, is_admin=False):
+        return fake_fields.get(bereich, ('', []))
+
+    with patch('commands.chat_tools._tool_get_help.__module__', 'commands.chat_tools'):
+        pass
+
+    # Ohne Bereich → Uebersicht
+    with patch('bot._help_fields', mock_help_fields):
+        result_str = run_async(_tool_get_help({}, {}))
+        result = json.loads(result_str)
+    check('get_help ohne Bereich hat puzzle', 'puzzle' in result)
+    check('get_help ohne Bereich hat info', 'info' in result)
+    check('get_help puzzle hat titel', 'titel' in result['puzzle'])
+    check('get_help puzzle hat commands', 'commands' in result['puzzle'])
+
+    # Mit Bereich
+    with patch('bot._help_fields', mock_help_fields):
+        result_str = run_async(_tool_get_help({'bereich': 'puzzle'}, {}))
+        result = json.loads(result_str)
+    check('get_help puzzle hat bereich', 'bereich' in result)
+    check('get_help puzzle hat commands', 'commands' in result)
+    check('get_help puzzle 2 commands', len(result['commands']) == 2)
+
+    # Unbekannter Bereich
+    with patch('bot._help_fields', mock_help_fields):
+        result_str = run_async(_tool_get_help({'bereich': 'xyz'}, {}))
+        result = json.loads(result_str)
+    check('get_help unbekannt → error', 'error' in result)
+    check('get_help unbekannt → verfuegbar', 'verfuegbar' in result)
+
+
+def test_tool_get_release_notes():
+    """Test fuer get_release_notes Tool-Handler."""
+    print('[tool_get_release_notes]')
+    from commands.chat_tools import _tool_get_release_notes
+
+    fake_entries = [
+        {'version': '2.35.0', 'date': '2026-05-21', 'body': '### Added\n- Feature A'},
+        {'version': '2.34.4', 'date': '2026-05-21', 'body': '### Fixed\n- Fix B'},
+        {'version': '2.34.3', 'date': '2026-05-21', 'body': '### Fixed\n- Fix C'},
+        {'version': '2.34.2', 'date': '2026-05-21', 'body': '### Fixed\n- Fix D'},
+    ]
+
+    # Standard: 3 Eintraege
+    with patch('commands.release_notes._parse_changelog', return_value=fake_entries):
+        result_str = run_async(_tool_get_release_notes({}, {}))
+        result = json.loads(result_str)
+    check('release_notes standard → 3 Eintraege', len(result) == 3)
+    check('release_notes erster ist neueste', result[0]['version'] == '2.35.0')
+
+    # Bestimmte Anzahl
+    with patch('commands.release_notes._parse_changelog', return_value=fake_entries):
+        result_str = run_async(_tool_get_release_notes({'anzahl': 2}, {}))
+        result = json.loads(result_str)
+    check('release_notes anzahl=2 → 2', len(result) == 2)
+
+    # Bestimmte Version
+    with patch('commands.release_notes._parse_changelog', return_value=fake_entries):
+        result_str = run_async(_tool_get_release_notes({'version': '2.34.3'}, {}))
+        result = json.loads(result_str)
+    check('release_notes version=2.34.3 → 1', len(result) == 1)
+    check('release_notes version korrekt', result[0]['version'] == '2.34.3')
+
+    # Unbekannte Version
+    with patch('commands.release_notes._parse_changelog', return_value=fake_entries):
+        result_str = run_async(_tool_get_release_notes({'version': '9.9.9'}, {}))
+        result = json.loads(result_str)
+    check('release_notes unbekannt → error', 'error' in result)
+
+    # Leeres Changelog
+    with patch('commands.release_notes._parse_changelog', return_value=[]):
+        result_str = run_async(_tool_get_release_notes({}, {}))
+        result = json.loads(result_str)
+    check('release_notes leer → error', 'error' in result)
