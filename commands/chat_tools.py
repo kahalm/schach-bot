@@ -471,20 +471,14 @@ def _analyze_move_sync(move_str: str, user_id: int, fen_override: str | None = N
                     sol_board.push(first_sol_move)
                     result['opponent_reply_san'] = sol_board.san(reply_move)
                 return result
-            solution_first_san = sol_board.san(first_sol_move) if first_sol_move else None
         except Exception:
-            solution_first_san = None
-    else:
-        solution_first_san = None
-
+            pass
     # Falscher Zug → Cloud-Eval nach dem Zug
     board.push(move)
     eval_fen = board.fen()
     cloud = _fetch_cloud_eval(eval_fen)
 
     result = {'is_correct': False, 'user_move_san': user_move_san}
-    if solution_first_san:
-        result['solution_first_move'] = solution_first_san
 
     if cloud and cloud.get('pvs'):
         pv = cloud['pvs'][0]

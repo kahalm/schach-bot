@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.34.1] - 2026-05-20
+### Fixed
+- Chat-History Sanitization: Verwaiste `tool_use`/`tool_result`-Blocks nach History-Kuerzen werden jetzt entfernt — verhinderte `BadRequestError` und die Fehlermeldung "da ist etwas schiefgelaufen"
+- BadRequest-Recovery: Bei kaputter History wird diese automatisch geleert und die Nachricht nochmal gesendet statt Fehler anzuzeigen
+### Changed
+- `analyze_move` gibt `solution_first_move` nicht mehr zurueck — Claude kann die Loesung nicht mehr versehentlich verraten
+- System-Prompt verschaerft: Claude darf NUR Stockfish-Antworten nennen, nie die Loesung. Antworten auf 1-2 Saetze begrenzt.
+
 ## [2.34.0] - 2026-05-20
 ### Changed
 - System-Prompt ueberarbeitet: Claude erfindet keine eigenen Analysen mehr, nutzt immer das `analyze_move`-Tool, haelt Antworten bei Zuegen kurz (nur Widerlegung + Frage)

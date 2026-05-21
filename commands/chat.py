@@ -45,17 +45,18 @@ _SYSTEM_PROMPT = (
     'und Buecher vorzuschlagen. Nutze sie wenn der User danach fragt.\n\n'
     'WICHTIG fuer Zuganalyse:\n'
     '- Erfinde NIEMALS eigene Schachanalysen oder Zugfolgen. '
-    'Nutze IMMER das analyze_move Tool wenn der User einen Zug vorschlaegt.\n'
-    '- Wenn der Zug FALSCH ist: Nenne die beste Antwort aus dem Tool-Ergebnis '
-    '(best_response_san) und frage den User was er dann spielen wuerde. '
-    'Nutze fen_after_response als fen-Parameter fuer Folgezuege.\n'
-    '- Dieses Hin-und-Her maximal 3 Zuege lang machen. '
-    'Danach sagen dass der Ansatz nicht funktioniert und einen Hinweis geben.\n'
-    '- Wenn der User den RICHTIGEN Zug findet: loben und auf den naechsten Zug warten.\n'
-    '- Sag NIE die Loesung direkt — lass den User selber drauf kommen.\n'
-    '- Halte deine Antworten bei Zuegen KURZ: '
-    'nur die Widerlegung nennen und fragen was er dann spielt. '
-    'Keine langen Erklaerungen warum der Zug schlecht ist.'
+    'Du bist KEIN Schachcomputer. Verlass dich AUSSCHLIEßLICH auf das analyze_move Tool.\n'
+    '- Nutze IMMER das analyze_move Tool wenn der User einen Zug vorschlaegt.\n'
+    '- Wenn der Zug FALSCH ist: Sage NUR "Nach [user_move] kommt [best_response_san]." '
+    'und frage "Was spielst du dann?". KEIN weiterer Kommentar zum Zug.\n'
+    '- Verrate NIEMALS den richtigen Zug! Auch nicht als Hinweis oder Andeutung. '
+    'Das Tool gibt dir NICHT die Loesung — und du sollst sie auch nicht aus dem Kontext verraten.\n'
+    '- Fuer Folgezuege: Nutze fen_after_response als fen-Parameter im naechsten analyze_move Aufruf.\n'
+    '- Maximal 3 Runden Hin-und-Her bei falschem Ansatz. '
+    'Danach sagen dass der Ansatz nicht funktioniert und einen thematischen Hinweis geben '
+    '(z.B. "Denk an das Motiv des Kapitels"), aber NICHT den Zug verraten.\n'
+    '- Wenn der User den RICHTIGEN Zug findet: kurz loben.\n'
+    '- Halte Antworten bei Zuegen KURZ: 1-2 Saetze maximal.'
 )
 
 
@@ -66,6 +67,52 @@ def _is_whitelisted(user_id: int) -> bool:
     Original-Check: ``user_id in data.get('whitelist', [])``
     """
     return True
+
+
+def _is_tool_content(msg: dict) -> bool:
+    """Prueft ob eine Nachricht tool_use oder tool_result Blocks enthaelt."""
+    content = msg.get('content')
+    if not isinstance(content, list):
+        return False
+    return any(isinstance(b, dict) and b.get('type') in ('tool_use', 'tool_result')
+               for b in content)
+
+
+def _sanitize_history(msgs: list[dict]):
+    """Bereinigt History-Liste in-place: entfernt verwaiste Tool-Blocks.
+
+    Nach dem Kuerzen kann die History mit einem tool_result beginnen
+    (user-Nachricht ohne vorheriges tool_use vom Assistant). Oder ein
+    assistant mit tool_use steht ohne folgendes tool_result.
+    Beides fuehrt zu BadRequestError bei der Claude API.
+    """
+    clean = []
+    i = 0
+    while i < len(msgs):
+        msg = msgs[i]
+        # Verwaistes tool_result (kein tool_use davor) → ueberspringen
+        if msg['role'] == 'user' and _is_tool_content(msg):
+            i += 1
+            continue
+        # Assistant mit tool_use → nur behalten wenn tool_result folgt
+        if msg['role'] == 'assistant' and _is_tool_content(msg):
+            if (i + 1 < len(msgs)
+                    and msgs[i + 1]['role'] == 'user'
+                    and _is_tool_content(msgs[i + 1])):
+                clean.append(msgs[i])
+                clean.append(msgs[i + 1])
+                i += 2
+                continue
+            else:
+                # Verwaistes tool_use → ueberspringen
+                i += 1
+                continue
+        clean.append(msg)
+        i += 1
+    msgs[:] = clean
+    # Sicherstellen dass History mit user beginnt
+    while msgs and msgs[0]['role'] != 'user':
+        msgs.pop(0)
 
 
 def _append_and_get_history(user_id: int, text: str) -> list[dict]:
@@ -83,6 +130,8 @@ def _append_and_get_history(user_id: int, text: str) -> list[dict]:
         # Claude API verlangt erste Nachricht mit role=user
         while msgs and msgs[0]['role'] != 'user':
             msgs.pop(0)
+        # Verwaiste tool_use/tool_result Blocks bereinigen
+        _sanitize_history(msgs)
         result['messages'] = list(msgs)
         return data
 
@@ -229,7 +278,33 @@ async def _chat_response(user_id: int, text: str, channel=None) -> str:
         return 'Anfrage konnte nicht vollstaendig bearbeitet werden.'
 
     except Exception as e:
-        log.exception('Claude API Fehler fuer User %s', user_id)
+        # Bei BadRequest (kaputte History) → History leeren und nochmal versuchen
+        err_name = type(e).__name__
+        if 'BadRequest' in err_name or 'InvalidRequest' in err_name:
+            log.warning('Claude API BadRequest fuer User %s — History wird geleert: %s',
+                        user_id, e)
+            try:
+                def _clear(data):
+                    history = data.get('history', {})
+                    history.pop(str(user_id), None)
+                    return data
+                await asyncio.to_thread(atomic_update, CHAT_FILE, _clear, dict)
+                # Nochmal mit frischer History (nur aktuelle Nachricht)
+                fresh = [{'role': 'user', 'content': text}]
+                api_kwargs = dict(
+                    model=_MODEL, max_tokens=1024, system=system,
+                    messages=fresh,
+                )
+                if channel:
+                    api_kwargs['tools'] = TOOLS
+                response = await _client.messages.create(**api_kwargs)
+                await asyncio.to_thread(
+                    _save_response_blocks, user_id, response.content)
+                return _extract_text(response.content)
+            except Exception as retry_err:
+                log.exception('Claude API Retry fehlgeschlagen fuer User %s', user_id)
+        else:
+            log.exception('Claude API Fehler fuer User %s: %s', user_id, err_name)
         return 'Entschuldigung, da ist etwas schiefgelaufen. Versuche es spaeter nochmal.'
 
 

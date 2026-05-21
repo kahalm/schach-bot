@@ -418,7 +418,7 @@ def test_tool_analyze_move():
     check('falscher Zug → eval_cp', 'eval_cp' in r)
     check('falscher Zug → eval_cp invertiert', r.get('eval_cp') == -50)
     check('falscher Zug → best_line_san', 'best_line_san' in r)
-    check('falscher Zug → solution_first_move', r.get('solution_first_move') == 'e4')
+    check('falscher Zug → kein solution_first_move', 'solution_first_move' not in r)
     check('falscher Zug → depth', r.get('depth') == 36)
     check('falscher Zug → fen_after_response', 'fen_after_response' in r)
     # FEN nach d4 e5: Stellung nach beiden Zuegen
@@ -433,7 +433,7 @@ def test_tool_analyze_move():
          patch('commands.chat_tools._fetch_cloud_eval', return_value=None):
         r = _analyze_move_sync('a3', 42)
     check('ohne Cloud-Eval → is_correct=False', r.get('is_correct') is False)
-    check('ohne Cloud-Eval → solution_first_move', r.get('solution_first_move') == 'e4')
+    check('ohne Cloud-Eval → kein solution_first_move', 'solution_first_move' not in r)
     check('ohne Cloud-Eval → kein eval_cp', 'eval_cp' not in r)
     check('ohne Cloud-Eval → kein fen_after_response', 'fen_after_response' not in r)
 

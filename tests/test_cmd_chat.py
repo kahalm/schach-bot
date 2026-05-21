@@ -164,6 +164,59 @@ def test_chat_history_prune():
         teardown_temp_config(tmpdir)
 
 
+def test_chat_history_sanitize():
+    """Test dass verwaiste tool_use/tool_result Blocks bereinigt werden."""
+    print('[chat_history_sanitize]')
+    tmpdir = setup_temp_config()
+    try:
+        # History mit tool_result am Anfang (verwaist nach Prune)
+        orphan_history = {
+            'history': {
+                '1': [
+                    {'role': 'user', 'content': [
+                        {'type': 'tool_result', 'tool_use_id': 'x', 'content': '{}'}
+                    ]},
+                    {'role': 'assistant', 'content': 'Antwort'},
+                    {'role': 'user', 'content': 'Hallo'},
+                    {'role': 'assistant', 'content': 'Hi'},
+                ]
+            }
+        }
+        atomic_write(chat_mod.CHAT_FILE, orphan_history)
+        result = chat_mod._append_and_get_history(1, 'Test')
+        check('sanitize: kein tool_result am Anfang',
+              not (isinstance(result[0].get('content'), list)
+                   and any(b.get('type') == 'tool_result'
+                           for b in result[0]['content']
+                           if isinstance(b, dict))))
+        check('sanitize: beginnt mit user-Text', result[0]['role'] == 'user')
+
+        # History mit tool_use am Ende (verwaist, kein tool_result folgt)
+        orphan_end = {
+            'history': {
+                '2': [
+                    {'role': 'user', 'content': 'Frage'},
+                    {'role': 'assistant', 'content': [
+                        {'type': 'text', 'text': 'Moment...'},
+                        {'type': 'tool_use', 'id': 'y', 'name': 'x', 'input': {}},
+                    ]},
+                ]
+            }
+        }
+        atomic_write(chat_mod.CHAT_FILE, orphan_end)
+        result = chat_mod._append_and_get_history(2, 'Weiter')
+        # Das assistant tool_use ohne folgendes tool_result sollte entfernt sein
+        has_orphan_tool_use = any(
+            msg['role'] == 'assistant' and isinstance(msg.get('content'), list)
+            and any(b.get('type') == 'tool_use' for b in msg['content'] if isinstance(b, dict))
+            for msg in result[:-1]  # letzte ist die neue user-Nachricht
+        )
+        check('sanitize: kein verwaistes tool_use am Ende', not has_orphan_tool_use)
+
+    finally:
+        teardown_temp_config(tmpdir)
+
+
 def test_chat_no_key():
     """Tests dass ohne API Key _client None ist und Feature deaktiviert."""
     print('[chat_no_key]')
