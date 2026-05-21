@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.34.2] - 2026-05-21
+### Fixed
+- `analyze_move` Solution-Parsing robuster: Fallback auf direktes SAN-Token-Parsing wenn PGN-Parser versagt (z.B. bei Zugnummern-Mismatch). Vorher wurden korrekte Zuege faelschlich als falsch gemeldet.
+- Logging bei fehlgeschlagenem Solution-Parsing fuer Debugging
+### Changed
+- System-Prompt: Wenn ein "falscher" Zug laut Stockfish stark ist (eval > +300), erkennt Claude das und sagt "stark, aber das Puzzle sucht etwas anderes" statt die Widerlegungslinie durchzuspielen
+
 ## [2.34.1] - 2026-05-20
 ### Fixed
 - Chat-History Sanitization: Verwaiste `tool_use`/`tool_result`-Blocks nach History-Kuerzen werden jetzt entfernt — verhinderte `BadRequestError` und die Fehlermeldung "da ist etwas schiefgelaufen"

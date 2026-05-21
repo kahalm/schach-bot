@@ -401,6 +401,41 @@ def _normalize_move(move_str: str) -> str:
     return s
 
 
+def _parse_first_solution_move(fen: str, solution: str):
+    """Extrahiert den ersten Zug aus dem Loesungs-PGN.
+
+    Versucht zuerst PGN-Parser, dann Fallback auf direktes SAN-Parsing.
+    Gibt chess.Move oder None zurueck.
+    """
+    import chess
+    import io
+    import chess.pgn
+    import re
+
+    # Methode 1: PGN-Parser
+    try:
+        pgn_str = f'[FEN "{fen}"]\n\n{solution}'
+        game = chess.pgn.read_game(io.StringIO(pgn_str))
+        if game and game.variations:
+            return game.variations[0].move
+    except Exception as e:
+        log.debug('Solution PGN-Parse fehlgeschlagen: %s (solution=%r)', e, solution[:80])
+
+    # Methode 2: Fallback — ersten gueltigen SAN-Token direkt parsen
+    board = chess.Board(fen)
+    for token in re.findall(r'[A-Za-z][A-Za-z0-9+#=x-]*', solution):
+        if token in ('vs', 'KQkq', 'KQ', 'kq'):
+            continue
+        try:
+            return board.parse_san(token)
+        except (chess.InvalidMoveError, chess.IllegalMoveError,
+                chess.AmbiguousMoveError, ValueError):
+            continue
+
+    log.warning('Kein gueltiger Zug in Loesung gefunden: %r (fen=%s)', solution[:80], fen)
+    return None
+
+
 def _analyze_move_sync(move_str: str, user_id: int, fen_override: str | None = None) -> dict:
     """Sync-Kernlogik: Zug parsen, gegen Loesung pruefen, Cloud-Eval holen."""
     import chess
@@ -451,28 +486,27 @@ def _analyze_move_sync(move_str: str, user_id: int, fen_override: str | None = N
 
     # Gegen Loesung pruefen
     if solution:
-        # Ersten Zug der Loesung extrahieren
-        sol_board = chess.Board(fen)
-        try:
-            import io
-            import chess.pgn
-            pgn_str = f'[FEN "{fen}"]\n\n{solution}'
-            game = chess.pgn.read_game(io.StringIO(pgn_str))
-            first_sol_move = None
-            if game and game.variations:
-                first_sol_move = game.variations[0].move
-            if first_sol_move and move == first_sol_move:
-                result = {'is_correct': True, 'user_move_san': user_move_san,
-                          'message': 'Der Zug ist korrekt!'}
-                # Gegenzug aus Loesung extrahieren
-                first_node = game.variations[0]
-                if first_node.variations:
-                    reply_move = first_node.variations[0].move
-                    sol_board.push(first_sol_move)
-                    result['opponent_reply_san'] = sol_board.san(reply_move)
-                return result
-        except Exception:
-            pass
+        first_sol_move = _parse_first_solution_move(fen, solution)
+        if first_sol_move and move == first_sol_move:
+            sol_board = chess.Board(fen)
+            result = {'is_correct': True, 'user_move_san': user_move_san,
+                      'message': 'Der Zug ist korrekt!'}
+            # Gegenzug aus Loesung extrahieren
+            try:
+                import io
+                import chess.pgn
+                pgn_str = f'[FEN "{fen}"]\n\n{solution}'
+                game = chess.pgn.read_game(io.StringIO(pgn_str))
+                if game and game.variations:
+                    first_node = game.variations[0]
+                    if first_node.variations:
+                        reply_move = first_node.variations[0].move
+                        sol_board.push(first_sol_move)
+                        result['opponent_reply_san'] = sol_board.san(reply_move)
+            except Exception:
+                pass
+            return result
+
     # Falscher Zug → Cloud-Eval nach dem Zug
     board.push(move)
     eval_fen = board.fen()

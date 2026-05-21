@@ -494,12 +494,59 @@ def test_tool_analyze_move():
         r = _analyze_move_sync('Sf3!', 42)
     check('Sf3! → is_correct', r.get('is_correct') is True)
 
-    # 14. Async-Handler
+    # 14. Falscher Zug aber stark (eval > +300)
+    mock_winning = {
+        'depth': 40,
+        'pvs': [{'cp': -1500, 'moves': 'e7e8'}],
+    }
+    with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle), \
+         patch('commands.chat_tools._fetch_cloud_eval', return_value=mock_winning):
+        r = _analyze_move_sync('d4', 42)
+    check('starker falscher Zug → eval_cp=+1500', r.get('eval_cp') == 1500)
+    check('starker falscher Zug → is_correct=False', r.get('is_correct') is False)
+
+    # 15. Async-Handler
     with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle):
         result_str = run_async(_tool_analyze_move(
             {'move': 'e4'}, {'user_id': 42}))
         r = json.loads(result_str)
     check('async handler → is_correct', r.get('is_correct') is True)
+
+
+def test_parse_first_solution_move():
+    """Test fuer _parse_first_solution_move: PGN-Parser + Fallback."""
+    print('[parse_first_solution_move]')
+    import chess
+    from commands.chat_tools import _parse_first_solution_move
+
+    fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+
+    # Standard-PGN mit Zugnummern
+    m = _parse_first_solution_move(fen, '1. e4 e5 2. Nf3')
+    check('PGN mit Zugnummern → e4', m == chess.Move.from_uci('e2e4'))
+
+    # Ohne Zugnummern (nur SAN)
+    m = _parse_first_solution_move(fen, 'e4 e5 Nf3')
+    check('ohne Zugnummern → e4', m == chess.Move.from_uci('e2e4'))
+
+    # Hohe Zugnummer (Fallback noetig wenn PGN-Parser versagt)
+    fen32 = '7b/p1r1k3/1p2P1Rp/4Nn2/5P2/3R4/1P5P/4K3 w - - 0 32'
+    m = _parse_first_solution_move(fen32, '32. Rg7+ Ke8 33. Rxh8#')
+    check('hohe Zugnummer → Rg7+', m is not None)
+    check('hohe Zugnummer → korrekte from-sq',
+          m == chess.Move.from_uci('g6g7'))
+
+    # Mit Varianten und Kommentaren
+    m = _parse_first_solution_move(fen, '1. e4 {bester Zug} (1. d4 d5) 1... e5')
+    check('mit Kommentaren → e4', m == chess.Move.from_uci('e2e4'))
+
+    # Leere Loesung
+    m = _parse_first_solution_move(fen, '')
+    check('leere Loesung → None', m is None)
+
+    # Ungueltige Loesung
+    m = _parse_first_solution_move(fen, 'Zx9 blah')
+    check('ungueltige Loesung → None', m is None)
 
 
 def test_normalize_move():
