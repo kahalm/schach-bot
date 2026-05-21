@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.36.0] - 2026-05-21
+### Added
+- KI-Chat Tool `send_library_book` — der Chatbot kann jetzt Buecher aus der Bibliothek direkt per DM senden (kleine Dateien als Discord-Upload, grosse per SFTPGo-Link)
+- System-Prompt ergaenzt: Claude nutzt `send_library_book` wenn der User ein Buch haben moechte
+
 ## [2.35.0] - 2026-05-21
 ### Added
 - KI-Chat Info-Tools: `get_version`, `get_help`, `get_release_notes` — der Chatbot kann jetzt auf Fragen zu Bot-Version, verfuegbaren Commands und Release-Notes antworten

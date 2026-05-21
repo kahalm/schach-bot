@@ -1,10 +1,10 @@
 """Chat-Tools: Anthropic Tool-Use Definitionen + Executor fuer den KI-Chat.
 
-10 Tools die Claude im DM-Chat aufrufen kann:
+11 Tools die Claude im DM-Chat aufrufen kann:
 - list_books, suggest_book, get_training_status (read-only)
 - get_version, get_help, get_release_notes (read-only, Info)
 - set_training (write)
-- send_puzzle, send_next (side-effect)
+- send_puzzle, send_next, send_library_book (side-effect)
 - analyze_move (Zuganalyse mit Lichess Cloud-Eval)
 """
 
@@ -185,6 +185,29 @@ TOOLS = [
                 },
             },
             'required': [],
+        },
+    },
+    {
+        'name': 'send_library_book',
+        'description': (
+            'Sucht ein Buch in der Schachbuch-Bibliothek und sendet es per DM. '
+            'Findet Buecher nach Titel, Autor oder Suchbegriff. '
+            'Bei mehreren Formaten (PDF/EPUB/DJVU) wird das bevorzugte gesendet.'
+        ),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'query': {
+                    'type': 'string',
+                    'description': 'Suchbegriff (Titel, Autor oder Thema)',
+                },
+                'format': {
+                    'type': 'string',
+                    'description': 'Bevorzugtes Format: pdf, epub, djvu (Standard: pdf)',
+                    'enum': ['pdf', 'epub', 'djvu'],
+                },
+            },
+            'required': ['query'],
         },
     },
 ]
@@ -659,6 +682,81 @@ async def _tool_get_release_notes(tool_input, ctx) -> str:
 
 
 # ---------------------------------------------------------------------------
+# send_library_book: Buch aus Bibliothek per DM senden
+# ---------------------------------------------------------------------------
+
+async def _tool_send_library_book(tool_input, ctx) -> str:
+    import os
+    import discord
+    from core import stats
+    from library import (
+        _search_library, _collect_formats, _author_str,
+        _sftpgo_configured, _sftpgo_message, _MAX_UPLOAD,
+    )
+
+    channel = ctx.get('channel')
+    if not channel:
+        return json.dumps({'error': 'Kein DM-Channel verfuegbar.'}, ensure_ascii=False)
+
+    query = tool_input.get('query', '').strip()
+    if not query:
+        return json.dumps({'error': 'Kein Suchbegriff angegeben.'}, ensure_ascii=False)
+
+    preferred = tool_input.get('format', 'pdf')
+
+    hits = _search_library(query, limit=5)
+    if not hits:
+        return json.dumps(
+            {'error': f'Kein Buch gefunden fuer: {query}'},
+            ensure_ascii=False)
+
+    entry = hits[0]
+    title = entry.get('title', '')
+    author = _author_str(entry.get('author', ''))
+
+    formats = _collect_formats(entry)
+    if not formats:
+        return json.dumps(
+            {'error': 'Buch gefunden aber keine Datei verfuegbar', 'title': title},
+            ensure_ascii=False)
+
+    # Format waehlen: bevorzugt → Fallback pdf→epub→djvu
+    if preferred in formats:
+        fmt = preferred
+    else:
+        for fallback in ('pdf', 'epub', 'djvu'):
+            if fallback in formats:
+                fmt = fallback
+                break
+        else:
+            fmt = next(iter(formats))
+
+    path = formats[fmt]
+    size = os.path.getsize(path)
+    size_mb = round(size / (1024 * 1024), 1)
+
+    if size <= _MAX_UPLOAD:
+        await channel.send(
+            content=f'📖 **{title}** — {author} `[{fmt.upper()}]`',
+            file=discord.File(path, filename=os.path.basename(path)))
+    elif _sftpgo_configured():
+        await channel.send(_sftpgo_message(entry, path, fmt))
+    else:
+        return json.dumps(
+            {'error': f'Datei zu gross ({size_mb} MB, Discord-Limit 8 MB)',
+             'title': title},
+            ensure_ascii=False)
+
+    user_id = ctx.get('user_id', 0)
+    stats.inc(user_id, 'downloads')
+
+    return json.dumps(
+        {'sent': True, 'title': title, 'author': author,
+         'format': fmt, 'size_mb': size_mb},
+        ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
 # Dispatcher
 # ---------------------------------------------------------------------------
 
@@ -673,6 +771,7 @@ _HANDLERS = {
     'get_version': _tool_get_version,
     'get_help': _tool_get_help,
     'get_release_notes': _tool_get_release_notes,
+    'send_library_book': _tool_send_library_book,
 }
 
 

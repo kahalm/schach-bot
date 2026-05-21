@@ -15,7 +15,7 @@ from commands.chat_tools import TOOLS, execute_tool
 def test_tool_schemas():
     """Validiert dass alle Tool-Schemas korrekt aufgebaut sind."""
     print('[chat_tool_schemas]')
-    check('10 Tools definiert', len(TOOLS) == 10)
+    check('11 Tools definiert', len(TOOLS) == 11)
     names = set()
     for tool in TOOLS:
         check(f'Tool {tool["name"]} hat name', 'name' in tool)
@@ -26,7 +26,8 @@ def test_tool_schemas():
         names.add(tool['name'])
     expected = {'list_books', 'suggest_book', 'get_training_status',
                 'set_training', 'send_puzzle', 'send_next', 'analyze_move',
-                'get_version', 'get_help', 'get_release_notes'}
+                'get_version', 'get_help', 'get_release_notes',
+                'send_library_book'}
     check('Alle erwarteten Tool-Namen vorhanden', names == expected)
 
 
@@ -761,3 +762,116 @@ def test_tool_get_release_notes():
         result_str = run_async(_tool_get_release_notes({}, {}))
         result = json.loads(result_str)
     check('release_notes leer → error', 'error' in result)
+
+
+def test_tool_send_library_book():
+    """Test fuer send_library_book Tool-Handler — 5 Faelle."""
+    print('[tool_send_library_book]')
+    import os
+    import tempfile
+    from commands.chat_tools import _tool_send_library_book
+
+    tmpdir = setup_temp_config()
+    try:
+        # Kleine Testdatei anlegen (< 8MB)
+        small_file = os.path.join(tmpdir, 'small.pdf')
+        with open(small_file, 'wb') as f:
+            f.write(b'%PDF-fake-content')
+
+        # Grosse Testdatei anlegen (> 8MB)
+        big_file = os.path.join(tmpdir, 'big.pdf')
+        with open(big_file, 'wb') as f:
+            f.write(b'X' * (9 * 1024 * 1024))
+
+        fake_entry = {
+            'id': 'test--book',
+            'title': 'Test Book',
+            'author': 'Test Author',
+            'files': [small_file],
+            'tags': [],
+        }
+
+        channel = FakeChannel()
+        ctx = {'user_id': 42, 'channel': channel}
+
+        # 1. Treffer + kleine Datei → send aufgerufen
+        with patch('library._search_library', return_value=[fake_entry]), \
+             patch('library._collect_formats', return_value={'pdf': small_file}), \
+             patch('core.stats.inc') as mock_inc:
+            result_str = run_async(_tool_send_library_book(
+                {'query': 'Test'}, ctx))
+            result = json.loads(result_str)
+        check('kleine Datei → sent=True', result.get('sent') is True)
+        check('kleine Datei → title', result.get('title') == 'Test Book')
+        check('kleine Datei → format=pdf', result.get('format') == 'pdf')
+        check('kleine Datei → channel.send aufgerufen', len(channel.sent) == 1)
+        check('kleine Datei → stats.inc aufgerufen', mock_inc.called)
+        check('kleine Datei → stats.inc downloads',
+              mock_inc.call_args[0] == (42, 'downloads'))
+
+        # 2. Treffer + grosse Datei + SFTPGo → Link gesendet
+        channel2 = FakeChannel()
+        ctx2 = {'user_id': 42, 'channel': channel2}
+        with patch('library._search_library', return_value=[fake_entry]), \
+             patch('library._collect_formats', return_value={'pdf': big_file}), \
+             patch('library._sftpgo_configured', return_value=True), \
+             patch('library._sftpgo_message', return_value='🔗 Download-Link'), \
+             patch('core.stats.inc') as mock_inc2:
+            result_str = run_async(_tool_send_library_book(
+                {'query': 'Test'}, ctx2))
+            result = json.loads(result_str)
+        check('grosse Datei+SFTPGo → sent=True', result.get('sent') is True)
+        check('grosse Datei+SFTPGo → Link gesendet',
+              len(channel2.sent) == 1 and channel2.sent[0].content == '🔗 Download-Link')
+
+        # 3. Treffer + grosse Datei ohne SFTPGo → Fehler
+        channel3 = FakeChannel()
+        ctx3 = {'user_id': 42, 'channel': channel3}
+        with patch('library._search_library', return_value=[fake_entry]), \
+             patch('library._collect_formats', return_value={'pdf': big_file}), \
+             patch('library._sftpgo_configured', return_value=False):
+            result_str = run_async(_tool_send_library_book(
+                {'query': 'Test'}, ctx3))
+            result = json.loads(result_str)
+        check('grosse Datei ohne SFTPGo → error', 'error' in result)
+        check('grosse Datei ohne SFTPGo → title', result.get('title') == 'Test Book')
+
+        # 4. Kein Treffer → error
+        with patch('library._search_library', return_value=[]):
+            result_str = run_async(_tool_send_library_book(
+                {'query': 'Gibtsnicht'}, ctx))
+            result = json.loads(result_str)
+        check('kein Treffer → error', 'error' in result)
+        check('kein Treffer → query in error', 'Gibtsnicht' in result.get('error', ''))
+
+        # 5. Treffer aber keine Datei → error mit Titel
+        with patch('library._search_library', return_value=[fake_entry]), \
+             patch('library._collect_formats', return_value={}):
+            result_str = run_async(_tool_send_library_book(
+                {'query': 'Test'}, ctx))
+            result = json.loads(result_str)
+        check('keine Datei → error', 'error' in result)
+        check('keine Datei → title vorhanden', result.get('title') == 'Test Book')
+
+        # 6. Format-Fallback: gewuenschtes Format nicht da → naechstbestes
+        channel6 = FakeChannel()
+        ctx6 = {'user_id': 42, 'channel': channel6}
+        with patch('library._search_library', return_value=[fake_entry]), \
+             patch('library._collect_formats',
+                   return_value={'epub': small_file, 'djvu': small_file}), \
+             patch('core.stats.inc'):
+            result_str = run_async(_tool_send_library_book(
+                {'query': 'Test', 'format': 'pdf'}, ctx6))
+            result = json.loads(result_str)
+        check('Fallback → sent=True', result.get('sent') is True)
+        check('Fallback → epub gewaehlt (pdf nicht da)',
+              result.get('format') == 'epub')
+
+        # 7. Ohne Channel → Fehler
+        result_str = run_async(_tool_send_library_book(
+            {'query': 'Test'}, {'user_id': 42, 'channel': None}))
+        result = json.loads(result_str)
+        check('ohne Channel → error', 'error' in result)
+
+    finally:
+        teardown_temp_config(tmpdir)
