@@ -3,7 +3,7 @@
     "difficulty": "Meister",
     "rating": 5,
     "blind": true,
-    "random": true,
+    "random": false,
     "tags": ["Taktik", "Muster"],
     "description": "100 taktische Muster die jeder Spieler kennen muss"
   },

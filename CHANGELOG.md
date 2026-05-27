@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.36.1] - 2026-05-27
+### Changed
+- "100 Tactical Patterns You Must Know" aus dem Daily-Puzzle-Pool entfernt (`random: false`)
+
 ## [2.36.0] - 2026-05-21
 ### Added
 - KI-Chat Tool `send_library_book` — der Chatbot kann jetzt Buecher aus der Bibliothek direkt per DM senden (kleine Dateien als Discord-Upload, grosse per SFTPGo-Link)
