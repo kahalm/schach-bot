@@ -67,11 +67,14 @@ def lookup_puzzle_id(line_id: str, timeout: int = _LOOKUP_TIMEOUT) -> int | None
         r = requests.get(_api('/api/book-puzzles/by-line-id'),
                          params={'lineId': line_id}, timeout=timeout)
         if r.status_code == 404:
-            _id_cache[line_id] = None  # bekannt: nicht in RookHub → nicht erneut abfragen
+            _id_cache[line_id] = None  # echtes 404: in RookHub nicht vorhanden → dauerhaft cachen
             return None
         r.raise_for_status()
         pid = r.json().get('id')
-        _id_cache[line_id] = pid
+        if pid is not None:
+            _id_cache[line_id] = pid  # nur echte IDs cachen
+        # 200 ohne id (z. B. während eines Imports / Proxy-Fehlerseite) gilt als transient
+        # → NICHT cachen, damit ein späterer Aufruf erneut versucht.
         return pid
     except requests.RequestException as e:
         # Transiente Fehler NICHT cachen (nächster Aufruf darf erneut versuchen).

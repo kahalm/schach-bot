@@ -117,6 +117,19 @@ def test_lookup_caches_404():
     check('404 gecached (nur 1 Call)', calls['n'] == 1)
 
 
+def test_lookup_200_without_id_not_cached():
+    rh.ROOKHUB_API_URL = 'http://rookhub:5001'
+    rh._id_cache.clear()
+    calls = {'n': 0}
+    def fake_get(url, params=None, timeout=None):
+        calls['n'] += 1
+        return _FakeResp(200, {})  # 200 ohne id (transient, z. B. während Import)
+    _patch_get(fake_get)
+    check('200-ohne-id → None', rh.lookup_puzzle_id('y.pgn:1') is None)
+    rh.lookup_puzzle_id('y.pgn:1')
+    check('200-ohne-id NICHT gecached (erneuter HTTP-Call)', calls['n'] == 2)
+
+
 def test_game_from_puzzle_illegal_raises():
     # Illegaler Setup-Zug (e2e5 aus der Grundstellung) → parse_uci wirft →
     # der Aufrufer (post_rookhub_puzzle try/except) überspringt das Puzzle.
@@ -154,6 +167,7 @@ def main():
     for t in (test_get_puzzle_ok, test_get_puzzle_404, test_get_puzzle_no_url,
               test_lookup_and_url, test_url_falls_back_to_api,
               test_lookup_caches_hit, test_lookup_caches_404,
+              test_lookup_200_without_id_not_cached,
               test_game_from_puzzle_illegal_raises, test_game_from_puzzle):
         print(f'== {t.__name__} ==')
         t()

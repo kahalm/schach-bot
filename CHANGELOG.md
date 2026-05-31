@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.37.2] - 2026-05-31
+### Fixed
+- RookHub-Link-Lookup: ein `200 OK` ohne `id` (z. B. waehrend eines Imports / Proxy-Fehlerseite) wird nicht mehr faelschlich dauerhaft als „nicht vorhanden" gecached — nur echte 404 + echte IDs werden gecached (Code-Review)
+
 ## [2.37.1] - 2026-05-31
 ### Fixed
 - `game_from_puzzle` validiert Setup- und Loesungszuege per `parse_uci` statt ungeprueftem `push` — ein illegales/kaputtes RookHub-DTO fuehrt jetzt zum Ueberspringen statt zu einem still korrumpierten Brett (Code-Review #3)
