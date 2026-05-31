@@ -279,6 +279,25 @@ def _clear_user_training(user_id: int):
     atomic_update(USER_STUDIES_FILE, _update)
 
 
+def _get_user_show_board(user_id: int) -> bool:
+    """Gibt zurück, ob der User Board+Lösung sehen will (Default: False = nur Link)."""
+    entry = _load_user_studies().get(str(user_id))
+    if isinstance(entry, dict):
+        return entry.get('show_board', False)
+    return False
+
+
+def _set_user_show_board(user_id: int, value: bool):
+    """Setzt die show_board-Präferenz für den User."""
+    key = str(user_id)
+    def _update(data):
+        if key not in data or not isinstance(data[key], dict):
+            data[key] = {}
+        data[key]['show_board'] = value
+        return data
+    atomic_update(USER_STUDIES_FILE, _update)
+
+
 # ---------------------------------------------------------------------------
 # Puzzle-Kontext fuer KI-Chat
 # ---------------------------------------------------------------------------

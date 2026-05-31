@@ -57,15 +57,20 @@ _lichess_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2,
 
 async def _send_puzzle_followups(target, game: chess.pgn.Game,
                                  context: chess.pgn.Game | None,
-                                 line_id: str):
-    """Lösung, Prelude und RookHub-Link als optionale Follow-ups senden."""
-    pgn_moves = _solution_pgn(game)
-    if pgn_moves:
-        await _send_optional(target, f'Lösung: ||`{pgn_moves}`||', label=f'Lösung {line_id}')
-    if context:
-        prelude = _prelude_pgn(context, game)
-        if prelude:
-            await _send_optional(target, f'Ganze Partie: ||`{prelude}`||', label=f'Partie {line_id}')
+                                 line_id: str,
+                                 show_board: bool = True):
+    """Lösung, Prelude und RookHub-Link als optionale Follow-ups senden.
+
+    show_board=False unterdrückt Lösung und Prelude (nur RookHub-Link bleibt).
+    """
+    if show_board:
+        pgn_moves = _solution_pgn(game)
+        if pgn_moves:
+            await _send_optional(target, f'Lösung: ||`{pgn_moves}`||', label=f'Lösung {line_id}')
+        if context:
+            prelude = _prelude_pgn(context, game)
+            if prelude:
+                await _send_optional(target, f'Ganze Partie: ||`{prelude}`||', label=f'Partie {line_id}')
     # RookHub-Link via line_id-Lookup (synchroner HTTP-Call → in Thread auslagern)
     url = await asyncio.to_thread(rookhub.web_url_for_line, line_id)
     if url:
@@ -170,12 +175,14 @@ async def _send_optional(target, *args, label: str = '', **kwargs):
     return None
 
 
-async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int | None = None) -> int:
-    """Puzzles auswählen, auf Lichess hochladen und posten.
+async def post_puzzle(channel, count: int = 1, book_idx: int = 0,
+                      user_id: int | None = None, show_board: bool = True) -> int:
+    """Puzzles auswählen, rendern und posten.
 
-    count    – Anzahl Puzzles (1–20).
-    book_idx – 1-basierte Buchnummer aus /kurs (0 = alle Bücher).
-    user_id  – Discord-User-ID; wenn gesetzt, wird die Tages-Studie wiederverwendet.
+    count      – Anzahl Puzzles (1–20).
+    book_idx   – 1-basierte Buchnummer aus /kurs (0 = alle Bücher).
+    user_id    – Discord-User-ID; wenn gesetzt, wird die Tages-Studie wiederverwendet.
+    show_board – False: kein Brettbild, keine Lösung – nur Embed + RookHub-Link.
 
     Gibt die Anzahl tatsächlich geposteter Puzzles zurück.
     """
@@ -244,7 +251,16 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         try:
             puzzle_num   = (base_count + i + 1) if user_id else 0
             puzzle_total = (base_total + i + 1) if user_id else 0
-            turn, img = await safe_render_board(game)
+
+            if show_board:
+                turn, img = await safe_render_board(game)
+            else:
+                # Nur turn ermitteln fuer Embed, kein Bild rendern
+                board = game.board()
+                for move in game.mainline_moves():
+                    board.push(move)
+                turn = board.turn
+                img = None
 
             embed = build_puzzle_embed(game, turn=turn, puzzle_num=puzzle_num, puzzle_total=puzzle_total, difficulty=diff, rating=rating, line_id=lid)
             # Haupt-Send: Brett + Embed. Nur das ist der Erfolgs-Anker;
@@ -271,7 +287,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         except Exception as e:
             log.warning('Button-View-Edit fehlgeschlagen (%s): %s', lid, e)
 
-        await _send_puzzle_followups(target, game, context, lid)
+        await _send_puzzle_followups(target, game, context, lid, show_board=show_board)
 
     log.info('post_puzzle: %d/%d Puzzle(s) gepostet', posted_ok, len(puzzles))
     if user_id and posted_ok:

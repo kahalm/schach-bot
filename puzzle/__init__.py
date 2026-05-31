@@ -21,6 +21,7 @@ from .state import (  # noqa: F401
     _get_user_puzzle_count,
     _books_config_cache, _load_books_config, _invalidate_books_config_cache,
     _get_user_training, _set_user_training, _clear_user_training,
+    _get_user_show_board, _set_user_show_board,
     _last_puzzle_context, _last_channel_puzzle,
     save_puzzle_context, get_puzzle_context,
 )

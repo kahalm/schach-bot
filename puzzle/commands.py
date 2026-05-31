@@ -19,7 +19,24 @@ import puzzle as _pkg
 log = logging.getLogger('schach-bot')
 
 async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: int = 0,
-                      id: str = '', user: discord.Member | None = None):
+                      id: str = '', user: discord.Member | None = None,
+                      option: discord.app_commands.Choice[str] | None = None):
+    # Option: show_board / hide_board Praeferenz setzen
+    if option is not None:
+        uid = interaction.user.id
+        if option.value == 'showBoard':
+            _pkg._set_user_show_board(uid, True)
+            await interaction.response.send_message(
+                '✅ Board-Anzeige aktiviert. Du siehst ab jetzt Brettbild + Lösung bei `/puzzle`.',
+                ephemeral=True)
+            return
+        elif option.value == 'hideBoard':
+            _pkg._set_user_show_board(uid, False)
+            await interaction.response.send_message(
+                '✅ Board-Anzeige deaktiviert. Du bekommst ab jetzt nur den Link bei `/puzzle`.',
+                ephemeral=True)
+            return
+
     # Admin-Check: nur Admins duerfen Puzzles an andere User senden
     if user is not None and user.id != interaction.user.id:
         if not is_privileged(interaction):
@@ -122,7 +139,17 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
             diff = book_meta.get('difficulty', '')
             rating = book_meta.get('rating', 0)
 
-            turn, img = await _pkg.safe_render_board(game)
+            # show_board-Praeferenz des Ziel-Users
+            show_board = _pkg._get_user_show_board(target_uid)
+
+            if show_board:
+                turn, img = await _pkg.safe_render_board(game)
+            else:
+                board = game.board()
+                for move in game.mainline_moves():
+                    board.push(move)
+                turn = board.turn
+                img = None
 
             if user:
                 await dm.send(f'**{interaction.user.display_name}** schickt dir ein Rätsel 🧩')
@@ -139,7 +166,7 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
             from puzzle.buttons import fresh_view as _fresh_button_view
             await msg.edit(view=_fresh_button_view())
 
-            await _pkg._send_puzzle_followups(dm, game, context, line_id)
+            await _pkg._send_puzzle_followups(dm, game, context, line_id, show_board=show_board)
 
             stats.inc(target_uid, 'puzzles')
 
@@ -150,7 +177,8 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
 
         if user:
             await dm.send(f'**{interaction.user.display_name}** schickt dir ein Rätsel 🧩')
-        sent = await _pkg.post_puzzle(dm, count=anzahl, book_idx=buch, user_id=target_uid)
+        show_board = _pkg._get_user_show_board(target_uid)
+        sent = await _pkg.post_puzzle(dm, count=anzahl, book_idx=buch, user_id=target_uid, show_board=show_board)
         dest = f'an {target_user.mention}' if user else 'dir'
         if sent == anzahl:
             msg = f'✅ {sent} Puzzle(s) wurde(n) {dest} per DM gesendet.'
@@ -673,11 +701,17 @@ def setup(bot: discord.ext.commands.Bot):
         buch='Buchnummer aus /kurs (Standard: alle Bücher)',
         id='Puzzle-ID (z.B. datei.pgn:123) – zeigt genau dieses Puzzle',
         user='Puzzle an diesen User schicken (Standard: an dich selbst)',
+        option='Board-Anzeige ein-/ausschalten (showBoard/hideBoard)',
     )
+    @discord.app_commands.choices(option=[
+        discord.app_commands.Choice(name='showBoard – Brettbild + Lösung anzeigen', value='showBoard'),
+        discord.app_commands.Choice(name='hideBoard – nur Link, kein Bild/Lösung', value='hideBoard'),
+    ])
     @discord.app_commands.checks.cooldown(1, 10.0)
     async def cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: int = 0,
-                         id: str = '', user: discord.Member | None = None):
-        await _cmd_puzzle(interaction, anzahl, buch, id, user)
+                         id: str = '', user: discord.Member | None = None,
+                         option: discord.app_commands.Choice[str] | None = None):
+        await _cmd_puzzle(interaction, anzahl, buch, id, user, option)
 
     @tree.command(name='kurs', description='Puzzle-Bücher anzeigen; optional Details zu einem Buch')
     @discord.app_commands.describe(
