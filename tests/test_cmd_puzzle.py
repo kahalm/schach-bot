@@ -30,8 +30,9 @@ def test_puzzle():
         orig_post = leg.post_puzzle
         call_log = []
 
-        async def fake_post_puzzle(channel, count=1, book_idx=0, user_id=None):
-            call_log.append({'count': count, 'book_idx': book_idx, 'user_id': user_id})
+        async def fake_post_puzzle(channel, count=1, book_idx=0, user_id=None, show_board=True):
+            call_log.append({'count': count, 'book_idx': book_idx,
+                             'user_id': user_id, 'show_board': show_board})
             return count
 
         leg.post_puzzle = fake_post_puzzle
@@ -43,6 +44,8 @@ def test_puzzle():
             check('defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
             check('post_puzzle aufgerufen', len(call_log) == 1)
             check('post_puzzle count=2', call_log[0]['count'] == 2)
+            check('post_puzzle Standard ohne Brett (show_board=False)',
+                  call_log[0]['show_board'] is False)
             check('followup mit Bestaetigung',
                   len(ia.followup.calls) > 0 and
                   '2' in (ia.followup.calls[0].get('content') or ''))

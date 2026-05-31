@@ -108,7 +108,18 @@ _app_commands = sys.modules['discord.app_commands']
 _app_commands.describe = _passthrough_decorator
 _app_commands.default_permissions = _passthrough_decorator
 _app_commands.choices = _passthrough_decorator
-_app_commands.Choice = MagicMock
+
+class _FakeChoice:
+    """Stub fuer discord.app_commands.Choice: subskriptierbar (`Choice[str]` als
+    Parameter-Annotation auf Modulebene) UND konstruierbar (`Choice(name=, value=)`
+    in @choices-Dekoratoren)."""
+    def __init__(self, **kw):
+        self.name = kw.get('name')
+        self.value = kw.get('value')
+    def __class_getitem__(cls, item):
+        return cls
+
+_app_commands.Choice = _FakeChoice
 _app_commands.checks.cooldown = lambda *a, **kw: (lambda fn: fn)
 # Muss auch auf discord.app_commands gesetzt werden
 _discord.app_commands = _app_commands

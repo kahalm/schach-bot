@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.38.0] - 2026-05-31
+### Added
+- `/puzzle option:showBoard|hideBoard` — pro-User-Präferenz für die Board-Anzeige, persistiert in `user_studies.json`, gilt für alle `/puzzle`-Pfade (random, by-ID, multi). Standard ist **hideBoard**: nur Embed mit Metadaten + RookHub-Link, kein Brettbild und keine Lösung. `showBoard` zeigt wie bisher Brettbild + Lösung.
+
+### Fixed
+- Versionierung nachgezogen: Das show_board-Feature war als Patch `v2.37.4` getaggt worden, ohne `core/version.py` zu erhöhen (blieb auf 2.37.3). Als Feature korrekt auf Minor **2.38.0** gehoben.
+- `test_commands.py` lief unter dem discord-Stub nicht mehr durch: die neue `option: discord.app_commands.Choice[str]`-Annotation in `_cmd_puzzle` brach schon beim Import (Stub-`Choice` war nicht subskriptierbar), und der `fake_post_puzzle`-Mock kannte den neuen `show_board`-kwarg nicht. Stub (`tests/test_helpers.py`) + Mock (`tests/test_cmd_puzzle.py`) nachgezogen, plus neuer Check für die Standard-„ohne Brett"-Anzeige.
+
 ## [2.37.3] - 2026-05-31
 ### Fixed
 - RookHub-Puzzles (Daily, `/randompuzzle`, `/blindpuzzle`) starten an der richtigen Stellung: `game_from_puzzle` berücksichtigt jetzt das Feld `startPly`. Bisher wurde immer `moves[0]` als Setup-Zug gespielt — bei Büchern, deren FEN bereits die Puzzle-Stellung ist (z. B. „1001 Chess Exercises"), wurde dadurch der erste Lösungszug verraten; bei Ganze-Partie-Puzzles die Eröffnungsstellung gezeigt. Jetzt: `startPly=-1` → lösen ab `moves[0]` (kein Vorspiel); `startPly=k` → bis `moves[k]` vorspulen, lösen ab `moves[k+1]`. (2 neue Tests in `test_rookhub.py`.)
