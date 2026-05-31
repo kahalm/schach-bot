@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.37.3] - 2026-05-31
+### Fixed
+- RookHub-Puzzles (Daily, `/randompuzzle`, `/blindpuzzle`) starten an der richtigen Stellung: `game_from_puzzle` berücksichtigt jetzt das Feld `startPly`. Bisher wurde immer `moves[0]` als Setup-Zug gespielt — bei Büchern, deren FEN bereits die Puzzle-Stellung ist (z. B. „1001 Chess Exercises"), wurde dadurch der erste Lösungszug verraten; bei Ganze-Partie-Puzzles die Eröffnungsstellung gezeigt. Jetzt: `startPly=-1` → lösen ab `moves[0]` (kein Vorspiel); `startPly=k` → bis `moves[k]` vorspulen, lösen ab `moves[k+1]`. (2 neue Tests in `test_rookhub.py`.)
+
 ## [2.37.2] - 2026-05-31
 ### Fixed
 - RookHub-Link-Lookup: ein `200 OK` ohne `id` (z. B. waehrend eines Imports / Proxy-Fehlerseite) wird nicht mehr faelschlich dauerhaft als „nicht vorhanden" gecached — nur echte 404 + echte IDs werden gecached (Code-Review)

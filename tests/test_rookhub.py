@@ -163,12 +163,51 @@ def test_game_from_puzzle():
     check('Header Title→White', game.headers['White'] == 'Test')
 
 
+def test_game_from_puzzle_startply_minus1():
+    # startPly=-1: FEN IST die Trainingsstellung → nichts vorspielen, Lösung ab moves[0].
+    # (Bücher wie "1001 Chess Exercises": FEN = Puzzle-Stellung, Zug 1 = Lösung.)
+    dto = {
+        'fen': '4k2r/1p2npbp/p1b1p1p1/P1q3B1/4P3/2N2N2/1PQ2PPP/3R2K1 w k - 0 1',
+        'moves': 'c3d5 e6d5 e4d5',
+        'startPly': -1,
+        'title': 'Ex', 'chapter': '', 'bookFileName': 'b.pgn',
+    }
+    game, solution = rh.game_from_puzzle(dto)
+    board = game.board()
+    check('startPly=-1: Weiss am Zug (FEN unveraendert)', board.turn == chess.WHITE)
+    check('startPly=-1: kein Vorspiel (Sd5 noch NICHT gespielt)',
+          board.piece_at(chess.D5) is None)
+    check('startPly=-1: Loesung = ALLE moves', solution == ['c3d5', 'e6d5', 'e4d5'])
+    check('startPly=-1: erster Loesungszug = c3d5',
+          list(game.mainline_moves())[0].uci() == 'c3d5')
+
+
+def test_game_from_puzzle_startply_midline():
+    # startPly=3: ganze Partie ab Grundstellung; Marker an moves[3]=b8c6 → Setup-Zug,
+    # vorgespult werden moves[0..3], geloest ab moves[4]=f1b5.
+    dto = {
+        'fen': 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        'moves': 'e2e4 e7e5 g1f3 b8c6 f1b5 a7a6',
+        'startPly': 3,
+        'title': 'T', 'chapter': '', 'bookFileName': 'b.pgn',
+    }
+    game, solution = rh.game_from_puzzle(dto)
+    board = game.board()
+    check('startPly=3: Weiss am Zug (nach 1.e4 e5 2.Nf3 Nc6)', board.turn == chess.WHITE)
+    check('startPly=3: Sf3 steht (vorgespult)', board.piece_at(chess.F3) is not None)
+    check('startPly=3: Sc6 steht (Setup-Zug gespielt)', board.piece_at(chess.C6) is not None)
+    check('startPly=3: Loesung = moves[4:]', solution == ['f1b5', 'a7a6'])
+    check('startPly=3: erster Loesungszug = f1b5 (Lb5)',
+          list(game.mainline_moves())[0].uci() == 'f1b5')
+
+
 def main():
     for t in (test_get_puzzle_ok, test_get_puzzle_404, test_get_puzzle_no_url,
               test_lookup_and_url, test_url_falls_back_to_api,
               test_lookup_caches_hit, test_lookup_caches_404,
               test_lookup_200_without_id_not_cached,
-              test_game_from_puzzle_illegal_raises, test_game_from_puzzle):
+              test_game_from_puzzle_illegal_raises, test_game_from_puzzle,
+              test_game_from_puzzle_startply_minus1, test_game_from_puzzle_startply_midline):
         print(f'== {t.__name__} ==')
         t()
     print()

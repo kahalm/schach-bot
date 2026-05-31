@@ -98,23 +98,39 @@ def web_url_for_line(line_id: str) -> str | None:
 def game_from_puzzle(dto: dict) -> tuple[chess.pgn.Game, list[str]]:
     """Baut aus einem RookHub-BookPuzzleDto ein ``chess.pgn.Game``.
 
-    RookHub speichert ``fen`` = Stellung vor dem Setup-Zug und ``moves`` als
-    leerzeichengetrennte UCI-Züge, wobei ``moves[0]`` der Setup-/Gegnerzug ist und
-    der Spieler ab ``moves[1]`` löst (analog zur RookHub-Lös-UI).
+    ``fen`` + ``moves`` enthalten die KOMPLETTE Partie; ``startPly`` markiert den
+    Trainingsstart (analog zur RookHub-Lös-UI):
 
-    Es wird ``moves[0]`` gespielt, sodass ``game.board()`` die **Trainingsposition**
-    liefert (passend für ``safe_render_board`` / ``build_puzzle_embed``). Rückgabe:
-    ``(game, solution_uci)`` mit ``solution_uci = moves[1:]``.
+    * ``startPly = -1`` → ``fen`` IST bereits die Trainingsstellung; nichts
+      vorspielen, Lösung = ``moves[0:]`` (z. B. Bücher mit FEN = Puzzle-Stellung).
+    * ``startPly = k ≥ 0`` → ``moves[0..k]`` vorspulen (``moves[k]`` ist der
+      Setup-/Gegnerzug in die Trainingsstellung), Lösung = ``moves[k+1:]``.
+
+    Fehlt ``startPly`` (alte/fremde DTOs), gilt ``0`` (klassisch: ``moves[0]`` als
+    Setup, Lösung ab ``moves[1]``).
+
+    Es wird bis zur Trainingsstellung vorgespielt, sodass ``game.board()`` die
+    Stellung liefert, ab der gelöst wird (passend für ``safe_render_board`` /
+    ``build_puzzle_embed``). Rückgabe: ``(game, solution_uci)``.
     """
     fen = dto['fen']
     moves = (dto.get('moves') or '').split()
+    start_ply = dto.get('startPly')
+    if start_ply is None:
+        start_ply = 0
+
+    # Anzahl Halbzüge, die bis zur Trainingsstellung vorgespielt werden.
+    # startPly=-1 → 0 (kein Vorspiel); startPly=k → k+1 (inkl. Setup-Zug moves[k]).
+    setup_count = min(max(0, start_ply + 1), len(moves))
 
     board = chess.Board(fen)
-    if moves:
+    for uci in moves[:setup_count]:
         # parse_uci validiert die Legalität (wirft bei illegalem/ungültigem Zug) – so wird
         # ein kaputtes DTO vom Aufrufer als „Puzzle überspringen" behandelt statt still ein
         # korruptes Brett zu posten.
-        board.push(board.parse_uci(moves[0]))  # Setup-Zug → Trainingsposition
+        board.push(board.parse_uci(uci))
+
+    solution = moves[setup_count:]
 
     game = chess.pgn.Game()
     game.headers['Event'] = dto.get('bookFileName') or 'RookHub'
@@ -124,9 +140,9 @@ def game_from_puzzle(dto: dict) -> tuple[chess.pgn.Game, list[str]]:
 
     node = game
     solboard = board.copy()
-    for uci in moves[1:]:
+    for uci in solution:
         mv = solboard.parse_uci(uci)  # validiert jeden Lösungszug gegen die Stellung
         solboard.push(mv)
         node = node.add_variation(mv)
 
-    return game, moves[1:]
+    return game, solution
