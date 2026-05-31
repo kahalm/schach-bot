@@ -21,6 +21,13 @@ ROOKHUB_API_URL = os.getenv('ROOKHUB_API_URL', '').rstrip('/')
 ROOKHUB_WEB_URL = os.getenv('ROOKHUB_WEB_URL', '').rstrip('/')
 
 _TIMEOUT = 15
+# Kürzerer Timeout für den (häufigen, per Puzzle aufgerufenen) Link-Lookup, damit ein
+# langsames/nicht erreichbares RookHub nicht ganze Commands blockiert.
+_LOOKUP_TIMEOUT = 4
+
+# In-Memory-Cache line_id → id (None = in RookHub nicht vorhanden). Stabil, da RookHub-IDs
+# sich nicht ändern; wird beim Bot-Neustart geleert (deckt nachträgliche Importe ab).
+_id_cache: dict[str, int | None] = {}
 
 
 def _api(path: str) -> str:
@@ -50,18 +57,24 @@ def get_puzzle(pool: str = 'random', exclude=None, timeout: int = _TIMEOUT) -> d
         return None
 
 
-def lookup_puzzle_id(line_id: str, timeout: int = _TIMEOUT) -> int | None:
-    """Schlägt die RookHub-ID eines Puzzles anhand seiner line_id nach."""
+def lookup_puzzle_id(line_id: str, timeout: int = _LOOKUP_TIMEOUT) -> int | None:
+    """Schlägt die RookHub-ID eines Puzzles anhand seiner line_id nach (gecached)."""
     if not ROOKHUB_API_URL or not line_id:
         return None
+    if line_id in _id_cache:
+        return _id_cache[line_id]
     try:
         r = requests.get(_api('/api/book-puzzles/by-line-id'),
                          params={'lineId': line_id}, timeout=timeout)
         if r.status_code == 404:
+            _id_cache[line_id] = None  # bekannt: nicht in RookHub → nicht erneut abfragen
             return None
         r.raise_for_status()
-        return r.json().get('id')
+        pid = r.json().get('id')
+        _id_cache[line_id] = pid
+        return pid
     except requests.RequestException as e:
+        # Transiente Fehler NICHT cachen (nächster Aufruf darf erneut versuchen).
         log.debug('RookHub lookup_puzzle_id(%s) fehlgeschlagen: %s', line_id, e)
         return None
 
@@ -95,7 +108,10 @@ def game_from_puzzle(dto: dict) -> tuple[chess.pgn.Game, list[str]]:
 
     board = chess.Board(fen)
     if moves:
-        board.push(chess.Move.from_uci(moves[0]))  # Setup-Zug → Trainingsposition
+        # parse_uci validiert die Legalität (wirft bei illegalem/ungültigem Zug) – so wird
+        # ein kaputtes DTO vom Aufrufer als „Puzzle überspringen" behandelt statt still ein
+        # korruptes Brett zu posten.
+        board.push(board.parse_uci(moves[0]))  # Setup-Zug → Trainingsposition
 
     game = chess.pgn.Game()
     game.headers['Event'] = dto.get('bookFileName') or 'RookHub'
@@ -104,7 +120,10 @@ def game_from_puzzle(dto: dict) -> tuple[chess.pgn.Game, list[str]]:
     game.setup(board)
 
     node = game
+    solboard = board.copy()
     for uci in moves[1:]:
-        node = node.add_variation(chess.Move.from_uci(uci))
+        mv = solboard.parse_uci(uci)  # validiert jeden Lösungszug gegen die Stellung
+        solboard.push(mv)
+        node = node.add_variation(mv)
 
     return game, moves[1:]

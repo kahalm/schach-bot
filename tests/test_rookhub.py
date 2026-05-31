@@ -91,6 +91,46 @@ def test_url_falls_back_to_api():
     check('web_url fällt auf API-URL zurück', rh.puzzle_web_url(3) == 'http://rookhub:5001/puzzles/book/3')
 
 
+def test_lookup_caches_hit():
+    rh.ROOKHUB_API_URL = 'http://rookhub:5001'
+    rh._id_cache.clear()
+    calls = {'n': 0}
+    def fake_get(url, params=None, timeout=None):
+        calls['n'] += 1
+        return _FakeResp(200, {'id': 7})
+    _patch_get(fake_get)
+    check('lookup 1. Aufruf', rh.lookup_puzzle_id('b.pgn:1') == 7)
+    check('lookup 2. Aufruf (cached)', rh.lookup_puzzle_id('b.pgn:1') == 7)
+    check('nur 1 HTTP-Call dank Cache', calls['n'] == 1)
+
+
+def test_lookup_caches_404():
+    rh.ROOKHUB_API_URL = 'http://rookhub:5001'
+    rh._id_cache.clear()
+    calls = {'n': 0}
+    def fake_get(url, params=None, timeout=None):
+        calls['n'] += 1
+        return _FakeResp(404)
+    _patch_get(fake_get)
+    check('404 → None', rh.lookup_puzzle_id('x.pgn:9') is None)
+    check('404 2. Aufruf → None', rh.lookup_puzzle_id('x.pgn:9') is None)
+    check('404 gecached (nur 1 Call)', calls['n'] == 1)
+
+
+def test_game_from_puzzle_illegal_raises():
+    # Illegaler Setup-Zug (e2e5 aus der Grundstellung) → parse_uci wirft →
+    # der Aufrufer (post_rookhub_puzzle try/except) überspringt das Puzzle.
+    import chess as _chess
+    dto = {'fen': 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+           'moves': 'e2e5 e7e5'}
+    raised = False
+    try:
+        rh.game_from_puzzle(dto)
+    except (_chess.IllegalMoveError, _chess.InvalidMoveError, ValueError, AssertionError):
+        raised = True
+    check('illegaler moves[0] wirft (kein stilles Korrumpieren)', raised)
+
+
 def test_game_from_puzzle():
     # fen = Grundstellung; moves[0]=e2e4 (Setup) → Trainingsposition (Schwarz am Zug),
     # Lösung = e7e5 g1f3
@@ -112,7 +152,9 @@ def test_game_from_puzzle():
 
 def main():
     for t in (test_get_puzzle_ok, test_get_puzzle_404, test_get_puzzle_no_url,
-              test_lookup_and_url, test_url_falls_back_to_api, test_game_from_puzzle):
+              test_lookup_and_url, test_url_falls_back_to_api,
+              test_lookup_caches_hit, test_lookup_caches_404,
+              test_game_from_puzzle_illegal_raises, test_game_from_puzzle):
         print(f'== {t.__name__} ==')
         t()
     print()

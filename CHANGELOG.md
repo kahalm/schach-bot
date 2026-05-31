@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.37.1] - 2026-05-31
+### Fixed
+- `game_from_puzzle` validiert Setup- und Loesungszuege per `parse_uci` statt ungeprueftem `push` — ein illegales/kaputtes RookHub-DTO fuehrt jetzt zum Ueberspringen statt zu einem still korrumpierten Brett (Code-Review #3)
+- RookHub-Link-Lookup mit In-Memory-Cache (line_id→id) + kuerzerem Timeout (4s) — `_send_puzzle_followups` blockiert nicht mehr pro Puzzle bis zu 15s bei langsamem/nicht erreichbarem RookHub (Code-Review #2)
+
 ## [2.37.0] - 2026-05-31
 ### Added
 - RookHub-Integration: Tages-/Zufalls-/Blindpuzzle kommen jetzt von RookHub (`puzzle/rookhub.py`)
