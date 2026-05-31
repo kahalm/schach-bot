@@ -4,6 +4,17 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.37.0] - 2026-05-31
+### Added
+- RookHub-Integration: Tages-/Zufalls-/Blindpuzzle kommen jetzt von RookHub (`puzzle/rookhub.py`)
+- Neue Commands `/randompuzzle` und `/blindpuzzle` — RookHub waehlt ein Puzzle aus den entsprechend markierten Buechern, der Bot rendert Brett + Embed und postet den RookHub-Link
+- Tagespuzzle (`puzzle_task` / `/daily`) holt das deterministische Tagespuzzle aus RookHub (`pool=daily`)
+- Env-Variablen `ROOKHUB_API_URL` (interne API, kein Token) und `ROOKHUB_WEB_URL` (oeffentlicher Link)
+### Changed
+- Alle Puzzle-Posts (`/puzzle`, `/kurs`, `/train`, `/next`, `/endless`) verlinken jetzt auf RookHub (`…/puzzles/book/{id}`) statt auf Lichess; der Link wird per `by-line-id`-Lookup aufgeloest
+### Removed
+- Lichess-Studien-Upload als Puzzle-Posting-Mechanismus inkl. Studien-Tracking pro User (`_get_user_study_id`/`_set_user_study_id`). Lichess Cloud-Eval (KI-Chat-Zuganalyse) und der `/test`-Diagnosemodus bleiben erhalten.
+
 ## [2.36.1] - 2026-05-27
 ### Changed
 - "100 Tactical Patterns You Must Know" aus dem Daily-Puzzle-Pool entfernt (`random: false`)

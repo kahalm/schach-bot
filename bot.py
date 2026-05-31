@@ -608,7 +608,7 @@ async def cmd_daily(interaction: discord.Interaction):
         return
     await interaction.response.defer(ephemeral=True)
     try:
-        await puzzle.post_puzzle(channel)
+        await puzzle.post_rookhub_puzzle(channel, 'daily')
         await interaction.followup.send(f'Daily Puzzle in <#{CHANNEL_ID}> gepostet.', ephemeral=True)
     except Exception as e:
         log.exception('Fehler bei /daily')
@@ -633,7 +633,7 @@ async def puzzle_task():
         log.warning('Channel %s nicht gefunden.', CHANNEL_ID)
         return
     try:
-        await puzzle.post_puzzle(channel)
+        await puzzle.post_rookhub_puzzle(channel, 'daily')
     except Exception as e:
         log.exception('puzzle_task fehlgeschlagen')
     # Reaction-Log rotieren

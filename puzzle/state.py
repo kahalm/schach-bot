@@ -214,16 +214,6 @@ def _save_user_studies(data: dict):
     atomic_write(USER_STUDIES_FILE, data)
 
 
-def _get_user_study_id(user_id: int) -> str | None:
-    entry = _load_user_studies().get(str(user_id))
-    if isinstance(entry, dict):
-        val = entry.get('id')
-    else:
-        val = None
-    log.debug('User-Studie laden: user=%s → %s', user_id, val or 'neu')
-    return val
-
-
 def _get_user_puzzle_count(user_id: int) -> tuple[int, int]:
     """Gibt (heute, gesamt) zurück."""
     entry = _load_user_studies().get(str(user_id))
@@ -233,23 +223,6 @@ def _get_user_puzzle_count(user_id: int) -> tuple[int, int]:
     if entry.get('today') == _date.today().isoformat():
         return entry.get('count', 0), total
     return 0, total
-
-
-def _set_user_study_id(user_id: int, study_id: str, count: int, total: int):
-    key = str(user_id)
-    def _update(data):
-        prev = data.get(key) if isinstance(data.get(key), dict) else {}
-        data[key] = {
-            'id':    study_id,
-            'today': _date.today().isoformat(),
-            'count': count,
-            'total': total,
-        }
-        if 'training' in prev:
-            data[key]['training'] = prev['training']
-        return data
-    atomic_update(USER_STUDIES_FILE, _update)
-    log.debug('User-Studie gespeichert: user=%s study_id=%s count=%d total=%d', user_id, study_id, count, total)
 
 
 _books_config_cache: dict | None = None

@@ -122,11 +122,6 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
             diff = book_meta.get('difficulty', '')
             rating = book_meta.get('rating', 0)
 
-            # Upload
-            reuse_study_id = _pkg._get_user_study_id(target_uid)
-            urls = await _pkg._upload_puzzles_async([(game, context)], reuse_study_id=reuse_study_id)
-            puzzle_url = urls[0] if urls else None
-
             turn, img = await _pkg.safe_render_board(game)
 
             if user:
@@ -144,14 +139,9 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
             from puzzle.buttons import fresh_view as _fresh_button_view
             await msg.edit(view=_fresh_button_view())
 
-            await _pkg._send_puzzle_followups(dm, game, context, puzzle_url, line_id)
+            await _pkg._send_puzzle_followups(dm, game, context, line_id)
 
-            # Stats + Study-ID tracken (wie bei post_puzzle)
             stats.inc(target_uid, 'puzzles')
-            sid = _pkg._extract_study_id(puzzle_url) if puzzle_url else None
-            if sid:
-                base_count, base_total = _pkg._get_user_puzzle_count(target_uid)
-                _pkg._set_user_study_id(target_uid, sid, base_count + 1, base_total + 1)
 
             dest = f'an {target_user.mention}' if user else 'dir'
             await interaction.followup.send(
@@ -434,27 +424,13 @@ async def send_next_training(channel, user_id: int, count: int = 1) -> dict:
         context = original_game if game is not original_game else None
         puzzles.append((game, context, diff, rating, line_id))
 
-    # Upload (Studien-Reuse wie bei /puzzle)
-    reuse_study_id = _pkg._get_user_study_id(user_id)
     base_count, base_total = _pkg._get_user_puzzle_count(user_id)
-
-    upload_pairs = [(g, c) for g, c, _, _, _ in puzzles]
-    urls = await _pkg._upload_puzzles_async(upload_pairs, reuse_study_id=reuse_study_id)
-
-    # Studie-ID + Zaehler speichern
-    first_url = urls[0] if urls else None
-    sid = _pkg._extract_study_id(first_url) if first_url else None
-    if sid:
-        _pkg._set_user_study_id(user_id, sid,
-                           base_count + len(puzzles),
-                           base_total + len(puzzles))
 
     # DM senden
     from puzzle.buttons import fresh_view as _fresh_button_view
 
     puzzle_count = 0
     for i, (game, context, d, r, lid) in enumerate(puzzles):
-        puzzle_url = urls[i] if i < len(urls) else None
         is_chapter = context is None  # kein [%tqu] → Kapitel
 
         if is_chapter:
@@ -469,8 +445,6 @@ async def send_next_training(channel, user_id: int, count: int = 1) -> dict:
             if pgn_moves:
                 embed.add_field(name='Züge', value=f'`{pgn_moves}`', inline=False)
             msg = await channel.send(embed=embed)
-            if puzzle_url:
-                await channel.send(f'[Auf Lichess ansehen]({puzzle_url})')
         else:
             puzzle_count += 1
             puzzle_num = base_count + puzzle_count
@@ -495,8 +469,8 @@ async def send_next_training(channel, user_id: int, count: int = 1) -> dict:
             _pkg.save_puzzle_context(user_id, _pkg._build_puzzle_context(game, turn, d, lid))
             await msg.edit(view=_fresh_button_view())
 
-            # PGN-Loesung, Prelude, Lichess-Link
-            await _pkg._send_puzzle_followups(channel, game, context, puzzle_url, lid)
+            # PGN-Loesung, Prelude, RookHub-Link
+            await _pkg._send_puzzle_followups(channel, game, context, lid)
 
     if puzzle_count:
         stats.inc(user_id, 'puzzles', puzzle_count)
@@ -663,6 +637,32 @@ async def _cmd_ignore_kapitel(
             ephemeral=True)
 
 
+async def _cmd_randompuzzle(interaction: discord.Interaction):
+    """Postet ein zufälliges RookHub-Puzzle (aus den als 'random' markierten Büchern)."""
+    log.info('/randompuzzle von %s', interaction.user)
+    await interaction.response.defer(ephemeral=True)
+    ok = await _pkg.post_rookhub_puzzle(interaction.channel, 'random', user_id=interaction.user.id)
+    if ok:
+        await interaction.followup.send('🧩 Zufallspuzzle gepostet.', ephemeral=True)
+    else:
+        await interaction.followup.send(
+            '⚠️ Kein Zufallspuzzle verfügbar. Ist RookHub erreichbar und mindestens '
+            'ein Buch als „random" markiert?', ephemeral=True)
+
+
+async def _cmd_blindpuzzle(interaction: discord.Interaction):
+    """Postet ein zufälliges RookHub-Blindpuzzle (aus den als 'blind' markierten Büchern)."""
+    log.info('/blindpuzzle von %s', interaction.user)
+    await interaction.response.defer(ephemeral=True)
+    ok = await _pkg.post_rookhub_puzzle(interaction.channel, 'blind', user_id=interaction.user.id)
+    if ok:
+        await interaction.followup.send('🙈 Blindpuzzle gepostet.', ephemeral=True)
+    else:
+        await interaction.followup.send(
+            '⚠️ Kein Blindpuzzle verfügbar. Ist RookHub erreichbar und mindestens '
+            'ein Buch als „blind" markiert?', ephemeral=True)
+
+
 def setup(bot: discord.ext.commands.Bot):
     """Registriert alle Puzzle-Commands auf dem Bot."""
     tree = bot.tree
@@ -707,6 +707,16 @@ def setup(bot: discord.ext.commands.Bot):
     @discord.app_commands.checks.cooldown(1, 10.0)
     async def cmd_endless(interaction: discord.Interaction, buch: int = 0):
         await _cmd_endless(bot, interaction, buch)
+
+    @tree.command(name='randompuzzle', description='Zufälliges Puzzle von RookHub posten')
+    @discord.app_commands.checks.cooldown(1, 10.0)
+    async def cmd_randompuzzle(interaction: discord.Interaction):
+        await _cmd_randompuzzle(interaction)
+
+    @tree.command(name='blindpuzzle', description='Zufälliges Blind-Puzzle von RookHub posten')
+    @discord.app_commands.checks.cooldown(1, 10.0)
+    async def cmd_blindpuzzle(interaction: discord.Interaction):
+        await _cmd_blindpuzzle(interaction)
 
     @tree.command(name='ignore_kapitel',
                   description='Ein ganzes Kapitel ignorieren oder Liste anzeigen (Admin)')

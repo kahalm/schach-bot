@@ -14,7 +14,7 @@ import discord
 from core import stats
 from puzzle.buttons import fresh_view as _fresh_button_view
 from puzzle.embed import build_puzzle_embed
-from puzzle.lichess import _extract_study_id, upload_to_lichess, upload_many_to_lichess
+import puzzle.rookhub as rookhub
 from puzzle.processing import (
     _solution_pgn, _prelude_pgn, _trim_to_training_position,
     _split_for_blind, _format_blind_moves,
@@ -23,7 +23,7 @@ from puzzle.rendering import _render_board, safe_render_board
 from puzzle.selection import _list_pgn_files, pick_random_lines, pick_random_blind_lines
 from puzzle.state import (
     _register_puzzle_msg, _endless_sessions, stop_endless,
-    _load_books_config, _get_user_study_id, _get_user_puzzle_count, _set_user_study_id,
+    _load_books_config, _get_user_puzzle_count,
     save_puzzle_context,
 )
 
@@ -48,35 +48,17 @@ def _build_puzzle_context(game, turn, diff, line_id, include_solution=True):
         ctx['solution'] = _solution_pgn(game)
     return ctx
 
-# Eigener Executor fuer Lichess-Uploads (sleep-basiertes Rate-Limiting
-# blockiert sonst den Default-ThreadPool und verzoegert andere to_thread-Calls).
+
+# Thread-Executor – wird nur noch von der /test-Diagnose für Lichess-Checks genutzt.
+# Das produktive Puzzle-Posting läuft über RookHub (siehe post_rookhub_puzzle).
 _lichess_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2,
                                                           thread_name_prefix='lichess')
 
 
-async def _upload_puzzles_async(
-    pairs: list[tuple[chess.pgn.Game, chess.pgn.Game | None]],
-    reuse_study_id: str | None = None,
-) -> list[str]:
-    """Upload-Pairs asynchron in einem Thread-Executor hochladen."""
-    loop = asyncio.get_running_loop()
-    if len(pairs) == 1:
-        u = await loop.run_in_executor(
-            _lichess_executor, lambda: upload_to_lichess(
-                pairs[0][0], context_game=pairs[0][1],
-                reuse_study_id=reuse_study_id))
-        return [u] if u else []
-    else:
-        return await loop.run_in_executor(
-            _lichess_executor, lambda: upload_many_to_lichess(
-                pairs, reuse_study_id=reuse_study_id))
-
-
 async def _send_puzzle_followups(target, game: chess.pgn.Game,
                                  context: chess.pgn.Game | None,
-                                 puzzle_url: str | None,
                                  line_id: str):
-    """Lösung, Prelude und Lichess-Link als optionale Follow-ups senden."""
+    """Lösung, Prelude und RookHub-Link als optionale Follow-ups senden."""
     pgn_moves = _solution_pgn(game)
     if pgn_moves:
         await _send_optional(target, f'Lösung: ||`{pgn_moves}`||', label=f'Lösung {line_id}')
@@ -84,8 +66,10 @@ async def _send_puzzle_followups(target, game: chess.pgn.Game,
         prelude = _prelude_pgn(context, game)
         if prelude:
             await _send_optional(target, f'Ganze Partie: ||`{prelude}`||', label=f'Partie {line_id}')
-    if puzzle_url:
-        await _send_optional(target, f'[Klickbares Rätsel]({puzzle_url})', label=f'Lichess-Link {line_id}')
+    # RookHub-Link via line_id-Lookup (synchroner HTTP-Call → in Thread auslagern)
+    url = await asyncio.to_thread(rookhub.web_url_for_line, line_id)
+    if url:
+        await _send_optional(target, f'[Klickbares Rätsel]({url})', label=f'RookHub-Link {line_id}')
 
 
 async def post_next_endless(bot, user_id: int):
@@ -121,17 +105,6 @@ async def post_next_endless(bot, user_id: int):
         diff = book_meta.get('difficulty', '')
         rating = book_meta.get('rating', 0)
 
-        # Upload
-        reuse_study_id = _get_user_study_id(user_id)
-        urls = await _upload_puzzles_async([(game, context)], reuse_study_id=reuse_study_id)
-        puzzle_url = urls[0] if urls else None
-
-        # Studie-ID speichern
-        sid = _extract_study_id(puzzle_url)
-        if sid:
-            base_count, base_total = _get_user_puzzle_count(user_id)
-            _set_user_study_id(user_id, sid, base_count + 1, base_total + 1)
-
         session['count'] += 1
         session['last_active'] = _time_mod.time()
 
@@ -160,8 +133,8 @@ async def post_next_endless(bot, user_id: int):
         save_puzzle_context(user_id, _build_puzzle_context(game, turn, diff, line_id))
         await msg.edit(view=_fresh_button_view())
 
-        # Lösung, Prelude, Lichess-Link
-        await _send_puzzle_followups(dm, game, context, puzzle_url, line_id)
+        # Lösung, Prelude, RookHub-Link
+        await _send_puzzle_followups(dm, game, context, line_id)
 
         stats.inc(user_id, 'puzzles', 1)
     finally:
@@ -239,18 +212,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         rating    = book_meta.get('rating', 0)
         puzzles.append((game, context, diff, rating, line_id))
 
-    reuse_study_id = _get_user_study_id(user_id) if user_id else None
     base_count, base_total = _get_user_puzzle_count(user_id) if user_id else (0, 0)
-
-    # Upload in Thread damit der Event Loop nicht blockiert
-    upload_pairs = [(g, c) for g, c, _, _, _ in puzzles]
-    urls = await _upload_puzzles_async(upload_pairs, reuse_study_id=reuse_study_id)
-
-    # Studie-ID für diesen User+Tag speichern
-    first_url = urls[0] if urls else None
-    sid = _extract_study_id(first_url) if first_url and user_id else None
-    if sid:
-        _set_user_study_id(user_id, sid, base_count + len(puzzles), base_total + len(puzzles))
 
     # Thread-Name vom ersten Puzzle
     h = dict(puzzles[0][0].headers)
@@ -280,14 +242,13 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
              len(puzzles), 'DM' if is_dm else f'thread {target.id}')
     for i, (game, context, diff, rating, lid) in enumerate(puzzles):
         try:
-            puzzle_url = urls[i] if i < len(urls) else None
             puzzle_num   = (base_count + i + 1) if user_id else 0
             puzzle_total = (base_total + i + 1) if user_id else 0
             turn, img = await safe_render_board(game)
 
             embed = build_puzzle_embed(game, turn=turn, puzzle_num=puzzle_num, puzzle_total=puzzle_total, difficulty=diff, rating=rating, line_id=lid)
             # Haupt-Send: Brett + Embed. Nur das ist der Erfolgs-Anker;
-            # alles danach (Lösung, Lichess-Link) ist optional und darf
+            # alles danach (Lösung, RookHub-Link) ist optional und darf
             # bei Discord-5xx das Puzzle nicht als gescheitert markieren.
             if img:
                 file = discord.File(img, filename='board.png')
@@ -310,12 +271,82 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0, user_id: int |
         except Exception as e:
             log.warning('Button-View-Edit fehlgeschlagen (%s): %s', lid, e)
 
-        await _send_puzzle_followups(target, game, context, puzzle_url, lid)
+        await _send_puzzle_followups(target, game, context, lid)
 
     log.info('post_puzzle: %d/%d Puzzle(s) gepostet', posted_ok, len(puzzles))
     if user_id and posted_ok:
         stats.inc(user_id, 'puzzles', posted_ok)
     return posted_ok
+
+
+async def post_rookhub_puzzle(channel, pool: str = 'daily',
+                              user_id: int | None = None, exclude=None) -> bool:
+    """Holt ein Puzzle aus dem RookHub-Pool (``daily`` | ``random`` | ``blind``),
+    rendert Brett + Embed und postet zusätzlich den RookHub-Link. Die Auswahl
+    übernimmt RookHub. Gibt True bei Erfolg zurück.
+    """
+    dto = await asyncio.to_thread(rookhub.get_puzzle, pool, exclude)
+    if not dto:
+        await _send_optional(channel, f'⚠️ Kein {pool}-Puzzle in RookHub verfügbar.',
+                             label=f'rookhub-{pool}')
+        return False
+
+    try:
+        game, _solution = rookhub.game_from_puzzle(dto)
+    except Exception as e:
+        log.exception('RookHub-Puzzle %s konnte nicht aufbereitet werden: %s',
+                      dto.get('lineId'), e)
+        return False
+
+    line_id = dto.get('lineId', '')
+    diff = dto.get('difficulty') or ''
+    rating = dto.get('bookRating') or 0
+    web_url = rookhub.puzzle_web_url(dto.get('id'))
+
+    # Ziel: Thread (Server) oder direkt (DM / bestehender Thread)
+    is_dm = isinstance(channel, discord.DMChannel)
+    if is_dm or isinstance(channel, discord.Thread):
+        target = channel
+    else:
+        label = {'daily': 'Tagespuzzle', 'random': 'Zufallspuzzle',
+                 'blind': 'Blindpuzzle'}.get(pool, 'Puzzle')
+        today = _date.today().strftime('%d.%m.%Y')
+        thread_name = f'{label} – {today}'[:_DISCORD_THREAD_NAME_MAX]
+        try:
+            target = await channel.create_thread(
+                name=thread_name, type=discord.ChannelType.public_thread,
+                auto_archive_duration=1440)
+        except Exception:
+            target = channel
+
+    try:
+        turn, img = await safe_render_board(game)
+        embed = build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating,
+                                   line_id=line_id)
+        if img:
+            file = discord.File(img, filename='board.png')
+            embed.set_image(url='attachment://board.png')
+            msg = await _resilient_send(target, file=file, embed=embed)
+        else:
+            msg = await _resilient_send(target, embed=embed)
+    except Exception as e:
+        log.exception('RookHub-Puzzle-Post fehlgeschlagen (%s): %s', line_id, e)
+        return False
+
+    _register_puzzle_msg(msg.id, line_id)
+    save_puzzle_context(user_id, _build_puzzle_context(game, turn, diff, line_id))
+
+    # Lösung (Spoiler) + RookHub-Link als optionale Follow-ups
+    pgn_moves = _solution_pgn(game)
+    if pgn_moves:
+        await _send_optional(target, f'Lösung: ||`{pgn_moves}`||', label=f'Lösung {line_id}')
+    if web_url:
+        await _send_optional(target, f'[Klickbares Rätsel auf RookHub]({web_url})',
+                             label=f'RookHub-Link {line_id}')
+
+    if user_id:
+        stats.inc(user_id, 'puzzles', 1)
+    return True
 
 
 async def post_blind_puzzle(channel,

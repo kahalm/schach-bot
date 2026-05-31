@@ -18,7 +18,7 @@ from .state import (  # noqa: F401
     _evict_stale_endless, start_endless, stop_endless, is_endless, get_endless_session,
     load_puzzle_state, save_puzzle_state,
     _load_user_studies, _save_user_studies,
-    _get_user_study_id, _get_user_puzzle_count, _set_user_study_id,
+    _get_user_puzzle_count,
     _books_config_cache, _load_books_config, _invalidate_books_config_cache,
     _get_user_training, _set_user_training, _clear_user_training,
     _last_puzzle_context, _last_channel_puzzle,
@@ -60,17 +60,20 @@ from .embed import build_puzzle_embed  # noqa: F401
 
 # --- Posting ---
 from .posting import (  # noqa: F401
-    _DISCORD_THREAD_NAME_MAX, _upload_puzzles_async,
+    _DISCORD_THREAD_NAME_MAX, _lichess_executor,
     _send_puzzle_followups, post_next_endless,
     _resilient_send, _send_optional,
-    post_puzzle, post_blind_puzzle,
+    post_puzzle, post_blind_puzzle, post_rookhub_puzzle,
     _build_puzzle_context,
 )
+
+# --- RookHub-Client ---
+from . import rookhub  # noqa: F401
 
 # --- Slash-Commands ---
 from .commands import (  # noqa: F401
     _cmd_puzzle, _cmd_buecher, _cmd_train, _cmd_next,
-    _cmd_endless, _cmd_ignore_kapitel, setup,
+    _cmd_endless, _cmd_ignore_kapitel, _cmd_randompuzzle, _cmd_blindpuzzle, setup,
     send_next_training,
 )
 

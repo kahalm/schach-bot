@@ -28,14 +28,14 @@ def test_daily():
 
         old_bot = bot_mod.bot
         old_channel_id = bot_mod.CHANNEL_ID
-        orig_post = puzzle_mod.post_puzzle
+        orig_post = puzzle_mod.post_rookhub_puzzle
 
         call_log = []
-        async def fake_post(channel, **kw):
+        async def fake_post(channel, *args, **kw):
             call_log.append(True)
-            return 1
+            return True
 
-        puzzle_mod.post_puzzle = fake_post
+        puzzle_mod.post_rookhub_puzzle = fake_post
 
         try:
             # Test: Channel nicht gefunden
@@ -57,12 +57,12 @@ def test_daily():
             ia = make_interaction(admin=True)
             run_async(cmd(ia))
             check('defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
-            check('post_puzzle aufgerufen', len(call_log) > 0)
+            check('post_rookhub_puzzle aufgerufen', len(call_log) > 0)
             check('followup gesendet', len(ia.followup.calls) > 0)
         finally:
             bot_mod.bot = old_bot
             bot_mod.CHANNEL_ID = old_channel_id
-            puzzle_mod.post_puzzle = orig_post
+            puzzle_mod.post_rookhub_puzzle = orig_post
     finally:
         teardown_temp_config(tmpdir)
     print()

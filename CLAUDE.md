@@ -20,10 +20,12 @@ python tests/test_commands.py    # Slash-command tests (all 27 commands)
 
 Copy `.env.example` to `.env` and fill in:
 - `DISCORD_TOKEN` – Discord bot token
-- `LICHESS_TOKEN` – Lichess API token (study:write scope)
+- `ROOKHUB_API_URL` – RookHub-API (intern, kein Token) – Quelle für Daily/Random/Blind-Puzzle
+- `ROOKHUB_WEB_URL` – öffentliche RookHub-Frontend-URL für den anklickbaren Puzzle-Link
+- `LICHESS_TOKEN` – nur noch für die `/test`-Diagnose / Cloud-Eval (nicht mehr fürs Posten)
 - `CHANNEL_ID` – Discord channel for daily posts
 - `PUZZLE_HOUR` / `PUZZLE_MINUTE` – Daily post time (UTC)
-- `BOOKS_DIR` – Directory containing PGN files (default: `books/`)
+- `BOOKS_DIR` – Directory containing PGN files (default: `books/`) – für lokale Commands (/puzzle, /kurs, /train, /blind, /endless)
 
 Runtime state lives in `config/` (gitignored, auto-created).
 
@@ -32,7 +34,7 @@ Runtime state lives in `config/` (gitignored, auto-created).
 | Package / File | Role |
 |----------------|------|
 | `bot.py` | Main entry, events, /help, /version, /stats, /announce, /daily, daily task |
-| `puzzle/` | Package: `commands.py`, `state.py`, `selection.py`, `processing.py`, `rendering.py`, `posting.py`, `lichess.py`, `embed.py`, `buttons.py`, `__init__.py` |
+| `puzzle/` | Package: `commands.py`, `state.py`, `selection.py`, `processing.py`, `rendering.py`, `posting.py` (inkl. `post_rookhub_puzzle`), `rookhub.py` (RookHub-Client), `lichess.py` (nur Cloud-Eval/Diagnose), `embed.py`, `buttons.py`, `__init__.py` |
 | `commands/` | Slash-Commands: `elo.py`, `reminder.py`, `resourcen.py`, `youtube.py`, `release_notes.py`, `test.py`, `blind.py`, `wanted.py`, `_collection.py` |
 | `core/` | Shared utilities: `paths.py`, `stats.py`, `version.py`, `log_setup.py`, `dm_log.py`, `event_log.py`, `json_store.py` |
 | `library.py` | Books library (/bibliothek, /tag, /autor, /reindex) |
