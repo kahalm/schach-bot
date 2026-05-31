@@ -77,6 +77,31 @@ async def _send_puzzle_followups(target, game: chess.pgn.Game,
         await _send_optional(target, f'[Klickbares Rätsel]({url})', label=f'RookHub-Link {line_id}')
 
 
+async def _send_puzzle_link_only(target, game: chess.pgn.Game, line_id: str,
+                                 user_id: int | None = None, diff: str = '',
+                                 turn=None):
+    """hideBoard-Modus: ausschließlich den klickbaren RookHub-Link posten – kein
+    Brettbild, kein Metadaten-Embed, keine Buttons. Speichert weiterhin den
+    Puzzle-Kontext (für Chat-/Analyse-Features). Gibt die Nachricht zurück.
+
+    Fällt, wenn kein RookHub-Link auflösbar ist, auf eine knappe Textzeile zurück,
+    damit der User nicht leer ausgeht.
+    """
+    url = await asyncio.to_thread(rookhub.web_url_for_line, line_id)
+    if url:
+        msg = await _resilient_send(target, content=f'[Klickbares Rätsel]({url})')
+    else:
+        msg = await _resilient_send(target, content=f'🧩 Rätsel `{line_id}` (kein RookHub-Link verfügbar)')
+    _register_puzzle_msg(msg.id, line_id)
+    if turn is None:
+        board = game.board()
+        for move in game.mainline_moves():
+            board.push(move)
+        turn = board.turn
+    save_puzzle_context(user_id, _build_puzzle_context(game, turn, diff, line_id))
+    return msg
+
+
 async def post_next_endless(bot, user_id: int):
     """Nächstes Puzzle im Endless-Modus per DM senden."""
     session = _endless_sessions.get(user_id)
@@ -261,6 +286,12 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0,
                     board.push(move)
                 turn = board.turn
                 img = None
+
+            if not show_board:
+                # hideBoard: nur den klickbaren RookHub-Link posten – kein Embed/Bild/Buttons
+                await _send_puzzle_link_only(target, game, lid, user_id=user_id, diff=diff, turn=turn)
+                posted_ok += 1
+                continue
 
             embed = build_puzzle_embed(game, turn=turn, puzzle_num=puzzle_num, puzzle_total=puzzle_total, difficulty=diff, rating=rating, line_id=lid)
             # Haupt-Send: Brett + Embed. Nur das ist der Erfolgs-Anker;

@@ -62,7 +62,7 @@ from .embed import build_puzzle_embed  # noqa: F401
 # --- Posting ---
 from .posting import (  # noqa: F401
     _DISCORD_THREAD_NAME_MAX, _lichess_executor,
-    _send_puzzle_followups, post_next_endless,
+    _send_puzzle_followups, _send_puzzle_link_only, post_next_endless,
     _resilient_send, _send_optional,
     post_puzzle, post_blind_puzzle, post_rookhub_puzzle,
     _build_puzzle_context,

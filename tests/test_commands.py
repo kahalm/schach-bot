@@ -15,7 +15,7 @@ from test_cmd_info import (
     test_event_log, test_healthcheck,
 )
 from test_cmd_puzzle import (
-    test_puzzle, test_kurs, test_train, test_next, test_endless, test_blind,
+    test_puzzle, test_puzzle_link_only, test_kurs, test_train, test_next, test_endless, test_blind,
     test_buttons, test_format_blind_moves, test_puzzle_anzahl_validation,
     test_posted_reset_per_pool, test_build_puzzle_embed,
 )
@@ -67,6 +67,7 @@ def main():
     test_collection_limits()
     test_youtube()
     test_puzzle()
+    test_puzzle_link_only()
     test_kurs()
     test_train()
     test_next()

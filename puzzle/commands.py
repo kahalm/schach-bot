@@ -154,6 +154,15 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
             if user:
                 await dm.send(f'**{interaction.user.display_name}** schickt dir ein Rätsel 🧩')
 
+            if not show_board:
+                # hideBoard: nur den klickbaren RookHub-Link (kein Embed/Bild/Buttons)
+                await _pkg._send_puzzle_link_only(dm, game, line_id, user_id=target_uid, diff=diff, turn=turn)
+                stats.inc(target_uid, 'puzzles')
+                dest = f'an {target_user.mention}' if user else 'dir'
+                await interaction.followup.send(
+                    f'✅ Puzzle `{line_id}` {dest} per DM gesendet.', ephemeral=True)
+                return
+
             embed = _pkg.build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating, line_id=line_id)
             if img:
                 file = discord.File(img, filename='board.png')

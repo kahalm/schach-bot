@@ -67,6 +67,50 @@ def test_puzzle():
     print()
 
 
+def test_puzzle_link_only():
+    """hideBoard: _send_puzzle_link_only postet NUR den klickbaren Link, kein Embed/Bild."""
+    print('[/puzzle hideBoard link-only]')
+    import chess
+    import chess.pgn
+    import puzzle as leg
+    import puzzle.rookhub as rh
+    from test_helpers import FakeChannel
+
+    tmpdir = setup_temp_config()
+    orig_web = rh.web_url_for_line
+    try:
+        game = chess.pgn.Game()
+        game.headers['White'] = 'Carlsen, M.'
+        game.headers['Black'] = 'Rapport, R.'
+        game.add_variation(chess.Move.from_uci('e2e4'))
+
+        # Link vorhanden → genau eine Nachricht, nur der klickbare Link, kein Embed/File
+        rh.web_url_for_line = lambda lid: 'https://rookhub.test/puzzles/book/42'
+        ch = FakeChannel()
+        run_async(leg._send_puzzle_link_only(ch, game, 'buch.pgn:001',
+                                             user_id=123, diff='Fortgeschritten', turn=chess.WHITE))
+        check('genau 1 Nachricht', len(ch.sent) == 1)
+        check('Inhalt ist der klickbare Link',
+              len(ch.sent) == 1 and ch.sent[0].content ==
+              '[Klickbares Rätsel](https://rookhub.test/puzzles/book/42)')
+        check('kein Embed', len(ch.sent) == 1 and 'embed' not in ch.sent[0].kwargs)
+        check('kein Bild/File', len(ch.sent) == 1 and 'file' not in ch.sent[0].kwargs)
+
+        # Kein Link → knapper Fallback-Text statt leerer DM
+        rh.web_url_for_line = lambda lid: None
+        ch2 = FakeChannel()
+        run_async(leg._send_puzzle_link_only(ch2, game, 'buch.pgn:002',
+                                             user_id=123, diff='', turn=chess.WHITE))
+        check('Fallback: 1 Nachricht', len(ch2.sent) == 1)
+        check('Fallback ohne Embed', len(ch2.sent) == 1 and 'embed' not in ch2.sent[0].kwargs)
+        check('Fallback nennt line_id',
+              len(ch2.sent) == 1 and 'buch.pgn:002' in (ch2.sent[0].content or ''))
+    finally:
+        rh.web_url_for_line = orig_web
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_kurs():
     """Smoke-Tests fuer /kurs Command."""
     print('[/kurs]')

@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.38.1] - 2026-05-31
+### Changed
+- `hideBoard`-Modus postet jetzt **ausschließlich den klickbaren RookHub-Link** — kein Metadaten-Embed (Kapitel/Linie/Schwierigkeit/Am-Zug/ID), kein Brettbild, keine Buttons. Gilt für beide `/puzzle`-Wege (Zufall via `post_puzzle` und den ID-Pfad). Neuer gemeinsamer Helper `_send_puzzle_link_only` (kein dupliziertes Posting). Ist kein RookHub-Link auflösbar, gibt es eine knappe Fallback-Zeile statt einer leeren DM. (Test `test_puzzle_link_only`.)
+
 ## [2.38.0] - 2026-05-31
 ### Added
 - `/puzzle option:showBoard|hideBoard` — pro-User-Präferenz für die Board-Anzeige, persistiert in `user_studies.json`, gilt für alle `/puzzle`-Pfade (random, by-ID, multi). Standard ist **hideBoard**: nur Embed mit Metadaten + RookHub-Link, kein Brettbild und keine Lösung. `showBoard` zeigt wie bisher Brettbild + Lösung.
