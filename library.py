@@ -10,6 +10,7 @@ from collections import defaultdict
 
 from core import stats
 from core.json_store import atomic_write
+from core.permissions import is_privileged
 from core.version import EMBED_COLOR
 
 import discord
@@ -882,6 +883,9 @@ def setup(bot: discord.ext.commands.Bot):
     @tree.command(name='reindex', description='Bibliotheks-Katalog + Puzzle-Cache neu aufbauen (Admin)')
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_reindex(interaction: discord.Interaction):
+        if not is_privileged(interaction):
+            await interaction.response.send_message('⚠️ Nur fuer Admins.', ephemeral=True)
+            return
         from puzzle import selection as _puzzle_sel  # lazy: zirkulaere Imports vermeiden
         await interaction.response.defer(ephemeral=True)
 

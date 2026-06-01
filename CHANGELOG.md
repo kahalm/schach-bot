@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.38.6] - 2026-06-01
+### Security
+- `/reindex` prüft jetzt zur Laufzeit `is_privileged(interaction)` und lehnt Nicht-Admins ab. Vorher gab es nur `default_permissions(administrator=True)` — ein reiner Discord-UI-Default ohne serverseitige Autorisierung. (Code-Audit Finding, Test `test_reindex_requires_admin`.)
+
 ## [2.38.5] - 2026-06-01
 ### Security
 - KI-Chat: Die vollständige Puzzle-Lösung wurde in den System-Prompt injiziert und war damit per Prompt-Injection extrahierbar. Die Lösung steht jetzt nicht mehr im Prompt; die Korrektheitsprüfung läuft weiterhin server-seitig über das `analyze_move`-Tool (lädt die Lösung aus dem Puzzle-Kontext). (Code-Audit Finding #6, Test `test_puzzle_context`.)

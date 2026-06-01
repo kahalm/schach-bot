@@ -204,6 +204,38 @@ def test_reindex():
     print()
 
 
+def test_reindex_requires_admin():
+    """Nicht-Admins duerfen /reindex nicht ausloesen (Runtime-Guard, nicht nur UI)."""
+    print('[/reindex admin-guard]')
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('reindex')
+        check('cmd_reindex gefunden', cmd is not None)
+        if not cmd:
+            return
+
+        import library as lib_mod
+        called = {'build': False}
+
+        def fake_build():
+            called['build'] = True
+            return (0, 0, 0, 0, 0)
+
+        orig_build = lib_mod.build_library_catalog
+        lib_mod.build_library_catalog = fake_build
+        try:
+            ia = make_interaction(admin=False)
+            run_async(cmd(ia))
+            content = (ia.response.calls[0].get('content') or '').lower() if ia.response.calls else ''
+            check('non-admin /reindex abgelehnt', 'admin' in content)
+            check('non-admin /reindex baut Katalog NICHT', not called['build'])
+        finally:
+            lib_mod.build_library_catalog = orig_build
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_parse_index_entry():
     """Tests fuer _parse_index_entry (library.py)."""
     print('[_parse_index_entry]')

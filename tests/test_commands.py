@@ -31,7 +31,7 @@ from test_cmd_events import (
     test_wochenpost_remind,
 )
 from test_cmd_library import (
-    test_bibliothek, test_tag, test_autor, test_reindex,
+    test_bibliothek, test_tag, test_autor, test_reindex, test_reindex_requires_admin,
     test_parse_index_entry, test_auto_tag, test_build_library_catalog,
 )
 from test_cmd_admin import (
@@ -81,6 +81,7 @@ def main():
     test_tag()
     test_autor()
     test_reindex()
+    test_reindex_requires_admin()
     test_reminder()
     test_announce()
     test_greeted()
