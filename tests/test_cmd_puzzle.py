@@ -67,6 +67,67 @@ def test_puzzle():
     print()
 
 
+def test_puzzle_blind_by_id():
+    """Regression: /puzzle id:...:blind:N baut den Puzzle-Kontext ohne NameError (diff)."""
+    print('[/puzzle blind-by-id]')
+    import chess
+    import chess.pgn
+    import puzzle as leg
+
+    tmpdir = setup_temp_config()
+    cmd = _captured_commands.get('puzzle')
+    check('cmd_puzzle gefunden', cmd is not None)
+    if not cmd:
+        teardown_temp_config(tmpdir)
+        return
+
+    game = chess.pgn.Game()
+    game.headers['White'] = 'A'
+    game.headers['Black'] = 'B'
+    game.add_variation(chess.Move.from_uci('e2e4'))
+
+    saved = {}
+    captured = {}
+    names = ('find_line_by_id', '_has_training_comment', '_split_for_blind',
+             '_load_books_config', '_render_board', '_resilient_send',
+             '_register_puzzle_msg', '_build_puzzle_context', 'save_puzzle_context',
+             '_solution_pgn')
+    orig = {n: getattr(leg, n) for n in names}
+
+    async def fake_resilient_send(channel, **kw):
+        return await channel.send(**kw)
+
+    def rec_build_ctx(g, turn, diff, line_id, include_solution=True):
+        captured['diff'] = diff
+        return {'difficulty': diff, 'line_id': line_id}
+
+    try:
+        leg.find_line_by_id = lambda lid: ('test.pgn:1.1', game)
+        leg._has_training_comment = lambda g: True
+        leg._split_for_blind = lambda orig_game, n: (chess.Board(), ['e4', 'e5'], game)
+        leg._load_books_config = lambda: {'test.pgn': {'difficulty': 'Mittel', 'rating': 5}}
+        leg._render_board = lambda board: None
+        leg._resilient_send = fake_resilient_send
+        leg._register_puzzle_msg = lambda *a, **k: None
+        leg._build_puzzle_context = rec_build_ctx
+        leg.save_puzzle_context = lambda uid, ctx: saved.update(uid=uid, ctx=ctx)
+        leg._solution_pgn = lambda g: ''
+
+        ia = make_interaction()
+        run_async(cmd(ia, anzahl=1, buch=0, id='test.pgn:1.1:blind:2', user=None))
+
+        contents = ' '.join((c.get('content') or '') for c in ia.followup.calls)
+        check('Blind-per-ID erfolgreich (kein NameError)', 'per DM gesendet' in contents)
+        check('kein generischer Fehler-Followup', 'Ein Fehler ist aufgetreten' not in contents)
+        check('Kontext-difficulty aus meta (statt undefined diff)', captured.get('diff') == 'Mittel')
+        check('save_puzzle_context aufgerufen', saved.get('ctx') is not None)
+    finally:
+        for n, fn in orig.items():
+            setattr(leg, n, fn)
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_puzzle_link_only():
     """hideBoard: _send_puzzle_link_only postet NUR den klickbaren Link, kein Embed/Bild."""
     print('[/puzzle hideBoard link-only]')

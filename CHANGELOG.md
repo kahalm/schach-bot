@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.38.3] - 2026-06-01
+### Fixed
+- `/puzzle id:<id>:blind:<n>`: Der Blind-per-ID-Pfad referenzierte beim Aufbau des Puzzle-Kontexts die undefinierte Variable `diff` (`NameError`) — der Command brach in diesem Zweig ab. Nutzt jetzt `meta.get('difficulty', '')` wie der Embed-Aufbau. (Code-Audit Finding, Test `test_puzzle_blind_by_id`.)
+
 ## [2.38.2] - 2026-06-01
 ### Security
 - DM-KI-Chat: Whitelist-Check reaktiviert — `_is_whitelisted` las vorher hart `True`, wodurch **jeder** DM-Nutzer ungebremsten LLM-/Tool-Zugriff hatte. Nicht-whitelisted Nutzer dürfen weiterhin chatten, bekommen aber ein Rate-Limit (max. `5` Nachrichten pro `60 s` pro Nutzer, In-Memory-Sliding-Window); whitelisted Nutzer (`/chat_whitelist`) sind unbegrenzt. (Code-Audit Finding #1, Test `test_chat_routing`.)

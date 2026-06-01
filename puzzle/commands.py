@@ -115,7 +115,7 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
                 _pkg._register_puzzle_msg(msg.id, line_id, mode='blind')
                 _pkg.save_puzzle_context(target_uid,
                     _pkg._build_puzzle_context(puzzle_game, blind_board.turn,
-                                               diff, line_id, include_solution=False))
+                                               meta.get('difficulty', ''), line_id, include_solution=False))
                 try:
                     from puzzle.buttons import fresh_view as _fresh_button_view
                     await msg.edit(view=_fresh_button_view())
