@@ -193,6 +193,9 @@ async def _execute_approve(interaction: discord.Interaction, msg,
             data = _fresh_default()
         for e in data['events']:
             if e['id'] == event_id:
+                if e.get('approved') is True:
+                    event_data[0] = 'already'  # schon freigegeben -> nicht erneut posten
+                    return data
                 e['approved'] = True
                 event_data[0] = dict(e)
                 return data
@@ -200,7 +203,7 @@ async def _execute_approve(interaction: discord.Interaction, msg,
 
     atomic_update(TURNIER_FILE, _approve)
 
-    if event_data[0] is None:
+    if event_data[0] is None or event_data[0] == 'already':
         embed = msg.embeds[0]
         embed.colour = 0x95a5a6
         embed.title = (embed.title or '') + ' — bereits bearbeitet'

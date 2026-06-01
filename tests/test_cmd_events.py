@@ -831,6 +831,20 @@ def test_turnier_approve_modal():
               'Spieler: Max' in (fake_embed4.title or '')
               and 'Xyz' not in (fake_embed4.title or '').split('Spieler:')[1] if 'Spieler:' in (fake_embed4.title or '') else False)
 
+        # --- Test 6 (Regression): erneutes Approve eines bereits freigegebenen
+        # Events postet NICHT erneut (Doppelklick / zwei Reviewer). ---
+        fake_channel.sent.clear()
+        fake_embed5 = h.FakeEmbed(title='Testturnier Modal')
+        fake_embed5.set_footer(text='Event #42')
+        fake_msg5 = MagicMock()
+        fake_msg5.embeds = [fake_embed5]
+        ia5 = make_interaction(user=FakeMember(uid=11111, name='Admin', admin=True))
+        ia5.edit_original_response = AsyncMock()
+        run_async(_execute_approve(ia5, fake_msg5, 42, ''))  # 42 ist bereits approved
+        check('Doppel-Approve → kein erneuter Channel-Post', len(fake_channel.sent) == 0)
+        check('Doppel-Approve → DM "bereits bearbeitet"',
+              'bereits bearbeitet' in (fake_embed5.title or ''))
+
         # Aufraumen
         schachrallye_mod._bot = old_bot
         schachrallye_mod._tournament_channel_id = old_cid

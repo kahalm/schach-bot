@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.38.7] - 2026-06-01
+### Fixed
+- Turnier-Freigabe: Ein erneutes Approve eines bereits freigegebenen Events (Doppelklick / zwei Reviewer) postete das Event ein zweites Mal in den Channel. `_approve` prüft jetzt atomar (unter dem JSON-Store-Lock), ob das Event schon freigegeben ist, und behandelt den Fall als „bereits bearbeitet" ohne erneuten Post. (Code-Audit Finding, Test 6 in `test_turnier_approve_modal`.)
+
 ## [2.38.6] - 2026-06-01
 ### Security
 - `/reindex` prüft jetzt zur Laufzeit `is_privileged(interaction)` und lehnt Nicht-Admins ab. Vorher gab es nur `default_permissions(administrator=True)` — ein reiner Discord-UI-Default ohne serverseitige Autorisierung. (Code-Audit Finding, Test `test_reindex_requires_admin`.)
