@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.38.2] - 2026-06-01
+### Security
+- DM-KI-Chat: Whitelist-Check reaktiviert — `_is_whitelisted` las vorher hart `True`, wodurch **jeder** DM-Nutzer ungebremsten LLM-/Tool-Zugriff hatte. Nicht-whitelisted Nutzer dürfen weiterhin chatten, bekommen aber ein Rate-Limit (max. `5` Nachrichten pro `60 s` pro Nutzer, In-Memory-Sliding-Window); whitelisted Nutzer (`/chat_whitelist`) sind unbegrenzt. (Code-Audit Finding #1, Test `test_chat_routing`.)
+
 ## [2.38.1] - 2026-05-31
 ### Changed
 - `hideBoard`-Modus postet jetzt **ausschließlich den klickbaren RookHub-Link** — kein Metadaten-Embed (Kapitel/Linie/Schwierigkeit/Am-Zug/ID), kein Brettbild, keine Buttons. Gilt für beide `/puzzle`-Wege (Zufall via `post_puzzle` und den ID-Pfad). Neuer gemeinsamer Helper `_send_puzzle_link_only` (kein dupliziertes Posting). Ist kein RookHub-Link auflösbar, gibt es eine knappe Fallback-Zeile statt einer leeren DM. (Test `test_puzzle_link_only`.)

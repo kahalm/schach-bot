@@ -4,6 +4,8 @@ import asyncio
 import json
 import logging
 import os
+import time
+from collections import defaultdict, deque
 
 import discord
 from discord.ext import commands
@@ -67,12 +69,40 @@ _SYSTEM_PROMPT = (
 )
 
 
-def _is_whitelisted(user_id: int) -> bool:
-    """Prueft ob der User auf der Chat-Whitelist steht.
+# --- Rate-Limit fuer nicht-whitelisted DM-Chat-Nutzer ---
+# Whitelisted User chatten unbegrenzt. Alle anderen duerfen ebenfalls chatten,
+# aber gedrosselt: Sliding-Window pro Prozess (reicht als Missbrauchsschutz,
+# resettet bei Neustart) — verhindert ungebremsten LLM-/Tool-Zugriff.
+_RATE_LIMIT_WINDOW = 60.0   # Sekunden
+_RATE_LIMIT_MAX = 5         # erlaubte Nachrichten pro Fenster
+_RATE_LIMIT_MSG = (
+    'Kleiner Moment — du schreibst gerade sehr schnell. '
+    'Versuch es in einer Minute nochmal. 🐢'
+)
+_rate_hits: dict[int, deque] = defaultdict(deque)
 
-    Aktuell fuer alle User freigeschaltet (vorerst).
-    Original-Check: ``user_id in data.get('whitelist', [])``
+
+def _is_whitelisted(user_id: int) -> bool:
+    """Prueft ob der User auf der Chat-Whitelist steht (chat.json)."""
+    data = atomic_read(CHAT_FILE, dict)
+    return user_id in data.get('whitelist', [])
+
+
+def _check_rate_limit(user_id: int, now=None) -> bool:
+    """True, wenn der (nicht-whitelisted) User jetzt senden darf.
+
+    Sliding-Window: max ``_RATE_LIMIT_MAX`` Nachrichten pro
+    ``_RATE_LIMIT_WINDOW`` Sekunden. Bei Erlaubnis wird der Zeitpunkt
+    protokolliert; ueber Limit -> False (kein Eintrag, Fenster gleitet weiter).
     """
+    if now is None:
+        now = time.monotonic()
+    hits = _rate_hits[user_id]
+    while hits and now - hits[0] > _RATE_LIMIT_WINDOW:
+        hits.popleft()
+    if len(hits) >= _RATE_LIMIT_MAX:
+        return False
+    hits.append(now)
     return True
 
 
@@ -331,7 +361,12 @@ def setup(bot: commands.Bot):
             return
         if not message.content or message.content.startswith('/'):
             return
-        if not await asyncio.to_thread(_is_whitelisted, message.author.id):
+        whitelisted = await asyncio.to_thread(_is_whitelisted, message.author.id)
+        if not whitelisted and not _check_rate_limit(message.author.id):
+            try:
+                await message.channel.send(_RATE_LIMIT_MSG)
+            except Exception:
+                pass
             return
 
         async with message.channel.typing():

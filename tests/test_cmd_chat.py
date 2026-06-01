@@ -116,15 +116,28 @@ def test_chat_clear():
 
 
 def test_chat_routing():
-    """Tests fuer DM-Routing: nur whitelisted User bekommen Antwort."""
+    """Whitelist-Check (aus chat.json) + Rate-Limit fuer Nicht-Whitelisted."""
     print('[chat_routing]')
     tmpdir = setup_temp_config()
     try:
-        # Aktuell fuer alle freigeschaltet (vorerst)
-        check('alle User → True', chat_mod._is_whitelisted(42))
-        check('alle User → True (auch ohne Whitelist)', chat_mod._is_whitelisted(99))
+        atomic_write(chat_mod.CHAT_FILE, {'whitelist': [42]})
+        check('whitelisted User → True', chat_mod._is_whitelisted(42))
+        check('nicht-whitelisted User → False', not chat_mod._is_whitelisted(99))
+
+        # Rate-Limit nur fuer Nicht-Whitelisted: bis _RATE_LIMIT_MAX erlaubt,
+        # danach blockiert; nach Ablauf des Fensters wieder erlaubt.
+        chat_mod._rate_hits.clear()
+        uid, t = 99, 1000.0
+        allowed = sum(1 for _ in range(chat_mod._RATE_LIMIT_MAX)
+                      if chat_mod._check_rate_limit(uid, now=t))
+        check('erste N Nachrichten erlaubt', allowed == chat_mod._RATE_LIMIT_MAX)
+        check('N+1-te Nachricht blockiert',
+              not chat_mod._check_rate_limit(uid, now=t))
+        check('nach Ablauf des Fensters wieder erlaubt',
+              chat_mod._check_rate_limit(uid, now=t + chat_mod._RATE_LIMIT_WINDOW + 1))
 
     finally:
+        chat_mod._rate_hits.clear()
         teardown_temp_config(tmpdir)
 
 
