@@ -31,23 +31,25 @@ def _resolve_player_names(bot, names: list[str]) -> tuple[list[int], list[str]]:
 
     Returns: (gefundene_user_ids, nicht_gefundene_namen)
     """
+    # Member-Index einmal aufbauen (display_name.lower -> id), statt pro Name linear
+    # ueber alle Guilds/Member zu iterieren (O(Namen * Mitglieder) im Approve-Hotpath).
+    # setdefault bewahrt die First-Match-Semantik (erste Guild/erstes Member gewinnt).
+    index: dict[str, int] = {}
+    for guild in bot.guilds:
+        for member in guild.members:
+            index.setdefault(member.display_name.lower(), member.id)
+
     found_ids: list[int] = []
     not_found: list[str] = []
     for raw in names:
         name = raw.strip()
         if not name:
             continue
-        matched = False
-        for guild in bot.guilds:
-            for member in guild.members:
-                if member.display_name.lower() == name.lower():
-                    if member.id not in found_ids:
-                        found_ids.append(member.id)
-                    matched = True
-                    break
-            if matched:
-                break
-        if not matched:
+        mid = index.get(name.lower())
+        if mid is not None:
+            if mid not in found_ids:
+                found_ids.append(mid)
+        else:
             not_found.append(name)
     return found_ids, not_found
 

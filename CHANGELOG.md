@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.38.11] - 2026-06-01
+### Changed
+- `turnier_buttons._resolve_player_names` baut einen Member-Index (display_name→id) einmal auf, statt pro Name linear über alle Guilds/Mitglieder zu iterieren (O(Namen·Mitglieder) im Approve-Hotpath). First-Match-Semantik bleibt erhalten.
+- `wochenpost_buttons` greift im Produktiv-Pfad über die öffentliche `ClickTracker.get_emoji_users()`-API zu statt über das interne `_clicks`-Dict (der Alias bleibt nur für White-Box-Tests). (Code-Audit Findings.)
+
 ## [2.38.10] - 2026-06-01
 ### Fixed
 - Thread-Safety/Cache: `puzzle/rookhub.py` `_id_cache` wird jetzt unter einem Lock mutiert (nur die Dict-Ops, nicht der Netz-Call). `core/event_log.py` User-Done-Cache nutzt einen Generationszähler — ein Cache-Aufbau, während dessen eine neue Reaktion eintrifft, überschreibt den Cache nicht mehr mit veralteten Daten. (Code-Audit Findings.)

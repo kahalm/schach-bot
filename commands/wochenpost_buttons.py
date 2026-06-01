@@ -112,7 +112,9 @@ async def _run_side_effects(interaction: discord.Interaction,
                 from commands.wochenpost import _entry_id_for_msg, update_resolution
                 entry_id = await asyncio.to_thread(_entry_id_for_msg, msg_id)
                 if entry_id is not None:
-                    by_emoji = _clicks.get(msg_id, {})
+                    # Ueber die oeffentliche Tracker-API statt ueber das interne _clicks-Dict
+                    # (der Modul-Alias bleibt nur fuer White-Box-Tests bestehen).
+                    by_emoji = _tracker.get_emoji_users(msg_id)
                     is_resolved = (user_id in by_emoji.get('\u2705', set())
                                    or user_id in by_emoji.get('\u274c', set()))
                     await asyncio.to_thread(
