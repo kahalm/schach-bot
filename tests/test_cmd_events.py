@@ -1768,6 +1768,9 @@ def test_wochenpost_chat_spark():
                 check('whitelisted + client → Claude-Antwort',
                       result == 'Sarkastische Antwort!')
                 check('_chat_response aufgerufen', mock_chat_resp.called)
+                # B2: Spark darf die echte Chat-History weder lesen noch beschreiben.
+                check('Spark persistiert NICHT (persist=False)',
+                      mock_chat_resp.call_args.kwargs.get('persist') is False)
 
         # Test 2: nicht-whitelisted → None
         with _mock.patch.object(chat_mod_ref, '_is_whitelisted', return_value=False):
@@ -1790,49 +1793,33 @@ def test_wochenpost_chat_spark():
                     42, 'Spruch', 'Titel'))
                 check('Exception → None (Fallback)', result is None)
 
-        # Test 5: Eskalation — Prompt aendert sich mit History-Tiefe
+        # Test 5: Eskalation — Prompt aendert sich mit dem SEPARATEN Spark-Zaehler
+        # (nicht mehr aus der echten Chat-History abgeleitet).
         chat_mod_ref._client = fake_client
         prompts = []
-        async def _capture_prompt(uid, text):
+        async def _capture_prompt(uid, text, persist=True):
             prompts.append(text)
             return 'Antwort'
+
+        def _set_spark_count(n):
+            atomic_write(chat_mod_ref.CHAT_FILE, {'whitelist': [42], 'spark_counts': {'42': n}})
+
         with _mock.patch.object(chat_mod_ref, '_is_whitelisted', return_value=True):
             with _mock.patch.object(chat_mod_ref, '_chat_response', _capture_prompt):
-                # spark_count=0 → leicht sarkastisch
+                _set_spark_count(0)   # Stufe 0 → leicht sarkastisch
                 run_async(wochenpost_mod._try_chat_spark(42, 'S', 'T'))
                 check('Stufe 0 → Augenzwinkern', 'augenzwinkern' in prompts[-1].lower())
 
-                # spark_count=5 → frech
-                atomic_write(chat_mod_ref.CHAT_FILE, {
-                    'whitelist': [42],
-                    'history': {
-                        '42': [{'role': 'assistant', 'content': f'x'}
-                               for _ in range(5)]
-                    }
-                })
+                _set_spark_count(5)   # Stufe 5 → frech
                 run_async(wochenpost_mod._try_chat_spark(42, 'S', 'T'))
                 check('Stufe 5 → frech', 'frech' in prompts[-1].lower())
 
-                # spark_count=10 → drill-sergeant
-                atomic_write(chat_mod_ref.CHAT_FILE, {
-                    'whitelist': [42],
-                    'history': {
-                        '42': [{'role': 'assistant', 'content': f'x'}
-                               for _ in range(10)]
-                    }
-                })
+                _set_spark_count(10)  # Stufe 10 → drill-sergeant
                 run_async(wochenpost_mod._try_chat_spark(42, 'S', 'T'))
                 check('Stufe 10 → drill-sergeant',
                       'drill-sergeant' in prompts[-1].lower())
 
-                # spark_count=15 → gnadenlos
-                atomic_write(chat_mod_ref.CHAT_FILE, {
-                    'whitelist': [42],
-                    'history': {
-                        '42': [{'role': 'assistant', 'content': f'x'}
-                               for _ in range(15)]
-                    }
-                })
+                _set_spark_count(15)  # Stufe 15 → gnadenlos
                 run_async(wochenpost_mod._try_chat_spark(42, 'S', 'T'))
                 check('Stufe 15 → gnadenlos', 'gnadenlos' in prompts[-1].lower())
 

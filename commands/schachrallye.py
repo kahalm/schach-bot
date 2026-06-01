@@ -213,10 +213,23 @@ def _fetch_termine() -> list[dict]:
 
     Returns: Liste von Event-Dicts mit keys: datum, datum_text, name, ort, link, tags.
     """
+    import time as _time_mod
     from core.version import VERSION
-    resp = requests.get(RALLYE_URL, timeout=15,
-                        headers={'User-Agent': f'schach-bot/{VERSION}'})
-    resp.raise_for_status()
+    headers = {'User-Agent': f'schach-bot/{VERSION}'}
+    resp = None
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            resp = requests.get(RALLYE_URL, timeout=15, headers=headers)
+            resp.raise_for_status()
+            break
+        except requests.RequestException as e:
+            last_exc = e
+            log.warning('Termine-Fetch Versuch %d/3 fehlgeschlagen: %s', attempt + 1, e)
+            if attempt < 2:
+                _time_mod.sleep(2 ** attempt)  # 1s, 2s Backoff (laeuft im Thread)
+    if resp is None:
+        raise last_exc if last_exc else RuntimeError('Termine-Fetch fehlgeschlagen')
 
     parser = _TerminParser()
     parser.feed(resp.text)
@@ -965,7 +978,6 @@ def setup(bot, tournament_channel_id: int = 0):
             if d <= today:
                 continue
             if (d - today).days <= 7:
-                remind_ids.append(event['id'])
                 mentions = ' '.join(f'<@{uid}>' for uid in subs)
                 ts = int(datetime(d.year, d.month, d.day, 12, 0, tzinfo=timezone.utc).timestamp())
                 name = event.get('name', '')
@@ -983,6 +995,9 @@ def setup(bot, tournament_channel_id: int = 0):
                 )
                 try:
                     await channel.send(content=mentions, embed=embed)
+                    # Erst bei erfolgreichem Versand als erinnert markieren — sonst ginge
+                    # die Erinnerung bei einem Sendefehler verloren (naechster Lauf retryt).
+                    remind_ids.append(event['id'])
                 except Exception:
                     log.exception('Rallye-Erinnerung fehlgeschlagen fuer Event #%d', event['id'])
 

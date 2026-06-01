@@ -267,12 +267,18 @@ def _build_system_prompt(user_id: int) -> str:
     return system
 
 
-async def _chat_response(user_id: int, text: str, channel=None) -> str:
+async def _chat_response(user_id: int, text: str, channel=None, persist: bool = True) -> str:
     """Sendet Nachricht an Claude API und gibt die Antwort zurueck.
 
     channel – DM-Channel fuer Tool-Ausfuehrung (None = keine Tools).
+    persist – False: Einmal-Antwort, die die Chat-History weder liest noch
+        beschreibt (z.B. Wochenpost-Spark) — so verdraengt sie die echte
+        Konversation nicht und verfaelscht keine Eskalationsstufe.
     """
-    messages = await asyncio.to_thread(_append_and_get_history, user_id, text)
+    if persist:
+        messages = await asyncio.to_thread(_append_and_get_history, user_id, text)
+    else:
+        messages = [{'role': 'user', 'content': text}]
     system = _build_system_prompt(user_id)
 
     try:
@@ -288,8 +294,9 @@ async def _chat_response(user_id: int, text: str, channel=None) -> str:
 
             response = await _client.messages.create(**api_kwargs)
 
-            await asyncio.to_thread(
-                _save_response_blocks, user_id, response.content)
+            if persist:
+                await asyncio.to_thread(
+                    _save_response_blocks, user_id, response.content)
             messages.append({
                 'role': 'assistant',
                 'content': _serialize(response.content),
@@ -310,8 +317,9 @@ async def _chat_response(user_id: int, text: str, channel=None) -> str:
                         'content': result_str,
                     })
 
-            await asyncio.to_thread(
-                _save_tool_results, user_id, results)
+            if persist:
+                await asyncio.to_thread(
+                    _save_tool_results, user_id, results)
             messages.append({'role': 'user', 'content': results})
 
         return 'Anfrage konnte nicht vollstaendig bearbeitet werden.'

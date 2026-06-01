@@ -70,16 +70,26 @@ async def _try_chat_spark(uid: int, spruch: str, titel: str) -> str | None:
         _client, _is_whitelisted, _chat_response,
         CHAT_FILE as _CHAT_FILE,
     )
-    from core.json_store import atomic_read as _ar
+    from core.json_store import atomic_update as _au
     if _client is None:
         return None
     if not await asyncio.to_thread(_is_whitelisted, uid):
         return None
     try:
-        # Eskalationsstufe aus bisheriger History ableiten
-        data = await asyncio.to_thread(_ar, _CHAT_FILE, dict)
-        msgs = data.get('history', {}).get(str(uid), [])
-        spark_count = sum(1 for m in msgs if m.get('role') == 'assistant')
+        # Eskalationsstufe aus einem SEPARATEN Spark-Zaehler ableiten — NICHT aus der
+        # echten Chat-History (der Spark soll diese weder lesen noch verdraengen).
+        _counter = {}
+
+        def _bump_spark(data):
+            if not isinstance(data, dict):
+                data = {}
+            counts = data.setdefault('spark_counts', {})
+            counts[str(uid)] = counts.get(str(uid), 0) + 1
+            _counter['n'] = counts[str(uid)]
+            return data
+
+        await asyncio.to_thread(_au, _CHAT_FILE, _bump_spark, dict)
+        spark_count = _counter.get('n', 1) - 1  # Stufe VOR diesem Spark
 
         if spark_count < 3:
             tone = 'leicht sarkastisch, mit einem Augenzwinkern'
@@ -101,7 +111,7 @@ async def _try_chat_spark(uid: int, spruch: str, titel: str) -> str | None:
             f'Motiviere den User trotzdem, seine Uebungen zu machen. '
             f'Maximal 2-3 Saetze.'
         )
-        return await _chat_response(uid, prompt)
+        return await _chat_response(uid, prompt, persist=False)
     except Exception:
         log.warning('Chat-Spark fuer User %s fehlgeschlagen', uid)
         return None
