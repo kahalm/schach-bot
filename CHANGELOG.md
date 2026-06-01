@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.38.10] - 2026-06-01
+### Fixed
+- Thread-Safety/Cache: `puzzle/rookhub.py` `_id_cache` wird jetzt unter einem Lock mutiert (nur die Dict-Ops, nicht der Netz-Call). `core/event_log.py` User-Done-Cache nutzt einen Generationszähler — ein Cache-Aufbau, während dessen eine neue Reaktion eintrifft, überschreibt den Cache nicht mehr mit veralteten Daten. (Code-Audit Findings.)
+
 ## [2.38.9] - 2026-06-01
 ### Security
 - KI-Chat `analyze_move`: Ein `fen_override` wird jetzt nur noch innerhalb eines aktiven Puzzle-Kontexts akzeptiert (vorher konnte über das Tool für eine beliebige, frei übergebene Stellung eine Cloud-Eval ausgelöst werden). FEN wird zudem sauber validiert (ungültige FEN → Fehlermeldung statt Exception). (Code-Audit Finding, Test 7/7b in `test_tool_analyze_move`.)

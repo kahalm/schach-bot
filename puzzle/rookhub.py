@@ -10,6 +10,7 @@ testbar.
 
 import os
 import logging
+import threading
 
 import chess
 import chess.pgn
@@ -28,6 +29,7 @@ _LOOKUP_TIMEOUT = 4
 # In-Memory-Cache line_id → id (None = in RookHub nicht vorhanden). Stabil, da RookHub-IDs
 # sich nicht ändern; wird beim Bot-Neustart geleert (deckt nachträgliche Importe ab).
 _id_cache: dict[str, int | None] = {}
+_id_cache_lock = threading.Lock()
 
 
 def _api(path: str) -> str:
@@ -61,18 +63,21 @@ def lookup_puzzle_id(line_id: str, timeout: int = _LOOKUP_TIMEOUT) -> int | None
     """Schlägt die RookHub-ID eines Puzzles anhand seiner line_id nach (gecached)."""
     if not ROOKHUB_API_URL or not line_id:
         return None
-    if line_id in _id_cache:
-        return _id_cache[line_id]
+    with _id_cache_lock:
+        if line_id in _id_cache:
+            return _id_cache[line_id]
     try:
         r = requests.get(_api('/api/book-puzzles/by-line-id'),
                          params={'lineId': line_id}, timeout=timeout)
         if r.status_code == 404:
-            _id_cache[line_id] = None  # echtes 404: in RookHub nicht vorhanden → dauerhaft cachen
+            with _id_cache_lock:
+                _id_cache[line_id] = None  # echtes 404: in RookHub nicht vorhanden → dauerhaft cachen
             return None
         r.raise_for_status()
         pid = r.json().get('id')
         if pid is not None:
-            _id_cache[line_id] = pid  # nur echte IDs cachen
+            with _id_cache_lock:
+                _id_cache[line_id] = pid  # nur echte IDs cachen
         # 200 ohne id (z. B. während eines Imports / Proxy-Fehlerseite) gilt als transient
         # → NICHT cachen, damit ein späterer Aufruf erneut versucht.
         return pid

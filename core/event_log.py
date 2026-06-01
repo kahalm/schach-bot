@@ -88,12 +88,14 @@ _MAX_LOG_LINES = 50_000
 # User-Done-Index: cached Netto-Reaktionen pro User + Line
 # ---------------------------------------------------------------------------
 _user_done_cache: dict[int, set[str]] | None = None
+_done_gen = 0  # Generationszaehler: erkennt Invalidierungen waehrend eines Cache-Aufbaus
 
 
 def _invalidate_user_done_cache():
     """Invalidiert den User-Done-Cache (nach neuer Reaktion)."""
-    global _user_done_cache
+    global _user_done_cache, _done_gen
     _user_done_cache = None
+    _done_gen += 1
 
 
 def user_done_puzzles(user_id: int) -> set[str]:
@@ -105,6 +107,7 @@ def user_done_puzzles(user_id: int) -> set[str]:
     with _log_lock:
         if _user_done_cache is not None:
             return _user_done_cache.get(user_id, set())
+        gen = _done_gen
 
     # Index aufbauen (ausserhalb des Locks, da read_all den Lock selbst holt)
     entries = read_all()
@@ -123,7 +126,9 @@ def user_done_puzzles(user_id: int) -> set[str]:
         result[uid] = {lid for lid, n in lines.items() if n > 0}
 
     with _log_lock:
-        _user_done_cache = result
+        # Nur cachen, wenn waehrend des Aufbaus keine Invalidierung passierte (sonst stale).
+        if _done_gen == gen:
+            _user_done_cache = result
 
     return result.get(user_id, set())
 
