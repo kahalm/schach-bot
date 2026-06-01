@@ -4,6 +4,7 @@ import io
 import os
 import tempfile
 import logging
+import time as _time_mod
 
 import chess
 import requests
@@ -20,7 +21,8 @@ from reportlab.graphics import renderPM
 
 log = logging.getLogger('schach-bot')
 
-_PIECE_DOWNLOAD_TIMEOUT = 15  # Sekunden für cburnett-SVG-Downloads
+_PIECE_DOWNLOAD_TIMEOUT = 6  # Sekunden für cburnett-SVG-Downloads (kurz: kein Thread-Pool-Stau)
+_PIECE_FAIL_COOLDOWN = 300   # Sekunden Negative-Cache nach fehlgeschlagenem Download
 
 _SQ         = 60
 _MAR        = 22
@@ -45,6 +47,7 @@ _PIECE_CODES = {
 }
 
 _piece_cache: dict[str, Image.Image] = {}
+_piece_fail_until: dict[str, float] = {}  # code -> Unix-Zeit, bis dahin Netzwerk-Fallback ueberspringen
 
 def _svg_to_pil(svg_bytes: bytes, size: int) -> Image.Image:
     """SVG-Bytes → PIL RGBA-Bild.
@@ -94,17 +97,23 @@ def _get_piece(code: str, size: int) -> Image.Image:
                 return _piece_cache[code]
             except Exception as e:
                 log.warning('Lokale Figur %s fehlgeschlagen, Netzwerk-Fallback: %s', code, e)
-        # 2. Netzwerk-Fallback (Lichess)
+        # 2. Netzwerk-Fallback (Lichess) — mit Negative-Cache, damit ein dauerhaft
+        # fehlschlagender Download nicht bei JEDEM Render erneut bis zum Timeout
+        # blockiert und den Thread-Pool flutet.
+        if _time_mod.time() < _piece_fail_until.get(code, 0):
+            raise RuntimeError(f'Figur {code} kuerzlich fehlgeschlagen (Negative-Cache aktiv)')
         url = f'https://lichess1.org/assets/piece/cburnett/{code}.svg'
         for attempt in range(2):
             try:
                 resp = _session.get(url, timeout=_PIECE_DOWNLOAD_TIMEOUT)
                 resp.raise_for_status()
                 _piece_cache[code] = _svg_to_pil(resp.content, size)
+                _piece_fail_until.pop(code, None)
                 log.info('Figur aus Netzwerk geladen: %s', code)
                 break
             except (requests.RequestException, ValueError) as e:
                 if attempt == 1:
+                    _piece_fail_until[code] = _time_mod.time() + _PIECE_FAIL_COOLDOWN
                     raise
                 log.warning('Figur %s laden fehlgeschlagen (Retry): %s', code, e)
     return _piece_cache[code]

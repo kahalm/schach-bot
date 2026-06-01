@@ -135,7 +135,7 @@ async def post_next_endless(bot, user_id: int):
         diff = book_meta.get('difficulty', '')
         rating = book_meta.get('rating', 0)
 
-        session['count'] += 1
+        next_count = session['count'] + 1  # erst nach erfolgreichem Send committen (s.u.)
         session['last_active'] = _time_mod.time()
 
         # DM senden
@@ -150,7 +150,7 @@ async def post_next_endless(bot, user_id: int):
         turn, img = await safe_render_board(game)
 
         embed = build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating, line_id=line_id)
-        embed.set_footer(text=f'♾️ Endless-Modus · Puzzle #{session["count"]} · ID: {line_id}')
+        embed.set_footer(text=f'♾️ Endless-Modus · Puzzle #{next_count} · ID: {line_id}')
 
         if img:
             file = discord.File(img, filename='board.png')
@@ -158,6 +158,10 @@ async def post_next_endless(bot, user_id: int):
             msg = await dm.send(file=file, embed=embed)
         else:
             msg = await dm.send(embed=embed)
+
+        # Erst nach erfolgreichem DM-Send hochzaehlen — sonst driftet der Zaehler,
+        # wenn Render/Send dazwischen fehlschlaegt (count erhoeht ohne geliefertes Puzzle).
+        session['count'] = next_count
 
         _register_puzzle_msg(msg.id, line_id)
         save_puzzle_context(user_id, _build_puzzle_context(game, turn, diff, line_id))

@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.38.15] - 2026-06-01
+### Fixed
+- Endless-Modus: Der Puzzle-Zähler (`session['count']`) wird erst nach erfolgreichem DM-Versand hochgezählt — schlug Render/Send dazwischen fehl, driftete der Zähler vorher (erhöht ohne geliefertes Puzzle).
+- Board-Rendering: Figuren-Downloads von Lichess nutzen jetzt einen Negative-Cache (5 min) nach Fehlschlag und einen kürzeren Timeout (6s statt 15s) — ein dauerhaft fehlschlagender Download blockiert nicht mehr bei jedem Render bis zum Timeout und flutet den Thread-Pool nicht. (Code-Audit Findings.)
+
 ## [2.38.14] - 2026-06-01
 ### Fixed
 - Schachrallye-Reminder: Ein Event wird erst nach **erfolgreichem** Versand als `reminded` markiert — schlug `channel.send` fehl, ging die 7-Tage-Erinnerung vorher verloren (markiert ohne gesendet); jetzt retryt der nächste Lauf.
