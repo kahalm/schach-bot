@@ -269,6 +269,42 @@ def test_reminder():
             check('reminder_loop ueberlebt hours:0', True)
         except ZeroDivisionError:
             check('reminder_loop ueberlebt hours:0', False)
+
+        # Regression: Eintrag OHNE 'hours'-Key darf nicht die ganze Runde killen.
+        # Vorher: entry['hours'] -> KeyError -> Schleife bricht ab, alle danach
+        # werden nicht mehr bedient.
+        import puzzle as _leg
+        import commands.reminder as reminder_mod
+        from test_helpers import FakeChannel as _FakeChannel
+        _orig_post = _leg.post_puzzle
+        _orig_bot = reminder_mod._bot
+        _calls = []
+
+        async def _fake_post(channel, count=1, book_idx=0, user_id=None, show_board=True):
+            _calls.append(user_id)
+            return count
+
+        class _FakeDMUser:
+            async def create_dm(self):
+                return _FakeChannel()
+
+        class _FakeBot:
+            async def fetch_user(self, uid):
+                return _FakeDMUser()
+
+        try:
+            _leg.post_puzzle = _fake_post
+            reminder_mod._bot = _FakeBot()
+            atomic_write(RF, {
+                '11111': {'puzzle': 1, 'buch': 0, 'next': past},              # KEIN 'hours' -> vorher KeyError
+                '22222': {'hours': 4, 'puzzle': 1, 'buch': 0, 'next': past},  # valide, kommt danach
+            })
+            run_async(_reminder_loop())
+            check('Loop ueberlebt fehlenden hours-Key', True)
+            check('valider Eintrag nach kaputtem wird trotzdem bedient', 22222 in _calls)
+        finally:
+            _leg.post_puzzle = _orig_post
+            reminder_mod._bot = _orig_bot
     finally:
         teardown_temp_config(tmpdir)
     print()

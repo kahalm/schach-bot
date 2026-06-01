@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.38.4] - 2026-06-01
+### Fixed
+- Reminder-Loop: Ein Reminder-Eintrag ohne `hours`-Key (alt/korrupt) löste `entry['hours']` → `KeyError` aus und **brach die gesamte Runde ab** — alle danach folgenden User bekamen keine Reminder mehr (und scheiterten jede Minute erneut). Nutzt jetzt `entry.get('hours')`; der vorhandene Guard überspringt den kaputten Eintrag pro-User. (Code-Audit Finding, Test in `test_reminder`.)
+
 ## [2.38.3] - 2026-06-01
 ### Fixed
 - `/puzzle id:<id>:blind:<n>`: Der Blind-per-ID-Pfad referenzierte beim Aufbau des Puzzle-Kontexts die undefinierte Variable `diff` (`NameError`) — der Command brach in diesem Zweig ab. Nutzt jetzt `meta.get('difficulty', '')` wie der Embed-Aufbau. (Code-Audit Finding, Test `test_puzzle_blind_by_id`.)

@@ -42,7 +42,7 @@ async def _reminder_loop_inner():
         if now < next_time:
             continue
 
-        hours = entry['hours']
+        hours = entry.get('hours')
         if not hours or hours < 1:
             log.warning('Reminder: ungueltiger hours-Wert %r fuer User %s, uebersprungen.', hours, uid_str)
             continue
