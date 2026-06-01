@@ -284,7 +284,8 @@ def test_puzzle_context():
         prompt = chat_mod._build_system_prompt(42)
         check('System-Prompt enthaelt Buch', 'Taktik-Buch' in prompt)
         check('System-Prompt enthaelt FEN', 'rnbqkbnr' in prompt)
-        check('System-Prompt enthaelt Loesung', '1. e4 e5' in prompt)
+        check('System-Prompt enthaelt KEINE Loesung (Prompt-Injection-Schutz)',
+              '1. e4 e5' not in prompt and 'Loesung:' not in prompt)
         check('System-Prompt enthaelt Hinweis-Regel', 'Hinweisen' in prompt)
 
         # Test: _build_system_prompt ohne Kontext

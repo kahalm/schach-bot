@@ -256,8 +256,10 @@ def _build_system_prompt(user_id: int) -> str:
             f'{ctx["turn"]} am Zug\n'
             f'Schwierigkeit: {ctx["difficulty"]}\n'
         )
-        if ctx.get('solution'):
-            system += f'Loesung: {ctx["solution"]}\n'
+        # Loesung bewusst NICHT in den System-Prompt geben (sonst per
+        # Prompt-Injection extrahierbar). Die Korrektheitspruefung laeuft
+        # server-seitig ueber das analyze_move-Tool, das die Loesung aus
+        # dem Puzzle-Kontext laedt.
         system += (
             'Gib die Loesung NICHT ungefragt preis — '
             'hilf dem User stattdessen mit Hinweisen.'

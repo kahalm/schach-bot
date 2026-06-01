@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.38.5] - 2026-06-01
+### Security
+- KI-Chat: Die vollständige Puzzle-Lösung wurde in den System-Prompt injiziert und war damit per Prompt-Injection extrahierbar. Die Lösung steht jetzt nicht mehr im Prompt; die Korrektheitsprüfung läuft weiterhin server-seitig über das `analyze_move`-Tool (lädt die Lösung aus dem Puzzle-Kontext). (Code-Audit Finding #6, Test `test_puzzle_context`.)
+
 ## [2.38.4] - 2026-06-01
 ### Fixed
 - Reminder-Loop: Ein Reminder-Eintrag ohne `hours`-Key (alt/korrupt) löste `entry['hours']` → `KeyError` aus und **brach die gesamte Runde ab** — alle danach folgenden User bekamen keine Reminder mehr (und scheiterten jede Minute erneut). Nutzt jetzt `entry.get('hours')`; der vorhandene Guard überspringt den kaputten Eintrag pro-User. (Code-Audit Finding, Test in `test_reminder`.)
