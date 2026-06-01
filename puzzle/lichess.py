@@ -77,6 +77,30 @@ def _lichess_set_cooldown(retry_after: int | None = None):
                 _datetime.fromtimestamp(until, tz=_tz.utc).strftime('%H:%M'), secs)
 
 
+def _lichess_set_pending_study(study_id: str) -> None:
+    """Merkt eine neu angelegte, aber (wegen 429) leer gebliebene Studie zur
+    Wiederverwendung — Lichess bietet kein API-Delete fuer ganze Studien, also
+    wird sie beim naechsten Upload recycelt statt als Waise hinterlassen."""
+    if not study_id:
+        return
+    data = atomic_read(LICHESS_COOLDOWN_FILE)
+    if not isinstance(data, dict):
+        data = {}
+    data['pending_study'] = study_id
+    atomic_write(LICHESS_COOLDOWN_FILE, data)
+
+
+def _lichess_take_pending_study() -> str | None:
+    """Liest eine zuvor verwaiste Studien-Id und entfernt sie aus dem State."""
+    data = atomic_read(LICHESS_COOLDOWN_FILE)
+    if not isinstance(data, dict):
+        return None
+    sid = data.get('pending_study')
+    if sid:
+        atomic_write(LICHESS_COOLDOWN_FILE, {'until': data.get('until', 0)})
+    return sid or None
+
+
 def _lichess_request(method: str, url: str, **kwargs):
     """Lichess-API-Request. Bei 429 wird ein persistenter Cooldown gesetzt."""
     resp = requests.request(method, url, **kwargs)
@@ -99,6 +123,15 @@ def upload_to_lichess(game: chess.pgn.Game,
         remaining = int(_lichess_cooldown_until() - _time_mod.time())
         log.info('Lichess-Upload übersprungen (Cooldown noch %ds).', remaining)
         return None
+
+    # Eine zuvor wegen 429 verwaiste (leere) Studie wiederverwenden, statt eine neue
+    # anzulegen — recycelt Studie + Kontingent.
+    if not reuse_study_id and not PUZZLE_STUDY_ID:
+        pending = _lichess_take_pending_study()
+        if pending:
+            reuse_study_id = pending
+            log.info('Verwende zuvor verwaiste Lichess-Studie %s wieder.', pending)
+
     try:
         pgn_text = _export_pgn_for_lichess(game)
     except Exception as e:
@@ -131,6 +164,8 @@ def upload_to_lichess(game: chess.pgn.Game,
 
     auth = _auth_headers()
 
+    study_id = ''
+    created_new = False
     if LICHESS_TOKEN:
         try:
             if reuse_study_id or PUZZLE_STUDY_ID:
@@ -153,6 +188,7 @@ def upload_to_lichess(game: chess.pgn.Game,
                 )
                 r.raise_for_status()
                 study_id = r.json().get('id', '')
+                created_new = True
                 pgn_resp = _lichess_request(
                     'GET', f'https://lichess.org/api/study/{study_id}.pgn',
                     headers=auth,
@@ -208,6 +244,10 @@ def upload_to_lichess(game: chess.pgn.Game,
                     return f'https://lichess.org/study/{study_id}/{chapter_id}'
                 return f'https://lichess.org/study/{study_id}'
         except LichessRateLimitError:
+            # Neu angelegte, aber leer gebliebene Studie zur spaeteren Wiederverwendung
+            # merken (kein Whole-Study-Delete via API) statt sie als Waise zu hinterlassen.
+            if created_new and study_id:
+                _lichess_set_pending_study(study_id)
             return None
         except Exception as e:
             log.error('Lichess-Study-Upload fehlgeschlagen: %s', e)
