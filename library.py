@@ -622,21 +622,29 @@ async def _send_book(interaction: discord.Interaction,
                      entry: dict, path: str, fmt: str) -> None:
     """Schickt eine Buchdatei per DM (oder SFTPGo-Link wenn zu groß).
     Setzt voraus dass interaction bereits deferred ist (ephemeral)."""
-    size = os.path.getsize(path)
-    if size > _MAX_UPLOAD:
-        if _sftpgo_configured():
-            await interaction.followup.send(
-                _sftpgo_message(entry, path, fmt), ephemeral=True)
-            stats.inc(interaction.user.id, 'downloads')
-        else:
-            mb = size / (1024 * 1024)
-            await interaction.followup.send(
-                f'⚠️ Datei zu groß ({mb:.1f} MB, Discord-Limit 8 MB).', ephemeral=True)
+    try:
+        size = os.path.getsize(path)
+        if size > _MAX_UPLOAD:
+            if _sftpgo_configured():
+                await interaction.followup.send(
+                    _sftpgo_message(entry, path, fmt), ephemeral=True)
+                stats.inc(interaction.user.id, 'downloads')
+            else:
+                mb = size / (1024 * 1024)
+                await interaction.followup.send(
+                    f'⚠️ Datei zu groß ({mb:.1f} MB, Discord-Limit 8 MB).', ephemeral=True)
+            return
+        dm = await interaction.user.create_dm()
+        await dm.send(
+            content=f'📖 **{entry["title"]}** — {entry["author"]} `[{fmt.upper()}]`',
+            file=discord.File(path, filename=os.path.basename(path)))
+    except OSError:
+        # Datei zwischen View-Bau und Klick verschwunden (Sync/Reindex/Verschiebung).
+        log.warning('Buchdatei nicht mehr verfuegbar: %s', path)
+        await interaction.followup.send(
+            '⚠️ Datei nicht mehr verfügbar (evtl. zwischenzeitlich synchronisiert/verschoben).',
+            ephemeral=True)
         return
-    dm = await interaction.user.create_dm()
-    await dm.send(
-        content=f'📖 **{entry["title"]}** — {entry["author"]} `[{fmt.upper()}]`',
-        file=discord.File(path, filename=os.path.basename(path)))
     stats.inc(interaction.user.id, 'downloads')
     await interaction.followup.send(
         f'✅ **{entry["title"]}** `[{fmt.upper()}]` per DM gesendet.', ephemeral=True)
@@ -676,11 +684,12 @@ class _FormatView(discord.ui.View):
                     _sftpgo_message(self.entry, path, fmt), ephemeral=True)
                 stats.inc(interaction.user.id, 'downloads')
             elif big:
-                size = os.path.getsize(path)
-                mb = size / (1024 * 1024)
-                await interaction.response.send_message(
-                    f'⚠️ Datei zu groß ({mb:.1f} MB, Discord-Limit 8 MB).',
-                    ephemeral=True)
+                try:
+                    mb = os.path.getsize(path) / (1024 * 1024)
+                    msg = f'⚠️ Datei zu groß ({mb:.1f} MB, Discord-Limit 8 MB).'
+                except OSError:
+                    msg = '⚠️ Datei nicht mehr verfügbar (evtl. zwischenzeitlich synchronisiert/verschoben).'
+                await interaction.response.send_message(msg, ephemeral=True)
             else:
                 await interaction.response.defer(ephemeral=True)
                 await _send_book(interaction, self.entry, path, fmt)
@@ -795,7 +804,7 @@ def setup(bot: discord.ext.commands.Bot):
     @discord.app_commands.describe(suche='Suchbegriff (Titel, Autor oder Tag)')
     async def cmd_bibliothek(interaction: discord.Interaction, suche: str):
         await interaction.response.defer(ephemeral=True)
-        results = _search_library(suche, limit=50)
+        results = await asyncio.to_thread(_search_library, suche, limit=50)
         if not results:
             await interaction.followup.send(
                 f'Keine Treffer für „{suche}".', ephemeral=True)
@@ -811,7 +820,7 @@ def setup(bot: discord.ext.commands.Bot):
     ) -> list[discord.app_commands.Choice[str]]:
         if len(current) < 2:
             return []
-        results = _search_library(current, limit=25)
+        results = await asyncio.to_thread(_search_library, current, limit=25)
         return [
             discord.app_commands.Choice(
                 name=f'{_author_str(e.get("author", ""))}: {e["title"]}'[:100],
@@ -824,7 +833,7 @@ def setup(bot: discord.ext.commands.Bot):
     @discord.app_commands.describe(tag='Tag zum Filtern')
     async def cmd_tag(interaction: discord.Interaction, tag: str):
         await interaction.response.defer(ephemeral=True)
-        catalog = _ensure_library()
+        catalog = await asyncio.to_thread(_ensure_library)
         results = [e for e in catalog
                    if tag.lower() in [t.lower() for t in e.get('tags', [])]]
         if not results:
@@ -842,7 +851,7 @@ def setup(bot: discord.ext.commands.Bot):
     async def tag_autocomplete(
         interaction: discord.Interaction, current: str,
     ) -> list[discord.app_commands.Choice[str]]:
-        tags = _all_tags()
+        tags = await asyncio.to_thread(_all_tags)
         if current:
             tags = [t for t in tags if current.lower() in t.lower()]
         return [
@@ -854,7 +863,7 @@ def setup(bot: discord.ext.commands.Bot):
     @discord.app_commands.describe(autor='Autorname')
     async def cmd_autor(interaction: discord.Interaction, autor: str):
         await interaction.response.defer(ephemeral=True)
-        catalog = _ensure_library()
+        catalog = await asyncio.to_thread(_ensure_library)
         results = [e for e in catalog
                    if autor.lower() in _author_str(e.get('author', '')).lower()]
         if not results:
@@ -872,7 +881,7 @@ def setup(bot: discord.ext.commands.Bot):
     async def autor_autocomplete(
         interaction: discord.Interaction, current: str,
     ) -> list[discord.app_commands.Choice[str]]:
-        authors = _all_authors()
+        authors = await asyncio.to_thread(_all_authors)
         if current:
             authors = [a for a in authors if current.lower() in a.lower()]
         return [

@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.38.13] - 2026-06-01
+### Fixed
+- Library: Download-Pfade (`_send_book`, `_FormatView`) fangen jetzt `OSError`/`FileNotFoundError` ab, wenn die beim View-Bau erfasste Datei beim Button-Klick zwischenzeitlich verschwunden ist (Sync/Reindex) — statt einer unbehandelten Exception kommt eine klare Meldung.
+### Changed
+- Library: Die Katalog-Reads der Slash-Commands/Autocompletes (`/bibliothek`, `/tag`, `/autor`) laufen über `asyncio.to_thread`, statt den Event-Loop mit blockierender File-IO zu belegen (`/reindex` lagerte die schwere Arbeit bereits aus). (Code-Audit Findings.)
+
 ## [2.38.12] - 2026-06-01
 ### Fixed
 - `upload_to_lichess`: Bei einem 429 nach dem Anlegen einer neuen (noch leeren) Studie wird diese jetzt gemerkt und beim nächsten Upload wiederverwendet, statt sie als Waisen-Studie zu hinterlassen (Lichess bietet kein API-Delete für ganze Studien) — recycelt Studie + Kontingent. Neuer Offline-Test `test_lichess_orphan.py`. (Code-Audit Finding.)
