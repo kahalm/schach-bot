@@ -18,6 +18,8 @@ from puzzle.state import (
     load_puzzle_state, save_puzzle_state,
 )
 from puzzle.processing import _flatten_null_move_variations, _has_training_comment, _split_for_blind
+from core.json_store import atomic_update
+import puzzle.state as _pzstate  # fuer dynamischen PUZZLE_STATE_FILE-Pfad (Test-Patching)
 
 log = logging.getLogger('schach-bot')
 
@@ -245,23 +247,32 @@ def pick_random_lines(count: int = 1,
     if not all_lines:
         return []
 
-    state  = load_puzzle_state()
-    posted = set(state.get('posted', []))
+    # Laden + Auswahl + Markieren atomar unter dem State-Datei-Lock, damit
+    # parallele Aufrufe (Daily-Post + /puzzle) keine Linie doppelt waehlen oder
+    # sich gegenseitig ueberschreiben (Lost Update beim posted-Set).
+    by_id = dict(all_lines)
+    pool_ids = set(by_id)
+    chosen_ids: list[str] = []
 
-    remaining = [(lid, g) for lid, g in all_lines if lid not in posted]
-    if not remaining:
-        # Nur die Linien dieses Pools aus posted entfernen, nicht alles
-        pool_ids = {lid for lid, _ in all_lines}
-        posted -= pool_ids
-        remaining = all_lines
-        log.info('Alle Linien im Pool gepostet – starte von vorne (Pool: %d Linien).', len(pool_ids))
+    def _select(state):
+        if not isinstance(state, dict):
+            state = {'posted': []}
+        posted = set(state.get('posted', []))
+        remaining = [lid for lid in by_id if lid not in posted]
+        if not remaining:
+            # Nur die Linien dieses Pools aus posted entfernen, nicht alles
+            posted -= pool_ids
+            remaining = list(by_id)
+            log.info('Alle Linien im Pool gepostet – starte von vorne (Pool: %d Linien).', len(pool_ids))
+        k = max(1, min(count, len(remaining)))
+        picked = random.sample(remaining, k)
+        posted.update(picked)
+        chosen_ids[:] = picked
+        state['posted'] = list(posted)
+        return state
 
-    count  = max(1, min(count, len(remaining)))
-    chosen = random.sample(remaining, count)
-    for lid, _ in chosen:
-        posted.add(lid)
-    save_puzzle_state({'posted': list(posted)})
-    return chosen
+    atomic_update(_pzstate.PUZZLE_STATE_FILE, _select, default=lambda: {'posted': []})
+    return [(lid, by_id[lid]) for lid in chosen_ids]
 
 
 def pick_random_line() -> tuple[str, chess.pgn.Game] | None:

@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.38.8] - 2026-06-01
+### Fixed
+- Puzzle-Auswahl: `pick_random_lines` lud den posted-State und schrieb ihn getrennt zurück (nicht-atomares Read-Modify-Write). Parallele Aufrufe (Daily-Post + `/puzzle`) konnten dieselbe Linie doppelt wählen oder sich gegenseitig überschreiben (Lost Update). Laden + Auswahl + Markieren laufen jetzt in einem `atomic_update` unter EINEM Datei-Lock. (Code-Audit Finding, Test `test_pick_random_lines_atomic_mark`.)
+
 ## [2.38.7] - 2026-06-01
 ### Fixed
 - Turnier-Freigabe: Ein erneutes Approve eines bereits freigegebenen Events (Doppelklick / zwei Reviewer) postete das Event ein zweites Mal in den Channel. `_approve` prüft jetzt atomar (unter dem JSON-Store-Lock), ob das Event schon freigegeben ist, und behandelt den Fall als „bereits bearbeitet" ohne erneuten Post. (Code-Audit Finding, Test 6 in `test_turnier_approve_modal`.)

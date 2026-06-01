@@ -353,6 +353,27 @@ def test_pick_sequential_lines():
         teardown()
 
 
+def test_pick_random_lines_atomic_mark():
+    """pick_random_lines markiert gewaehlte Linien als posted und waehlt nicht doppelt."""
+    print('[pick_random_lines]')
+    setup()
+    try:
+        picked = []
+        for _ in range(3):  # test_a.pgn hat 3 Linien
+            res = sel_mod.pick_random_lines(1, 'test_a.pgn')
+            check('genau 1 Linie gewaehlt', len(res) == 1)
+            if res:
+                picked.append(res[0][0])
+        check('3 verschiedene Linien (keine Doppel-Auswahl)', len(set(picked)) == 3)
+        posted = set(state_mod.load_puzzle_state().get('posted', []))
+        check('alle gewaehlten Linien als posted markiert', all(p in posted for p in picked))
+        # Pool erschoepft -> Reset -> wieder waehlbar
+        res4 = sel_mod.pick_random_lines(1, 'test_a.pgn')
+        check('nach Erschoepfung wieder Auswahl', len(res4) == 1)
+    finally:
+        teardown()
+
+
 # ===================================================================
 # MAIN
 # ===================================================================
@@ -367,5 +388,6 @@ if __name__ == '__main__':
     test_get_blind_books()
     test_find_line_by_id()
     test_pick_sequential_lines()
+    test_pick_random_lines_atomic_mark()
     print(f'\n--- {total} checks, {failed} failed ---')
     sys.exit(1 if failed else 0)
