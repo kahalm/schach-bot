@@ -451,13 +451,19 @@ def test_tool_analyze_move():
     check('kein Puzzle → error', 'error' in r)
     check('kein Puzzle → Meldung', 'Puzzle' in r.get('error', ''))
 
-    # 7. FEN-Override
+    # 7. FEN-Override (nur mit aktivem Puzzle-Kontext erlaubt)
     override_fen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1'
-    with patch('commands.chat_tools._fetch_cloud_eval', return_value=None):
+    with patch('puzzle.state.get_puzzle_context', return_value=ctx_puzzle), \
+         patch('commands.chat_tools._fetch_cloud_eval', return_value=None):
         r = _analyze_move_sync('e5', 42, fen_override=override_fen)
     check('FEN-Override → kein error', 'error' not in r)
     check('FEN-Override → is_correct=False (keine Loesung)', r.get('is_correct') is False)
     check('FEN-Override → user_move_san', r.get('user_move_san') == 'e5')
+
+    # 7b. FEN-Override OHNE aktives Puzzle → abgelehnt (kein beliebiger Stellungs-Eval)
+    with patch('puzzle.state.get_puzzle_context', return_value=None):
+        r = _analyze_move_sync('e5', 99, fen_override=override_fen)
+    check('FEN-Override ohne Puzzle → error', 'error' in r)
 
     # 8. Korrekter Zug ohne Gegenzug (Loesung hat nur 1 Zug)
     ctx_single = dict(ctx_puzzle, solution='e4')

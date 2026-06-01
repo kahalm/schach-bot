@@ -515,21 +515,26 @@ def _analyze_move_sync(move_str: str, user_id: int, fen_override: str | None = N
 
     from puzzle.state import get_puzzle_context
 
-    # FEN bestimmen
+    # Aktives Puzzle ist Pflicht — auch bei fen_override (Folge-Stellung). So kann der
+    # Bot nicht fuer beliebige, frei uebergebene Stellungen eine Cloud-Eval ausloesen.
+    ctx = get_puzzle_context(user_id)
+    if not ctx:
+        return {'error': 'Kein aktives Puzzle vorhanden.'}
+
     if fen_override:
         fen = fen_override
         solution = None
     else:
-        ctx = get_puzzle_context(user_id)
-        if not ctx:
-            return {'error': 'Kein aktives Puzzle vorhanden.'}
         fen = ctx.get('fen')
         solution = ctx.get('solution')
 
     if not fen:
         return {'error': 'Keine FEN-Stellung verfuegbar.'}
 
-    board = chess.Board(fen)
+    try:
+        board = chess.Board(fen)
+    except ValueError:
+        return {'error': 'Ungueltige FEN-Stellung.'}
 
     # Normalisierung: deutsche Notation + Annotationen
     normalized = _normalize_move(move_str)

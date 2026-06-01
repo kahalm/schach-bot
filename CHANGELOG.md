@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.38.9] - 2026-06-01
+### Security
+- KI-Chat `analyze_move`: Ein `fen_override` wird jetzt nur noch innerhalb eines aktiven Puzzle-Kontexts akzeptiert (vorher konnte über das Tool für eine beliebige, frei übergebene Stellung eine Cloud-Eval ausgelöst werden). FEN wird zudem sauber validiert (ungültige FEN → Fehlermeldung statt Exception). (Code-Audit Finding, Test 7/7b in `test_tool_analyze_move`.)
+
 ## [2.38.8] - 2026-06-01
 ### Fixed
 - Puzzle-Auswahl: `pick_random_lines` lud den posted-State und schrieb ihn getrennt zurück (nicht-atomares Read-Modify-Write). Parallele Aufrufe (Daily-Post + `/puzzle`) konnten dieselbe Linie doppelt wählen oder sich gegenseitig überschreiben (Lost Update). Laden + Auswahl + Markieren laufen jetzt in einem `atomic_update` unter EINEM Datei-Lock. (Code-Audit Finding, Test `test_pick_random_lines_atomic_mark`.)
