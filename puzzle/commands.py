@@ -187,12 +187,22 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
         if user:
             await dm.send(f'**{interaction.user.display_name}** schickt dir ein Rätsel 🧩')
         show_board = _pkg._get_user_show_board(target_uid)
-        sent = await _pkg.post_puzzle(dm, count=anzahl, book_idx=buch, user_id=target_uid, show_board=show_board)
+        # Auswahl kommt von RookHub (Pool "random"); Link wird aus der Puzzle-ID gebaut
+        # (immer auflösbar). exclude verhindert Wiederholungen innerhalb eines Aufrufs.
+        seen: list[int] = []
+        for _ in range(anzahl):
+            pid = await _pkg.post_rookhub_puzzle(
+                dm, 'random', user_id=target_uid, exclude=seen or None, show_board=show_board)
+            if pid is None:
+                break
+            seen.append(pid)
+        sent = len(seen)
+        note = ' (Buchwahl folgt – aktuell zufällig aus allen Büchern)' if buch else ''
         dest = f'an {target_user.mention}' if user else 'dir'
         if sent == anzahl:
-            msg = f'✅ {sent} Puzzle(s) wurde(n) {dest} per DM gesendet.'
+            msg = f'✅ {sent} Puzzle(s) wurde(n) {dest} per DM gesendet.{note}'
         elif sent > 0:
-            msg = f'⚠️ Nur {sent}/{anzahl} Puzzle(s) konnten {dest} gesendet werden – Details im Bot-Log.'
+            msg = f'⚠️ Nur {sent}/{anzahl} Puzzle(s) konnten {dest} gesendet werden – Details im Bot-Log.{note}'
         else:
             msg = '❌ Es konnte kein Puzzle gesendet werden – Details im Bot-Log.'
         await interaction.followup.send(msg, ephemeral=True)

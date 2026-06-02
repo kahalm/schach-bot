@@ -26,25 +26,27 @@ def test_puzzle():
 
         import puzzle as leg
 
-        # Patch post_puzzle um IO zu vermeiden
-        orig_post = leg.post_puzzle
+        # Patch post_rookhub_puzzle um IO zu vermeiden (RookHub liefert jetzt die Auswahl)
+        orig_post = leg.post_rookhub_puzzle
         call_log = []
 
-        async def fake_post_puzzle(channel, count=1, book_idx=0, user_id=None, show_board=True):
-            call_log.append({'count': count, 'book_idx': book_idx,
-                             'user_id': user_id, 'show_board': show_board})
-            return count
+        async def fake_post_rookhub(channel, pool='random', user_id=None, exclude=None, show_board=True):
+            call_log.append({'pool': pool, 'user_id': user_id,
+                             'exclude': list(exclude) if exclude else None,
+                             'show_board': show_board})
+            return 1000 + len(call_log)   # eindeutige Puzzle-ID je Aufruf
 
-        leg.post_puzzle = fake_post_puzzle
+        leg.post_rookhub_puzzle = fake_post_rookhub
 
         try:
-            # Test: Standard-Aufruf
+            # Test: Standard-Aufruf (anzahl=2 → 2 RookHub-Posts, zweiter schließt das erste aus)
             ia = make_interaction()
             run_async(cmd(ia, anzahl=2, buch=0, id='', user=None))
             check('defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
-            check('post_puzzle aufgerufen', len(call_log) == 1)
-            check('post_puzzle count=2', call_log[0]['count'] == 2)
-            check('post_puzzle Standard ohne Brett (show_board=False)',
+            check('post_rookhub_puzzle 2× aufgerufen', len(call_log) == 2)
+            check('pool=random', call_log[0]['pool'] == 'random')
+            check('zweiter Aufruf excludet das erste Puzzle', call_log[1]['exclude'] == [1001])
+            check('Standard ohne Brett (show_board=False)',
                   call_log[0]['show_board'] is False)
             check('followup mit Bestaetigung',
                   len(ia.followup.calls) > 0 and
@@ -61,7 +63,7 @@ def test_puzzle():
                   'nicht gefunden' in (ia.followup.calls[0].get('content') or '').lower())
             leg.find_line_by_id = orig_find
         finally:
-            leg.post_puzzle = orig_post
+            leg.post_rookhub_puzzle = orig_post
     finally:
         teardown_temp_config(tmpdir)
     print()

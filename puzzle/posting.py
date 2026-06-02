@@ -338,28 +338,25 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0,
 
 
 async def post_rookhub_puzzle(channel, pool: str = 'daily',
-                              user_id: int | None = None, exclude=None) -> bool:
-    """Holt ein Puzzle aus dem RookHub-Pool (``daily`` | ``random`` | ``blind``),
-    rendert Brett + Embed und postet zusätzlich den RookHub-Link. Die Auswahl
-    übernimmt RookHub. Gibt True bei Erfolg zurück.
+                              user_id: int | None = None, exclude=None,
+                              show_board: bool = True) -> int | None:
+    """Holt ein Puzzle aus dem RookHub-Pool (``daily`` | ``random`` | ``blind``)
+    und postet es. Die Auswahl übernimmt RookHub; der Link wird direkt aus der
+    Puzzle-ID gebaut (immer auflösbar – kein lineId-Reverse-Lookup mehr).
+
+    ``show_board=False`` → nur der klickbare RookHub-Link (kein Brett/Embed/Lösung).
+    ``exclude`` = Liste bereits geposteter Puzzle-IDs (gegen Wiederholung).
+    Gibt die Puzzle-ID zurück (oder ``None`` bei Fehler/keinem Puzzle).
     """
     dto = await asyncio.to_thread(rookhub.get_puzzle, pool, exclude)
     if not dto:
         await _send_optional(channel, f'⚠️ Kein {pool}-Puzzle in RookHub verfügbar.',
                              label=f'rookhub-{pool}')
-        return False
+        return None
 
-    try:
-        game, _solution = rookhub.game_from_puzzle(dto)
-    except Exception as e:
-        log.exception('RookHub-Puzzle %s konnte nicht aufbereitet werden: %s',
-                      dto.get('lineId'), e)
-        return False
-
+    pid = dto.get('id')
     line_id = dto.get('lineId', '')
-    diff = dto.get('difficulty') or ''
-    rating = dto.get('bookRating') or 0
-    web_url = rookhub.puzzle_web_url(dto.get('id'))
+    web_url = rookhub.puzzle_web_url(pid)
 
     # Ziel: Thread (Server) oder direkt (DM / bestehender Thread)
     is_dm = isinstance(channel, discord.DMChannel)
@@ -377,6 +374,35 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
         except Exception:
             target = channel
 
+    def _remember_daily(msg_id):
+        if pool == 'daily':
+            try:
+                from puzzle import daily_results
+                daily_results.remember(getattr(target, 'id', None), msg_id, pid)
+            except Exception as e:
+                log.warning('Daily-Tracking konnte nicht gespeichert werden: %s', e)
+
+    # ── Nur-Link-Modus: kein Brett/Embed/Lösung, nur der RookHub-Link ──
+    if not show_board:
+        text = (f'🧩 [Rätsel auf RookHub lösen]({web_url})' if web_url
+                else f'🧩 Rätsel `{line_id}`')
+        msg = await _resilient_send(target, content=text)
+        if msg is not None:
+            _register_puzzle_msg(msg.id, line_id)
+            _remember_daily(msg.id)
+        if user_id:
+            stats.inc(user_id, 'puzzles', 1)
+        return pid
+
+    # ── Board-Modus: Brett + Embed + Lösung + Link (Übergangs-UI bis Phase 3) ──
+    try:
+        game, _solution = rookhub.game_from_puzzle(dto)
+    except Exception as e:
+        log.exception('RookHub-Puzzle %s konnte nicht aufbereitet werden: %s', line_id, e)
+        return None
+
+    diff = dto.get('difficulty') or ''
+    rating = dto.get('bookRating') or 0
     try:
         turn, img = await safe_render_board(game)
         embed = build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating,
@@ -389,18 +415,11 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
             msg = await _resilient_send(target, embed=embed)
     except Exception as e:
         log.exception('RookHub-Puzzle-Post fehlgeschlagen (%s): %s', line_id, e)
-        return False
+        return None
 
     _register_puzzle_msg(msg.id, line_id)
     save_puzzle_context(user_id, _build_puzzle_context(game, turn, diff, line_id))
-
-    # Tagespuzzle merken → späteres Solver-Update (✅-Reaction + Solver-Zeile) via Poll.
-    if pool == 'daily':
-        try:
-            from puzzle import daily_results
-            daily_results.remember(getattr(target, 'id', None), msg.id, dto.get('id'))
-        except Exception as e:
-            log.warning('Daily-Tracking konnte nicht gespeichert werden: %s', e)
+    _remember_daily(msg.id)
 
     # Lösung (Spoiler) + RookHub-Link als optionale Follow-ups
     pgn_moves = _solution_pgn(game)
@@ -412,7 +431,7 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
 
     if user_id:
         stats.inc(user_id, 'puzzles', 1)
-    return True
+    return pid
 
 
 async def post_blind_puzzle(channel,

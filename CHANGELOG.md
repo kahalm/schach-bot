@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.41.0] - 2026-06-02
+### Changed
+- **`/puzzle` holt jetzt von RookHub statt aus lokalen PGN-Dateien** (Phase 1 der „RookHub
+  liefert die Puzzles"-Umstellung). Die Auswahl trifft RookHub (Pool `random`), der Link wird
+  direkt aus der Puzzle-ID gebaut und ist dadurch **immer auflösbar** — der bisherige
+  `lineId`-Reverse-Lookup (`/by-line-id`) entfällt, der Fehler „kein RookHub-Link verfügbar"
+  kann hier nicht mehr auftreten. `anzahl` postet mehrere (ohne Wiederholung via `exclude`).
+- `post_rookhub_puzzle()` gibt die Puzzle-ID zurück und kennt einen `show_board=False`-Modus
+  (nur klickbarer Link, kein Brett/Embed/Lösung) — ehemals `_send_puzzle_link_only` + lokaler Lookup.
+### Hinweis
+- `buch` (Buchwahl) wird vorübergehend ignoriert (zufällig aus allen Büchern) — folgt in Phase 2.
+  `/blind`, `/train`/`/next` sowie das Entfernen der lokalen Bücher/Brett-Logik folgen in Phase 2/3.
+
 ## [2.40.0] - 2026-06-02
 ### Added
 - **Tagespuzzle-Visualisierung:** Der Bot merkt sich seinen Tagespuzzle-Post und pollt
