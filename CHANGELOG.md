@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.39.0] - 2026-06-02
+### Added
+- **RookHub-Verknüpfung**: Neuer `/link`-Befehl schickt per DM einen persönlichen Link
+  (`{ROOKHUB_WEB_URL}/profile?dl=<token>`), über den das RookHub-Konto automatisch mit
+  dem Discord-Account verknüpft wird. Der Token ist HMAC-signiert (`ROOKHUB_LINK_SECRET`).
+- **Begrüßungs-DM** enthält jetzt einen RookHub-Registrierungs-CTA mit personalisiertem
+  `…/register?dl=<token>`-Link: Wer darüber kommt und sich registriert, wird sofort
+  automatisch verknüpft (Discord-ID an der anonymen Session hinterlegt).
+- Private Puzzle-DM-Links (hideBoard) hängen das `?dl=`-Token an — öffentliche Channel-Posts
+  bleiben bewusst ohne Token (Spoofing-Schutz).
+- `core/discord_link.py`: HMAC-SHA256-Token-Helfer (Format identisch zu RookHubs
+  `DiscordLinkService`), neue Env `ROOKHUB_LINK_SECRET` (leer → Feature inaktiv).
+
 ## [2.38.15] - 2026-06-01
 ### Fixed
 - Endless-Modus: Der Puzzle-Zähler (`session['count']`) wird erst nach erfolgreichem DM-Versand hochgezählt — schlug Render/Send dazwischen fehl, driftete der Zähler vorher (erhöht ohne geliefertes Puzzle).

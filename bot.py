@@ -19,6 +19,7 @@ import os
 from datetime import datetime, time, timezone
 
 from core import stats, dm_log
+from core import discord_link
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 from core.permissions import is_privileged, set_guild_id, display_name_cached
@@ -70,6 +71,7 @@ WELCOME_MESSAGE = (
     '▶️ `/youtube` — YouTube-Kanäle/Videos anzeigen oder hinzufügen\n'
     '⏰ `/reminder` — Wiederkehrende Puzzle-DMs einstellen\n'
     '🏅 `/elo` — Eigene Schach-Elo angeben\n'
+    '🔗 `/link` — RookHub-Konto mit Discord verknüpfen\n'
     '🏆 `/turnier` — Turniere in Tirol anzeigen\n'
     '🔔 `/turnier_sub` — Bei neuen Turnieren gepingt werden\n'
     '🏇 `/schachrallye` — Schachrallye-Termine anzeigen\n'
@@ -77,6 +79,32 @@ WELCOME_MESSAGE = (
     '📊 `/stats` — Deine Statistiken\n\n'
     'Mit `/help` siehst du alle Befehle im Detail.'
 )
+
+ROOKHUB_WEB_URL = os.getenv('ROOKHUB_WEB_URL', '').rstrip('/')
+
+
+def welcome_message_for(user) -> str:
+    """WELCOME_MESSAGE + personalisierter RookHub-Registrierungs-CTA.
+
+    Hängt (falls ``ROOKHUB_WEB_URL`` gesetzt) einen Link auf ``…/register`` an. Ist zusätzlich
+    ``ROOKHUB_LINK_SECRET`` gesetzt, trägt der Link ein signiertes ``?dl=``-Token mit der
+    Discord-ID des Users. Da die Begrüßung IMMER per DM (privat) geht, ist das Token sicher:
+    klickt der User und registriert sich, wird sein Discord-Konto automatisch verknüpft.
+    """
+    if not ROOKHUB_WEB_URL:
+        return WELCOME_MESSAGE
+    username = getattr(user, 'name', None) or getattr(user, 'display_name', None)
+    url = discord_link.append_dl(f'{ROOKHUB_WEB_URL}/register', user.id, username) \
+        or f'{ROOKHUB_WEB_URL}/register'
+    return (
+        WELCOME_MESSAGE
+        + '\n\n— — —\n'
+        + '🌐 **RookHub** ist das Portal zum Bot: Puzzle-Statistiken & Elo-Verlauf, Kurse, '
+          'Turnierdaten u. v. m.\n'
+        + f'👉 Registriere dich für alle Features: {url}\n'
+        + '_Über diesen persönlichen Link wird dein Discord-Konto nach der Registrierung '
+          'automatisch verknüpft._'
+    )
 
 # ---------------------------------------------------------------------------
 # Bot
@@ -92,7 +120,7 @@ tree = bot.tree
 # Module laden
 import puzzle
 import library
-from commands import reminder, resourcen, youtube, elo, release_notes, blind, test, wanted, schachrallye, wochenpost, chat
+from commands import reminder, resourcen, youtube, elo, release_notes, blind, test, wanted, schachrallye, wochenpost, chat, link
 
 puzzle.setup(bot)
 library.setup(bot)
@@ -107,6 +135,7 @@ wanted.setup(bot)
 schachrallye.setup(bot, tournament_channel_id=TOURNAMENT_CHANNEL_ID)
 wochenpost.setup(bot, wochenpost_channel_id=WOCHENPOST_CHANNEL_ID)
 chat.setup(bot)
+link.setup(bot)
 
 
 _ready_done = False
@@ -191,7 +220,7 @@ async def on_message(message: discord.Message):
 
     await asyncio.to_thread(atomic_update, DM_STATE_FILE, _check_and_greet, dict)
     if should_greet:
-        await message.channel.send(WELCOME_MESSAGE)
+        await message.channel.send(welcome_message_for(message.author))
 
     await bot.process_commands(message)
 
@@ -202,7 +231,7 @@ async def on_member_join(member: discord.Member):
         return
     try:
         dm = await member.create_dm()
-        await dm.send(WELCOME_MESSAGE)
+        await dm.send(welcome_message_for(member))
         # In greeted-Liste eintragen, damit on_message kein Doppel-Willkommen schickt
         def _mark_greeted(data):
             greeted = data.get('greeted', [])
@@ -313,6 +342,7 @@ def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str
             ('/elo [wert]',
              'Eigene Schach-Elo angeben oder anzeigen.\n'
              '`/elo wert:1500` — Setzen · `/elo` — Anzeigen mit Historie'),
+            ('/link', 'RookHub-Konto mit deinem Discord-Account verknüpfen (Link per DM).'),
             ('/wanted [beschreibung]',
              'Feature-Wunsch einreichen oder Liste anzeigen.\n'
              '`/wanted` — Auflisten · `/wanted beschreibung:…` — Einreichen'),
@@ -516,7 +546,7 @@ async def cmd_announce(interaction: discord.Interaction, user: discord.User):
         return
     try:
         dm = await user.create_dm()
-        await dm.send(WELCOME_MESSAGE)
+        await dm.send(welcome_message_for(user))
         await interaction.response.send_message(
             f'✅ Begrüßungsnachricht an **{user.display_name}** gesendet.',
             ephemeral=True)

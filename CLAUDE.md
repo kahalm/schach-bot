@@ -22,6 +22,7 @@ Copy `.env.example` to `.env` and fill in:
 - `DISCORD_TOKEN` – Discord bot token
 - `ROOKHUB_API_URL` – RookHub-API (intern, kein Token) – Quelle für Daily/Random/Blind-Puzzle
 - `ROOKHUB_WEB_URL` – öffentliche RookHub-Frontend-URL für den anklickbaren Puzzle-Link
+- `ROOKHUB_LINK_SECRET` – HMAC-Secret für die RookHub-Verknüpfung (`/link`, Begrüßungs-DM, private Puzzle-Links); MUSS == RookHubs `Discord__LinkSecret` sein, leer → Feature inaktiv
 - `LICHESS_TOKEN` – nur noch für die `/test`-Diagnose / Cloud-Eval (nicht mehr fürs Posten)
 - `CHANNEL_ID` – Discord channel for daily posts
 - `PUZZLE_HOUR` / `PUZZLE_MINUTE` – Daily post time (UTC)
@@ -35,7 +36,7 @@ Runtime state lives in `config/` (gitignored, auto-created).
 |----------------|------|
 | `bot.py` | Main entry, events, /help, /version, /stats, /announce, /daily, daily task |
 | `puzzle/` | Package: `commands.py`, `state.py`, `selection.py`, `processing.py`, `rendering.py`, `posting.py` (inkl. `post_rookhub_puzzle`), `rookhub.py` (RookHub-Client), `lichess.py` (nur Cloud-Eval/Diagnose), `embed.py`, `buttons.py`, `__init__.py` |
-| `commands/` | Slash-Commands: `elo.py`, `reminder.py`, `resourcen.py`, `youtube.py`, `release_notes.py`, `test.py`, `blind.py`, `wanted.py`, `_collection.py` |
+| `commands/` | Slash-Commands: `elo.py`, `reminder.py`, `resourcen.py`, `youtube.py`, `release_notes.py`, `test.py`, `blind.py`, `wanted.py`, `link.py` (RookHub-Verknüpfung), `_collection.py` |
 | `core/` | Shared utilities: `paths.py`, `stats.py`, `version.py`, `log_setup.py`, `dm_log.py`, `event_log.py`, `json_store.py` |
 | `library.py` | Books library (/bibliothek, /tag, /autor, /reindex) |
 | `books/` | PGN files + `books.json` metadata |

@@ -12,6 +12,7 @@ import chess.pgn
 import discord
 
 from core import stats
+from core import discord_link
 from puzzle.buttons import fresh_view as _fresh_button_view
 from puzzle.embed import build_puzzle_embed
 import puzzle.rookhub as rookhub
@@ -88,6 +89,12 @@ async def _send_puzzle_link_only(target, game: chess.pgn.Game, line_id: str,
     damit der User nicht leer ausgeht.
     """
     url = await asyncio.to_thread(rookhub.web_url_for_line, line_id)
+    # Nur in PRIVATEN DMs ein signiertes ?dl=-Token anhängen (auto-verknüpft den
+    # Empfänger). Öffentliche Threads bekommen NIE ein Token (Spoofing-Schutz).
+    if url and user_id and isinstance(target, discord.DMChannel):
+        recipient = getattr(target, 'recipient', None)
+        username = getattr(recipient, 'name', None) if recipient else None
+        url = discord_link.append_dl(url, user_id, username) or url
     if url:
         msg = await _resilient_send(target, content=f'[Klickbares Rätsel]({url})')
     else:
