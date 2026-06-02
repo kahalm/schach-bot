@@ -4,6 +4,15 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.40.0] - 2026-06-02
+### Added
+- **Tagespuzzle-Visualisierung:** Der Bot merkt sich seinen Tagespuzzle-Post und pollt
+  RookHub (`GET /api/book-puzzles/{id}/results`). Der Post bekommt eine ✅-Reaction und
+  ein Embed-Feld „🏆 Tagespuzzle" mit der Solver-Zeile: gelöste User namentlich
+  (verknüpfte als @mention, sonst RookHub-Name), Fehlversuche nur als Zahl
+  („✅ Gelöst (3): @anna, @ben, Carl · 🧩 8 dran versucht"). Aktualisierung alle 5 Min.
+- `puzzle/daily_results.py` (Merken/Formatieren/Refresh) + `rookhub.get_daily_results`.
+
 ## [2.39.0] - 2026-06-02
 ### Added
 - **RookHub-Verknüpfung**: Neuer `/link`-Befehl schickt per DM einen persönlichen Link

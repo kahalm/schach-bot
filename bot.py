@@ -189,8 +189,10 @@ async def on_ready():
         log.warning('health.json schreiben fehlgeschlagen (on_ready)')
     puzzle_task.start()
     _health_loop.start()
+    daily_results_task.start()
     bot._task_loops['puzzle_task'] = puzzle_task
     bot._task_loops['health_loop'] = _health_loop
+    bot._task_loops['daily_results_task'] = daily_results_task
 
 
 @bot.event
@@ -646,6 +648,18 @@ async def cmd_daily(interaction: discord.Interaction):
 
 
 # --- Tägliche Tasks ---
+
+@tasks.loop(minutes=5)
+async def daily_results_task():
+    """Aktualisiert den Tagespuzzle-Post mit den Solvern (✅-Reaction + Solver-Zeile)."""
+    if not bot.is_ready():
+        return
+    try:
+        from puzzle import daily_results
+        await daily_results.refresh(bot)
+    except Exception:
+        log.exception('daily_results_task fehlgeschlagen')
+
 
 @tasks.loop(seconds=60)
 async def _health_loop():

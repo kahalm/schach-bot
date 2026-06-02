@@ -87,6 +87,26 @@ def lookup_puzzle_id(line_id: str, timeout: int = _LOOKUP_TIMEOUT) -> int | None
         return None
 
 
+def get_daily_results(puzzle_id, since: str | None = None, timeout: int = _TIMEOUT) -> dict | None:
+    """Holt die Solver-Ergebnisse eines Buch-Puzzles (Tagespuzzle) von RookHub.
+
+    Rückgabe: dict ``{solvedCount, attemptCount, solvers:[{name, discordId?, discordUsername?}]}``
+    oder ``None`` (Fehler / API-URL fehlt).
+    """
+    if not ROOKHUB_API_URL or not puzzle_id:
+        return None
+    params = {}
+    if since:
+        params['since'] = since
+    try:
+        r = requests.get(_api(f'/api/book-puzzles/{puzzle_id}/results'), params=params, timeout=timeout)
+        r.raise_for_status()
+        return r.json()
+    except requests.RequestException as e:
+        log.debug('get_daily_results(%s) fehlgeschlagen: %s', puzzle_id, e)
+        return None
+
+
 def puzzle_web_url(puzzle_id: int | None) -> str | None:
     """Baut die anklickbare RookHub-URL zum interaktiven Lösen."""
     if puzzle_id is None:

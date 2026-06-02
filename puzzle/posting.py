@@ -394,6 +394,14 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
     _register_puzzle_msg(msg.id, line_id)
     save_puzzle_context(user_id, _build_puzzle_context(game, turn, diff, line_id))
 
+    # Tagespuzzle merken → späteres Solver-Update (✅-Reaction + Solver-Zeile) via Poll.
+    if pool == 'daily':
+        try:
+            from puzzle import daily_results
+            daily_results.remember(getattr(target, 'id', None), msg.id, dto.get('id'))
+        except Exception as e:
+            log.warning('Daily-Tracking konnte nicht gespeichert werden: %s', e)
+
     # Lösung (Spoiler) + RookHub-Link als optionale Follow-ups
     pgn_moves = _solution_pgn(game)
     if pgn_moves:
