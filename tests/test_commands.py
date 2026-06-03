@@ -20,6 +20,7 @@ from test_cmd_puzzle import (
     test_posted_reset_per_pool, test_build_puzzle_embed, test_build_daily_embed,
     test_post_rookhub_puzzle_board_vs_link, test_post_rookhub_puzzle_daily_uses_minimal_embed,
     test_daily_refresh_no_duplicate_board,
+    test_webhook_verify_signature, test_webhook_handler_dispatches_to_apply_solver_update,
 )
 from test_cmd_community import (
     test_elo, test_resourcen, test_collection_limits, test_youtube,
@@ -117,6 +118,8 @@ def main():
     test_post_rookhub_puzzle_board_vs_link()
     test_post_rookhub_puzzle_daily_uses_minimal_embed()
     test_daily_refresh_no_duplicate_board()
+    test_webhook_verify_signature()
+    test_webhook_handler_dispatches_to_apply_solver_update()
     test_dm_log_internals()
     test_dm_log_incoming()
     test_dm_permissions()

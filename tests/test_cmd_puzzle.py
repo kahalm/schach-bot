@@ -642,6 +642,112 @@ def test_build_puzzle_embed():
     print()
 
 
+def test_webhook_verify_signature():
+    """HMAC-Signatur-Verifikation ist robust und timing-safe."""
+    print('[webhook _verify_signature]')
+    import hmac as _hmac
+    import hashlib as _hashlib
+    from core.webhook_server import _verify_signature
+
+    secret = 's3cret'
+    body = b'{"puzzleId":42}'
+    good = _hmac.new(secret.encode(), body, _hashlib.sha256).hexdigest()
+
+    check('valid signature → True', _verify_signature(secret, body, good) is True)
+    check('sha256= prefix akzeptiert', _verify_signature(secret, body, 'sha256=' + good) is True)
+    check('missing header → False', _verify_signature(secret, body, None) is False)
+    check('wrong signature → False', _verify_signature(secret, body, 'deadbeef' * 8) is False)
+    check('empty signature → False', _verify_signature(secret, body, '') is False)
+    check('different secret → False', _verify_signature('other', body, good) is False)
+    check('different body → False', _verify_signature(secret, b'{"x":1}', good) is False)
+    print()
+
+
+def test_webhook_handler_dispatches_to_apply_solver_update():
+    """POST /webhook/puzzle-attempt: HMAC-verifiziert + ruft apply_solver_update fuer
+    den aktuell gemerkten Daily-Post auf. 401 bei falscher Sig, 200 sonst."""
+    print('[webhook handler dispatch]')
+    import hashlib as _hashlib
+    import hmac as _hmac
+    import json as _json
+    from unittest.mock import MagicMock, AsyncMock
+    from aiohttp import web
+    from core import webhook_server
+    from puzzle import daily_results as dr
+
+    secret = 'unit-test-secret'
+    captured = {}
+
+    # Patch: current() liefert einen aktuellen Daily-Post mit puzzle_id=42.
+    orig_current = dr.current
+    dr.current = lambda: {'channel_id': 1, 'message_id': 555, 'puzzle_id': 42}
+    orig_apply = dr.apply_solver_update
+    async def fake_apply(bot, cur, results):
+        captured['args'] = (cur, results)
+    dr.apply_solver_update = fake_apply
+
+    handler = webhook_server._make_handler(bot=MagicMock(), secret=secret)
+
+    async def post_request(body_dict: dict, sig_override: str | None = None) -> web.Response:
+        body = _json.dumps(body_dict).encode('utf-8')
+        sig = sig_override if sig_override is not None else \
+              _hmac.new(secret.encode(), body, _hashlib.sha256).hexdigest()
+        # MagicMock-Request mit .read() async + headers
+        req = MagicMock()
+        req.read = AsyncMock(return_value=body)
+        req.headers = {'X-Webhook-Signature': sig} if sig is not None else {}
+        return await handler(req)
+
+    # 1) Gueltige Signatur + matching puzzleId → apply_solver_update aufgerufen.
+    captured.clear()
+    payload = {'puzzleId': 42, 'results': {'solvedCount': 1, 'attemptCount': 3,
+                                            'anonymousSolvedCount': 0,
+                                            'solvers': [{'name': 'Anna', 'discordId': '111'}]}}
+    resp = run_async(post_request(payload))
+    check('valid → status 200', resp.status == 200)
+    check('valid → apply_solver_update aufgerufen', 'args' in captured)
+    if 'args' in captured:
+        cur, results = captured['args']
+        check('valid → results durchgereicht (solvedCount)', results.get('solvedCount') == 1)
+        check('valid → cur passt', cur.get('puzzle_id') == 42)
+
+    # 2) Falsche Signatur → 401, kein apply.
+    captured.clear()
+    resp = run_async(post_request(payload, sig_override='deadbeefdeadbeef'))
+    check('invalid sig → status 401', resp.status == 401)
+    check('invalid sig → kein apply', 'args' not in captured)
+
+    # 3) Korrekter Body, aber puzzleId passt nicht zum aktuellen Daily → 200, kein apply.
+    captured.clear()
+    other_payload = {'puzzleId': 999, 'results': payload['results']}
+    resp = run_async(post_request(other_payload))
+    check('non-current puzzleId → status 200', resp.status == 200)
+    check('non-current puzzleId → kein apply', 'args' not in captured)
+
+    # 4) Flacher Payload (results direkt auf Top-Level, ohne ``results``-Wrapper).
+    captured.clear()
+    flat_payload = {'puzzleId': 42, 'solvedCount': 2, 'anonymousSolvedCount': 1,
+                    'attemptCount': 5, 'solvers': []}
+    resp = run_async(post_request(flat_payload))
+    check('flat payload → status 200', resp.status == 200)
+    check('flat payload → apply aufgerufen', 'args' in captured)
+    if 'args' in captured:
+        _, results = captured['args']
+        check('flat payload → solvedCount durchgereicht', results.get('solvedCount') == 2)
+
+    # 5) Kein aktueller Daily-Post → 200, kein apply.
+    dr.current = lambda: None
+    captured.clear()
+    resp = run_async(post_request(payload))
+    check('no current daily → status 200', resp.status == 200)
+    check('no current daily → kein apply', 'args' not in captured)
+
+    # Cleanup
+    dr.current = orig_current
+    dr.apply_solver_update = orig_apply
+    print()
+
+
 def test_daily_refresh_no_duplicate_board():
     """refresh() darf das Brettbild nicht doppelt rendern lassen.
 

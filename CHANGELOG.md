@@ -4,6 +4,24 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.49.0] - 2026-06-03
+### Changed
+- **Tagespuzzle-Solver-Updates per Webhook statt 5-Min-Polling.** Bot startet einen
+  aiohttp-Server (Default `0.0.0.0:9000`, Endpoint `POST /webhook/puzzle-attempt`),
+  RookHub feuert nach jedem aufgezeichneten Buch-/Tagespuzzle-Versuch dorthin. Embed
+  wird unmittelbar aktualisiert statt ≤5 Minuten Lag. HMAC-SHA256-signiert
+  (`X-Webhook-Signature: sha256=…`, Shared-Secret via `WEBHOOK_SECRET`).
+- **24h-Lücke geschlossen**: `daily_results.current()` hat keinen strikten Datums-Check
+  mehr. Der jeweils zuletzt gemerkte Daily-Post wird aktualisiert (überschrieben beim
+  nächsten `/daily`) — bis dahin werden auch User sichtbar, die zwischen UTC-Mitternacht
+  und 16:05 lösen.
+- **5-Min-`daily_results_task`-Loop entfernt.** `refresh()` bleibt als Funktion (wird
+  beim Bot-Start einmal aufgerufen, falls Webhook-Events während Offline-Zeit verpasst
+  wurden). Neue Env-Vars: `WEBHOOK_BIND_HOST`, `WEBHOOK_PORT`, `WEBHOOK_SECRET` (leer
+  = Webhook deaktiviert).
+- **Refactor**: `daily_results.apply_solver_update(bot, cur, results)` als gemeinsamer
+  Embed-Edit-Pfad — von refresh() (Polling) und webhook_server (Push) genutzt.
+
 ## [2.48.0] - 2026-06-03
 ### Fixed
 - **Tagespuzzle: 2. Brettbild beim refresh wirklich weg.** Die Geometrie war das eigentliche

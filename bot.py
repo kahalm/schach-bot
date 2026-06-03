@@ -56,6 +56,15 @@ except ValueError:
         f"{os.getenv('PUZZLE_HOUR')!r}/{os.getenv('PUZZLE_MINUTE')!r} — müssen Zahlen sein")
 if not (0 <= PUZZLE_HOUR <= 23 and 0 <= PUZZLE_MINUTE <= 59):
     raise SystemExit(f'PUZZLE_HOUR/PUZZLE_MINUTE ungültig: {PUZZLE_HOUR}:{PUZZLE_MINUTE}')
+
+# Webhook-Empfaenger: HTTP-Server fuer RookHub-Solver-Events. Leer = deaktiviert.
+WEBHOOK_BIND_HOST = os.getenv('WEBHOOK_BIND_HOST', '0.0.0.0')
+try:
+    WEBHOOK_PORT = int(os.getenv('WEBHOOK_PORT', '9000'))
+except ValueError:
+    raise SystemExit(f"WEBHOOK_PORT ungültig: {os.getenv('WEBHOOK_PORT')!r} — muss eine Zahl sein")
+WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET', '') or ''
+
 DM_STATE_FILE   = os.path.join(CONFIG_DIR, 'dm_state.json')
 
 WELCOME_MESSAGE = (
@@ -189,10 +198,22 @@ async def on_ready():
         log.warning('health.json schreiben fehlgeschlagen (on_ready)')
     puzzle_task.start()
     _health_loop.start()
-    daily_results_task.start()
     bot._task_loops['puzzle_task'] = puzzle_task
     bot._task_loops['health_loop'] = _health_loop
-    bot._task_loops['daily_results_task'] = daily_results_task
+    # Webhook-Server fuer RookHub-Solver-Events (ersetzt das 5-Min-Polling).
+    try:
+        from core import webhook_server
+        bot._webhook_runner = await webhook_server.start(
+            bot, WEBHOOK_BIND_HOST, WEBHOOK_PORT, WEBHOOK_SECRET)
+    except Exception as e:
+        log.exception('Webhook-Server konnte nicht starten: %s', e)
+    # Verpasste Solver-Updates direkt nach Start einmal nachholen (Bot war evtl.
+    # zwischenzeitlich offline und hat Webhooks verpasst).
+    try:
+        from puzzle import daily_results
+        await daily_results.refresh(bot)
+    except Exception:
+        log.warning('Initialer daily_results.refresh fehlgeschlagen')
 
 
 @bot.event
@@ -648,17 +669,11 @@ async def cmd_daily(interaction: discord.Interaction):
 
 
 # --- Tägliche Tasks ---
-
-@tasks.loop(minutes=5)
-async def daily_results_task():
-    """Aktualisiert den Tagespuzzle-Post mit den Solvern (✅-Reaction + Solver-Zeile)."""
-    if not bot.is_ready():
-        return
-    try:
-        from puzzle import daily_results
-        await daily_results.refresh(bot)
-    except Exception:
-        log.exception('daily_results_task fehlgeschlagen')
+# Hinweis: Der 5-Min-Polling-Loop fuer Daily-Solver wurde entfernt — RookHub
+# feuert seit v0.75.0 einen Webhook nach jedem Buch-Puzzle-Attempt (siehe
+# core/webhook_server.py + puzzle/daily_results.apply_solver_update). Beim
+# Bot-Start wird einmalig refresh() als Catch-up fuer verpasste Events
+# aufgerufen (siehe on_ready).
 
 
 @tasks.loop(seconds=60)

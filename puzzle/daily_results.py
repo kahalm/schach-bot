@@ -43,9 +43,16 @@ def remember(channel_id, message_id, puzzle_id) -> None:
 
 
 def current() -> dict | None:
-    """Daily-Post von HEUTE (oder None)."""
+    """Aktueller (zuletzt gemerkter) Daily-Post.
+
+    Es gibt jeweils genau einen aktuellen Daily-Post: ``remember()`` ueberschreibt
+    die Datei beim Posten des naechsten Daily-Puzzles. Deshalb kein striktes
+    Datums-Check mehr — sonst friert das Embed zwischen UTC-Mitternacht und dem
+    naechsten /daily-Lauf ein (User, die in dem Zeitfenster loesen, wuerden im
+    Embed nicht erscheinen).
+    """
     data = atomic_read(DAILY_FILE, default=dict)
-    if not data or data.get('date') != _today():
+    if not data or not data.get('channel_id') or not data.get('message_id'):
         return None
     return data
 
@@ -73,18 +80,21 @@ def format_solver_line(results: dict, max_names: int = MAX_NAMES) -> str:
     return f'✅ Gelöst ({total}): {body} · 🧩 {attempts} dran versucht'
 
 
-async def refresh(bot) -> None:
-    """Holt die aktuellen Ergebnisse und aktualisiert den heutigen Daily-Post."""
-    import asyncio
-    import discord
-    import puzzle.rookhub as rookhub
+def _field_name(f):
+    """Liefert den Feld-Namen von EmbedProxy (prod) oder dict (FakeEmbed-Tests)."""
+    return f.get('name') if isinstance(f, dict) else getattr(f, 'name', None)
 
-    cur = current()
-    if not cur:
-        return
-    results = await asyncio.to_thread(rookhub.get_daily_results, cur['puzzle_id'], cur.get('since'))
-    if results is None:
-        return
+
+async def apply_solver_update(bot, cur: dict, results: dict) -> None:
+    """Wendet einen Solver-Stand auf den gemerkten Daily-Post an (Embed editieren,
+    ✅-Reaction setzen). Wird sowohl vom 5-Min-Polling (refresh) als auch vom
+    RookHub-Webhook (webhook_server) aufgerufen.
+
+    cur: Daten aus :func:`current` (channel_id, message_id, puzzle_id).
+    results: ``GET /api/book-puzzles/{id}/results``-Payload bzw. das gleiche
+    DTO, das RookHub im Webhook mitschickt.
+    """
+    import discord
 
     channel = bot.get_channel(cur['channel_id'])
     if channel is None:
@@ -99,11 +109,6 @@ async def refresh(bot) -> None:
         return
 
     line = format_solver_line(results)
-
-    def _field_name(f):
-        """Liefert den Feld-Namen von EmbedProxy (prod) oder dict (FakeEmbed-Tests)."""
-        return f.get('name') if isinstance(f, dict) else getattr(f, 'name', None)
-
     try:
         embed = msg.embeds[0] if msg.embeds else discord.Embed()
         idx = next((i for i, f in enumerate(embed.fields) if _field_name(f) == SOLVER_FIELD), None)
@@ -111,25 +116,38 @@ async def refresh(bot) -> None:
             embed.add_field(name=SOLVER_FIELD, value=line, inline=False)
         else:
             embed.set_field_at(idx, name=SOLVER_FIELD, value=line, inline=False)
-        # Anhang in Ruhe lassen (das Brett ist der einzige File-Anhang und wird
-        # NICHT mehr ins Embed gesetzt — siehe post_rookhub_puzzle daily-Pfad).
-        # Wir editieren nur die Embed-Felder; attachments-Parameter bleibt weg
-        # (Default: vorhandene Anhaenge bleiben unveraendert).
-        # Sicherheitshalber: falls ein Alt-Post noch ein embed.image (CDN-URL)
-        # gesetzt hat, das jetzt mit dem Anhang doppelt rendern wuerde — die
-        # URL ueberschreiben mit etwas Leerem, damit Discord das Embed-Bild
-        # ignoriert.
+        # Anhang in Ruhe lassen (das Brett ist der einzige File-Anhang, NICHT
+        # im Embed). embed.image leeren, damit Alt-Posts (vor v2.48.0) kein
+        # zusaetzliches Bild rendern.
         if hasattr(embed, 'set_image'):
             try:
                 embed.set_image(url=None)
             except Exception:
-                # FakeEmbed im Test akzeptiert ggf. nur **kw — egal.
                 pass
         await msg.edit(embed=embed)
-        if results.get('solvedCount', 0) > 0:
+        if results.get('solvedCount', 0) > 0 or results.get('anonymousSolvedCount', 0) > 0:
             try:
                 await msg.add_reaction('✅')
             except Exception:
                 pass
     except Exception as e:
         log.warning('Daily-Post-Update fehlgeschlagen: %s', e)
+
+
+async def refresh(bot) -> None:
+    """Holt die aktuellen Ergebnisse von RookHub und aktualisiert den Daily-Post.
+
+    Polling-Pfad — wird nicht mehr periodisch aus dem 5-Min-Loop aufgerufen
+    (Webhook ersetzt das); bleibt als Fallback fuer manuelle Catch-up-Aufrufe
+    (z. B. nach Bot-Restart).
+    """
+    import asyncio
+    import puzzle.rookhub as rookhub
+
+    cur = current()
+    if not cur:
+        return
+    results = await asyncio.to_thread(rookhub.get_daily_results, cur['puzzle_id'], cur.get('since'))
+    if results is None:
+        return
+    await apply_solver_update(bot, cur, results)
