@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.45.0] - 2026-06-03
+### Changed
+- **Tagespuzzle postet wieder die Stellung im Channel** (Brettbild-Embed) — gerendert aus der
+  RookHub-DTO (`fen`+`moves`+`startPly` via `game_from_puzzle`, kein lokales Buch nötig), plus
+  den RookHub-Link zum Lösen. `post_rookhub_puzzle(..., with_board=True)` (vom `/daily`-Task +
+  `/daily`-Befehl genutzt); `/puzzle` bleibt bewusst Link-only.
+
 ## [2.44.0] - 2026-06-03
 ### Changed
 - **Bot postet bei `/puzzle` + Tagespuzzle nur noch den RookHub-Link** (Phase 3 „schlank"):

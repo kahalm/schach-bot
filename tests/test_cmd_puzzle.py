@@ -640,3 +640,57 @@ def test_build_puzzle_embed():
         sel.BOOKS_DIR = old_dir
         shutil.rmtree(tmpdir, ignore_errors=True)
     print()
+
+
+def test_post_rookhub_puzzle_board_vs_link():
+    """Tagespuzzle: with_board=True rendert die Stellung (Embed + Brettbild) aus der RookHub-DTO;
+    with_board=False (z. B. /puzzle) postet nur den Link."""
+    print('[post_rookhub_puzzle board/link]')
+    import io
+    import puzzle.posting as posting
+
+    tmpdir = setup_temp_config()
+    DTO = {'id': 77, 'lineId': 'b.pgn:1', 'bookFileName': 'b.pgn',
+           'fen': 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+           'moves': 'e2e4 e7e5 g1f3', 'startPly': 0,
+           'difficulty': 'Anfaenger', 'bookRating': 3}
+    sent = []
+
+    class _Msg:
+        id = 999
+
+    class _Ch:  # wird unten als DMChannel-Typ gesetzt → is_dm=True (kein Thread-Pfad)
+        pass
+
+    async def fake_send(target, *a, **kw):
+        sent.append(kw)
+        return _Msg()
+
+    async def fake_render(game):
+        return ('white', io.BytesIO(b'PNGDATA'))
+
+    orig = (posting.rookhub.get_puzzle, posting.safe_render_board,
+            posting._resilient_send, posting._register_puzzle_msg, posting.discord.DMChannel)
+    posting.rookhub.get_puzzle = lambda pool, exclude=None, book_id=None: dict(DTO)
+    posting.safe_render_board = fake_render
+    posting._resilient_send = fake_send
+    posting._register_puzzle_msg = lambda *a, **k: None
+    posting.discord.DMChannel = _Ch   # Fake-Channel als DM erkennen → is_dm kurzschließt Thread-Check
+    try:
+        # with_board=True → Embed + Brettbild (Stellung aus der DTO)
+        sent.clear()
+        pid = run_async(posting.post_rookhub_puzzle(_Ch(), 'random', user_id=None, with_board=True))
+        check('board: pid zurück', pid == 77)
+        check('board: Embed gesendet', bool(sent) and sent[0].get('embed') is not None)
+        check('board: Brettbild angehängt', bool(sent) and sent[0].get('file') is not None)
+
+        # with_board=False → nur Link-Text, kein Embed/Bild
+        sent.clear()
+        run_async(posting.post_rookhub_puzzle(_Ch(), 'random', user_id=None, with_board=False))
+        check('link: content gesetzt', bool(sent) and bool(sent[0].get('content')))
+        check('link: kein Embed', bool(sent) and sent[0].get('embed') is None)
+    finally:
+        (posting.rookhub.get_puzzle, posting.safe_render_board,
+         posting._resilient_send, posting._register_puzzle_msg, posting.discord.DMChannel) = orig
+        teardown_temp_config(tmpdir)
+    print()

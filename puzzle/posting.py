@@ -339,14 +339,15 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0,
 
 async def post_rookhub_puzzle(channel, pool: str = 'daily',
                               user_id: int | None = None, exclude=None,
-                              book_id=None) -> int | None:
+                              book_id=None, with_board: bool = False) -> int | None:
     """Holt ein Puzzle aus dem RookHub-Pool (``daily`` | ``random`` | ``blind``) bzw. aus
-    ``book_id`` und postet **nur den klickbaren RookHub-Link** — gelöst wird auf RookHub.
-    Auswahl, Lösen und Fortschritt liegen bei RookHub; der Link wird aus der Puzzle-ID
-    gebaut (immer auflösbar – kein lineId-Reverse-Lookup, kein lokales Brett-Rendering).
+    ``book_id`` und postet es. Auswahl, Lösen und Fortschritt liegen bei RookHub; der Link
+    wird aus der Puzzle-ID gebaut (immer auflösbar – kein lineId-Reverse-Lookup).
 
-    ``exclude`` = Liste bereits geposteter Puzzle-IDs (gegen Wiederholung).
-    ``book_id`` = RookHub-Buch-ID; überschreibt den Pool → Puzzle aus genau diesem Buch.
+    ``with_board=True`` → zusätzlich die **Stellung rendern** (aus der DTO: ``fen``+``moves``+
+    ``startPly``, kein lokales Buch nötig) und als Embed posten — z. B. fürs Tagespuzzle.
+    Default = nur der klickbare Link (z. B. ``/puzzle``).
+    ``exclude`` = Liste bereits geposteter IDs. ``book_id`` = RookHub-Buch-ID (überschreibt Pool).
     Gibt die Puzzle-ID zurück (oder ``None`` bei Fehler/keinem Puzzle).
     """
     dto = await asyncio.to_thread(rookhub.get_puzzle, pool, exclude, book_id)
@@ -377,13 +378,38 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
         except Exception:
             target = channel
 
-    suffix = ''
-    if diff:
-        stars = ('★' * rating + '☆' * (10 - rating)) if rating else ''
-        suffix = f' · {diff}  {stars}'.rstrip() if stars else f' · {diff}'
-    text = (f'🧩 [Rätsel auf RookHub lösen]({web_url}){suffix}' if web_url
-            else f'🧩 Rätsel `{line_id}`{suffix}')
-    msg = await _resilient_send(target, content=text)
+    msg = None
+    rendered = False
+    # Brett-Modus (z. B. Tagespuzzle): Stellung aus der RookHub-DTO rendern + Embed + Link.
+    if with_board:
+        try:
+            game, _solution = rookhub.game_from_puzzle(dto)
+            turn, img = await safe_render_board(game)
+            embed = build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating,
+                                       line_id=line_id)
+            if web_url:
+                embed.add_field(name='​', value=f'🧩 [Auf RookHub lösen]({web_url})',
+                                inline=False)
+            if img:
+                file = discord.File(img, filename='board.png')
+                embed.set_image(url='attachment://board.png')
+                msg = await _resilient_send(target, file=file, embed=embed)
+            else:
+                msg = await _resilient_send(target, embed=embed)
+            rendered = msg is not None
+        except Exception as e:
+            log.exception('RookHub-Brett-Render fehlgeschlagen (%s) – nur Link: %s', line_id, e)
+
+    # Link-only (Default bzw. Fallback, falls Rendern scheitert)
+    if not rendered:
+        suffix = ''
+        if diff:
+            stars = ('★' * rating + '☆' * (10 - rating)) if rating else ''
+            suffix = f' · {diff}  {stars}'.rstrip() if stars else f' · {diff}'
+        text = (f'🧩 [Rätsel auf RookHub lösen]({web_url}){suffix}' if web_url
+                else f'🧩 Rätsel `{line_id}`{suffix}')
+        msg = await _resilient_send(target, content=text)
+
     if msg is not None:
         _register_puzzle_msg(msg.id, line_id)
         if pool == 'daily':
