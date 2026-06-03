@@ -642,6 +642,100 @@ def test_build_puzzle_embed():
     print()
 
 
+def test_daily_refresh_no_duplicate_board():
+    """refresh() darf das Brettbild nicht doppelt rendern lassen.
+
+    Beim Edit muss der lose Datei-Anhang entfernt werden (attachments=[])
+    und embed.image auf die CDN-URL des Anhangs zeigen — sonst zeigt Discord
+    das Bild zwei mal (Embed.image + standalone attachment darunter).
+
+    Die Test-Helpers stubben discord.Embed mit FakeEmbed (fields = list[dict],
+    _image = dict). Refresh muss damit umgehen (und mit prod EmbedProxy).
+    """
+    print('[daily_results.refresh no-duplicate-board]')
+    import discord
+    from puzzle import daily_results as dr
+
+    captured = {}
+
+    class _Att:
+        filename = 'board.png'
+        url = 'https://cdn.discordapp.com/attachments/1/2/board.png?ex=abc'
+
+    # FakeEmbed (aus test_helpers) – fields werden als dict abgelegt.
+    # FakeEmbed hat kein set_field_at(), darum monkey-patchen wir es defensiv:
+    fake_embed = discord.Embed()
+    fake_embed.add_field(name=dr.SOLVER_FIELD, value='alt', inline=False)
+    def _set_field_at(idx, **kw):
+        fake_embed.fields[idx] = kw
+    fake_embed.set_field_at = _set_field_at
+
+    class _Msg:
+        id = 555
+        attachments = [_Att()]
+        embeds = [fake_embed]
+        async def edit(self, **kw):
+            captured['edit_kwargs'] = kw
+        async def add_reaction(self, _):
+            pass
+
+    msg = _Msg()
+
+    class _Ch:
+        async def fetch_message(self, mid):
+            return msg
+
+    class _Bot:
+        def get_channel(self, cid):
+            return _Ch()
+
+    orig_current = dr.current
+    dr.current = lambda: {'channel_id': 1, 'message_id': 555, 'puzzle_id': 77, 'since': None}
+    import puzzle.rookhub as rookhub
+    orig_get = getattr(rookhub, 'get_daily_results', None)
+    rookhub.get_daily_results = lambda pid, since=None: {
+        'solvedCount': 1, 'anonymousSolvedCount': 0, 'attemptCount': 3,
+        'solvers': [{'name': 'Anna', 'discordId': '111'}]
+    }
+    orig_warn = dr.log.warning
+    warnings = []
+    dr.log.warning = lambda *a, **k: warnings.append(a)
+    try:
+        try:
+            run_async(dr.refresh(_Bot()))
+        except Exception as _e:
+            captured['refresh_exception'] = repr(_e)
+    finally:
+        dr.current = orig_current
+        dr.log.warning = orig_warn
+        if orig_get is not None:
+            rookhub.get_daily_results = orig_get
+
+    if 'refresh_exception' in captured:
+        print(f'  ! refresh raised: {captured["refresh_exception"]}')
+    for w in warnings:
+        try:
+            print(f'  ! warn: {w}')
+        except Exception:
+            print('  ! warn (unprintable)')
+
+    edited = captured.get('edit_kwargs') or {}
+    check('refresh: msg.edit aufgerufen', bool(edited))
+    check('refresh: attachments=[] (loser Anhang weg)',
+          edited.get('attachments') == [])
+    edited_embed = edited.get('embed')
+    check('refresh: embed mitgeschickt', edited_embed is not None)
+    if edited_embed is not None:
+        # FakeEmbed legt set_image-kw in _image als dict ab
+        img_dict = getattr(edited_embed, '_image', None) or {}
+        check('refresh: embed.image auf Anhang-CDN-URL gesetzt',
+              img_dict.get('url') == _Att.url)
+        field_values = [str(f.get('value', '')) for f in edited_embed.fields]
+        check('refresh: SOLVER_FIELD enthaelt Gelöst-Zeile',
+              any('Gelöst' in v for v in field_values))
+    print()
+
+
 def test_build_daily_embed():
     """Minimaler Tagespuzzle-Embed: Am Zug, Tagespuzzle-Slot, Lösungs-Spoiler — sonst nichts."""
     print('[build_daily_embed]')

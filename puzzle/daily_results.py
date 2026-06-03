@@ -99,19 +99,30 @@ async def refresh(bot) -> None:
         return
 
     line = format_solver_line(results)
+
+    def _field_name(f):
+        """Liefert den Feld-Namen von EmbedProxy (prod) oder dict (FakeEmbed-Tests)."""
+        return f.get('name') if isinstance(f, dict) else getattr(f, 'name', None)
+
     try:
         embed = msg.embeds[0] if msg.embeds else discord.Embed()
-        idx = next((i for i, f in enumerate(embed.fields) if f.name == SOLVER_FIELD), None)
+        idx = next((i for i, f in enumerate(embed.fields) if _field_name(f) == SOLVER_FIELD), None)
         if idx is None:
             embed.add_field(name=SOLVER_FIELD, value=line, inline=False)
         else:
             embed.set_field_at(idx, name=SOLVER_FIELD, value=line, inline=False)
-        # Brettbild-Anhang erneut im Embed referenzieren und beim Edit explizit behalten —
-        # sonst zeigt das gefetchte Embed das Bild per CDN-URL und der lose Datei-Anhang
-        # wird von Discord zusätzlich als zweites Bild gerendert.
+        # Den losen Brettbild-Anhang dropen, damit Discord ihn nicht zusaetzlich
+        # als 2. Bild unter dem Embed rendert. Die CDN-URL aus msg.attachments
+        # bleibt vorher in embed.image stehen — Discord cached die Datei weiter
+        # ueber der attachment-id-URL, auch nachdem sie aus der Nachricht
+        # entfernt wurde. (Der vorherige Versuch mit `attachment://filename` +
+        # `attachments=msg.attachments` brachte nichts: attachment:// funktioniert
+        # nur beim Erst-Upload, nicht bei `msg.edit` auf einen schon hochgeladenen
+        # Anhang, deshalb wurde das Embed-Bild unaufgeloest und der Anhang
+        # zusaetzlich unten gerendert.)
         if msg.attachments:
-            embed.set_image(url=f'attachment://{msg.attachments[0].filename}')
-            await msg.edit(embed=embed, attachments=msg.attachments)
+            embed.set_image(url=msg.attachments[0].url)
+            await msg.edit(embed=embed, attachments=[])
         else:
             await msg.edit(embed=embed)
         if results.get('solvedCount', 0) > 0:

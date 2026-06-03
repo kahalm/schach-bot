@@ -4,6 +4,18 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.47.2] - 2026-06-03
+### Fixed
+- **Tagespuzzle: zweites Brettbild beim 5-Min-Refresh weg.** Der vorherige Fix (2.46.1) hat das
+  Brett im Embed per `attachment://filename` referenziert — das funktioniert aber nur beim
+  Erst-Upload, nicht bei einem `msg.edit` auf einen schon hochgeladenen Anhang. Discord ließ den
+  Embed-Bild-Verweis unaufgelöst und renderte den losen Anhang zusätzlich unter dem Embed.
+  Jetzt wird die echte CDN-URL des Anhangs ins Embed geschrieben und der lose Anhang beim Edit
+  explizit gedroppt (`attachments=[]`). Außerdem: `refresh()` ist robuster (funktioniert mit
+  EmbedProxy in Produktion und dem dict-basierten FakeEmbed im Testlauf). Neuer Test deckt das
+  ab — vorher hat refresh() im Test mangels `set_field_at`/Proxy-API still im except-Zweig
+  geendet, weshalb die Regression nicht aufgefallen ist.
+
 ## [2.47.1] - 2026-06-03
 ### Changed
 - **RookHub-Link beim Tagespuzzle als Plaintext-Nachricht** statt im Embed — bekommt damit
