@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.46.1] - 2026-06-03
+### Fixed
+- **Tagespuzzle: kein doppeltes Brettbild mehr.** Beim 5-Min-Solver-Update (`daily_results.refresh`)
+  zeigte das gefetchte Embed das Brett per CDN-URL, wodurch der lose Datei-Anhang zusätzlich als
+  zweites Bild gerendert wurde. Der Anhang wird jetzt wieder im Embed referenziert (`attachment://…`)
+  und beim `edit` explizit behalten.
+
 ## [2.46.0] - 2026-06-03
 ### Changed
 - **Tagespuzzle-Solver-Anzeige zählt jetzt auch anonyme Löser**: Die Solver-Zeile zeigt

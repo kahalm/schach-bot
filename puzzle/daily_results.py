@@ -104,7 +104,14 @@ async def refresh(bot) -> None:
             embed.add_field(name=SOLVER_FIELD, value=line, inline=False)
         else:
             embed.set_field_at(idx, name=SOLVER_FIELD, value=line, inline=False)
-        await msg.edit(embed=embed)
+        # Brettbild-Anhang erneut im Embed referenzieren und beim Edit explizit behalten —
+        # sonst zeigt das gefetchte Embed das Bild per CDN-URL und der lose Datei-Anhang
+        # wird von Discord zusätzlich als zweites Bild gerendert.
+        if msg.attachments:
+            embed.set_image(url=f'attachment://{msg.attachments[0].filename}')
+            await msg.edit(embed=embed, attachments=msg.attachments)
+        else:
+            await msg.edit(embed=embed)
         if results.get('solvedCount', 0) > 0:
             try:
                 await msg.add_reaction('✅')
