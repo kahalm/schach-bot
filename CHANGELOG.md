@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.49.1] - 2026-06-03
+### Changed
+- `docker-compose.yml`: Webhook-Empfänger verdrahtet — `WEBHOOK_SECRET` + `WEBHOOK_PORT`
+  werden durchgereicht und der Webhook-Port auf den Host gepublisht
+  (`${WEBHOOK_PORT:-9000}`), damit RookHub die Solver-Updates intern über die Host-IP
+  (z.B. `http://10.24.13.6:9000/webhook/puzzle-attempt`) erreichen kann. Reiner
+  Compose-/Deploy-Fix, keine Code-Änderung.
+
 ## [2.49.0] - 2026-06-03
 ### Changed
 - **Tagespuzzle-Solver-Updates per Webhook statt 5-Min-Polling.** Bot startet einen
