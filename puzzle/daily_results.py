@@ -49,19 +49,26 @@ def current() -> dict | None:
 
 
 def format_solver_line(results: dict, max_names: int = MAX_NAMES) -> str:
-    """Baut die Solver-Zeile fürs Embed-Feld (rein, testbar)."""
+    """Baut die Solver-Zeile fürs Embed-Feld (rein, testbar). Eingeloggte Löser namentlich,
+    anonyme Löser nur als Anzahl („+N anonym"). Gesamtzahl = eingeloggt + anonym."""
     solvers = results.get('solvers') or []
-    solved = results.get('solvedCount', len(solvers))
+    named = results.get('solvedCount', len(solvers))
+    anon = results.get('anonymousSolvedCount', 0)
     attempts = results.get('attemptCount', 0)
-    if solved <= 0:
+    total = named + anon
+    if total <= 0:
         return f'Noch niemand gelöst · 🧩 {attempts} dran versucht'
     shown = []
     for s in solvers[:max_names]:
         did = s.get('discordId')
         shown.append(f'<@{did}>' if did else (s.get('name') or '—'))
-    more = solved - len(shown)
-    tail = f' +{more} weitere' if more > 0 else ''
-    return f'✅ Gelöst ({solved}): ' + ', '.join(shown) + tail + f' · 🧩 {attempts} dran versucht'
+    body = ''
+    if shown:
+        more = named - len(shown)
+        body = ', '.join(shown) + (f' +{more} weitere' if more > 0 else '')
+    if anon > 0:
+        body = (body + ' · ' if body else '') + f'{anon} anonym'
+    return f'✅ Gelöst ({total}): {body} · 🧩 {attempts} dran versucht'
 
 
 async def refresh(bot) -> None:

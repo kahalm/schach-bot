@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.46.0] - 2026-06-03
+### Changed
+- **Tagespuzzle-Solver-Anzeige zählt jetzt auch anonyme Löser**: Die Solver-Zeile zeigt
+  eingeloggte Löser namentlich und anonyme als Anzahl („… +N anonym"); die Gesamtzahl in
+  „✅ Gelöst (X)" enthält beide. Speist sich aus dem neuen `anonymousSolvedCount` von RookHubs
+  `/results` (abwärtskompatibel: fehlt das Feld, zählt 0 anonym).
+
 ## [2.45.0] - 2026-06-03
 ### Changed
 - **Tagespuzzle postet wieder die Stellung im Channel** (Brettbild-Embed) — gerendert aus der

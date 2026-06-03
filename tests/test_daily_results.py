@@ -52,6 +52,24 @@ def test_truncates_long_list():
     check('zeigt "+5 weitere"', '+5 weitere' in line)
 
 
+def test_anonymous_counted():
+    # 1 eingeloggt + 2 anonym → Gesamt 3, anonyme als "+2 anonym"
+    res = {'solvedCount': 1, 'anonymousSolvedCount': 2, 'attemptCount': 4,
+           'solvers': [{'name': 'Anna', 'discordId': '111'}]}
+    line = dr.format_solver_line(res)
+    check('Gesamt inkl. anonym → (3)', 'Gelöst (3)' in line)
+    check('eingeloggter @mention', '<@111>' in line)
+    check('anonyme als Anzahl', '2 anonym' in line)
+
+
+def test_only_anonymous():
+    res = {'solvedCount': 0, 'anonymousSolvedCount': 3, 'attemptCount': 3, 'solvers': []}
+    line = dr.format_solver_line(res)
+    check('nur anonym → Gelöst (3)', 'Gelöst (3)' in line)
+    check('nur anonym → "3 anonym"', '3 anonym' in line)
+    check('nicht "Noch niemand"', 'Noch niemand' not in line)
+
+
 def test_remember_current_roundtrip():
     dr.DAILY_FILE = f'/tmp/test_daily_post_{os.getpid()}.json'
     if os.path.exists(dr.DAILY_FILE):
@@ -69,7 +87,8 @@ def test_remember_current_roundtrip():
 
 
 def main():
-    for t in (test_no_solvers, test_mentions_and_names, test_truncates_long_list, test_remember_current_roundtrip):
+    for t in (test_no_solvers, test_mentions_and_names, test_truncates_long_list,
+              test_anonymous_counted, test_only_anonymous, test_remember_current_roundtrip):
         print(f'== {t.__name__} ==')
         t()
     print()
