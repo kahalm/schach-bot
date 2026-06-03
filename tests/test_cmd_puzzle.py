@@ -30,10 +30,11 @@ def test_puzzle():
         orig_post = leg.post_rookhub_puzzle
         call_log = []
 
-        async def fake_post_rookhub(channel, pool='random', user_id=None, exclude=None, show_board=True):
+        async def fake_post_rookhub(channel, pool='random', user_id=None, exclude=None,
+                                    show_board=True, book_id=None):
             call_log.append({'pool': pool, 'user_id': user_id,
                              'exclude': list(exclude) if exclude else None,
-                             'show_board': show_board})
+                             'show_board': show_board, 'book_id': book_id})
             return 1000 + len(call_log)   # eindeutige Puzzle-ID je Aufruf
 
         leg.post_rookhub_puzzle = fake_post_rookhub
@@ -186,46 +187,39 @@ def test_kurs():
 
         import puzzle as leg
 
-        # Patch load_all_lines
-        orig_load = leg.load_all_lines
-        orig_state = leg.load_puzzle_state
-        orig_books = leg._load_books_config
-        orig_list = leg._list_pgn_files
-
-        leg.load_all_lines = lambda: []
-        leg.load_puzzle_state = lambda: {'posted': []}
-        leg._load_books_config = lambda: {}
-        leg._list_pgn_files = lambda: []
+        # /kurs holt die Bücher jetzt von RookHub → rookhub.get_books patchen
+        orig_books = leg.rookhub.get_books
 
         try:
-            # Test: keine Buecher
+            # Test: keine Bücher
+            leg.rookhub.get_books = lambda *a, **k: []
             ia = make_interaction()
             run_async(cmd(ia, buch=0))
             check('defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
-            # Bei leeren lines gibt es ein Embed ohne Felder oder Warnung
-            check('followup gesendet', len(ia.followup.calls) > 0)
+            check('keine Bücher → Hinweis', len(ia.followup.calls) > 0)
 
-            # Test: mit Buechern
-            leg.load_all_lines = lambda: [
-                ('book1.pgn:001.001', MagicMock()),
-                ('book1.pgn:001.002', MagicMock()),
+            # Test: mit Büchern (Übersicht)
+            leg.rookhub.get_books = lambda *a, **k: [
+                {'bookId': 7, 'bookFileName': 'book1_firstkey.pgn',
+                 'difficulty': 'Anfaenger', 'bookRating': 3, 'puzzleCount': 42},
             ]
-            leg._list_pgn_files = lambda: ['book1.pgn']
-            leg._load_books_config = lambda: {
-                'book1.pgn': {'difficulty': 'Anfaenger', 'rating': 3,
-                              'random': True, 'blind': False}
-            }
             ia = make_interaction()
             run_async(cmd(ia, buch=0))
-            check('mit Buch → followup', len(ia.followup.calls) > 0)
             embed = ia.followup.calls[0].get('embed')
-            check('mit Buch → Embed hat Felder',
+            check('Übersicht → Embed hat Felder',
                   embed is not None and len(embed.fields) > 0)
+            check('Übersicht nennt Buch-ID',
+                  embed is not None and any('7' in (f.get('name') or '') for f in embed.fields))
+
+            # Test: Detailansicht (buch = RookHub-Buch-ID)
+            ia = make_interaction()
+            run_async(cmd(ia, buch=7))
+            embed = ia.followup.calls[0].get('embed')
+            check('Detail → Embed', embed is not None)
+            check('Detail nennt /puzzle buch:7',
+                  embed is not None and '/puzzle buch:7' in (embed.description or ''))
         finally:
-            leg.load_all_lines = orig_load
-            leg.load_puzzle_state = orig_state
-            leg._load_books_config = orig_books
-            leg._list_pgn_files = orig_list
+            leg.rookhub.get_books = orig_books
     finally:
         teardown_temp_config(tmpdir)
     print()

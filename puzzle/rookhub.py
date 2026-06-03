@@ -56,10 +56,11 @@ def send_heartbeat(timeout: int = _LOOKUP_TIMEOUT) -> bool:
         return False
 
 
-def get_puzzle(pool: str = 'random', exclude=None, timeout: int = _TIMEOUT) -> dict | None:
+def get_puzzle(pool: str = 'random', exclude=None, book_id=None, timeout: int = _TIMEOUT) -> dict | None:
     """Holt ein zufälliges Buch-Puzzle aus dem Pool (``daily`` | ``random`` | ``blind``).
 
-    Gibt das BookPuzzleDto als dict zurück oder ``None`` (kein Puzzle / Fehler).
+    ``book_id`` (RookHub-Buch-ID) überschreibt den Pool-Filter → zufälliges Puzzle aus genau
+    diesem Buch. Gibt das BookPuzzleDto als dict zurück oder ``None`` (kein Puzzle / Fehler).
     """
     if not ROOKHUB_API_URL:
         log.warning('ROOKHUB_API_URL nicht gesetzt – kann kein Puzzle von RookHub holen.')
@@ -67,16 +68,35 @@ def get_puzzle(pool: str = 'random', exclude=None, timeout: int = _TIMEOUT) -> d
     params = {'pool': pool}
     if exclude:
         params['exclude'] = ','.join(str(e) for e in exclude)
+    if book_id:
+        params['bookId'] = book_id
     try:
         r = requests.get(_api('/api/book-puzzles/random'), params=params, timeout=timeout)
         if r.status_code == 404:
-            log.info('RookHub: kein Puzzle im Pool "%s".', pool)
+            log.info('RookHub: kein Puzzle im Pool "%s" (bookId=%s).', pool, book_id)
             return None
         r.raise_for_status()
         return r.json()
     except requests.RequestException as e:
         log.warning('RookHub get_puzzle(%s) fehlgeschlagen: %s', pool, e)
         return None
+
+
+def get_books(timeout: int = _TIMEOUT) -> list:
+    """Liste der Puzzle-Bücher von RookHub: Einträge mit ``bookId``, ``bookFileName``,
+    ``difficulty``, ``bookRating``, ``tags``, ``puzzleCount``. Leere Liste bei Fehler.
+    """
+    if not ROOKHUB_API_URL:
+        log.warning('ROOKHUB_API_URL nicht gesetzt – kann keine Bücher von RookHub holen.')
+        return []
+    try:
+        r = requests.get(_api('/api/book-puzzles/books'), timeout=timeout)
+        r.raise_for_status()
+        data = r.json()
+        return data if isinstance(data, list) else []
+    except (requests.RequestException, ValueError) as e:
+        log.warning('RookHub get_books fehlgeschlagen: %s', e)
+        return []
 
 
 def lookup_puzzle_id(line_id: str, timeout: int = _LOOKUP_TIMEOUT) -> int | None:

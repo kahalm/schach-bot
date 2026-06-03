@@ -339,16 +339,17 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0,
 
 async def post_rookhub_puzzle(channel, pool: str = 'daily',
                               user_id: int | None = None, exclude=None,
-                              show_board: bool = True) -> int | None:
+                              show_board: bool = True, book_id=None) -> int | None:
     """Holt ein Puzzle aus dem RookHub-Pool (``daily`` | ``random`` | ``blind``)
     und postet es. Die Auswahl übernimmt RookHub; der Link wird direkt aus der
     Puzzle-ID gebaut (immer auflösbar – kein lineId-Reverse-Lookup mehr).
 
     ``show_board=False`` → nur der klickbare RookHub-Link (kein Brett/Embed/Lösung).
     ``exclude`` = Liste bereits geposteter Puzzle-IDs (gegen Wiederholung).
+    ``book_id`` = RookHub-Buch-ID; überschreibt den Pool → Puzzle aus genau diesem Buch.
     Gibt die Puzzle-ID zurück (oder ``None`` bei Fehler/keinem Puzzle).
     """
-    dto = await asyncio.to_thread(rookhub.get_puzzle, pool, exclude)
+    dto = await asyncio.to_thread(rookhub.get_puzzle, pool, exclude, book_id)
     if not dto:
         await _send_optional(channel, f'⚠️ Kein {pool}-Puzzle in RookHub verfügbar.',
                              label=f'rookhub-{pool}')

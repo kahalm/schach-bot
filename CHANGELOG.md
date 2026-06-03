@@ -4,6 +4,17 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.43.0] - 2026-06-03
+### Added
+- **Buchwahl bei `/puzzle` via RookHub** (Phase 2 der „RookHub liefert die Puzzles"-Umstellung):
+  `/puzzle buch:<ID>` holt jetzt ein Zufallspuzzle aus genau diesem Buch von RookHub
+  (`GET /book-puzzles/random?bookId=…`, überschreibt den Pool). Die `ID` ist die RookHub-Buch-ID.
+### Changed
+- **`/kurs` listet jetzt die RookHub-Bücher** (`GET /book-puzzles/books`) mit stabiler **Buch-ID**,
+  Anzahl Puzzles und Schwierigkeit + Link zum Durcharbeiten auf RookHub — statt der lokalen
+  PGN-/Kapitel-Ansicht. `/kurs <ID>` zeigt die Buch-Details. (Buch-ID = Eingabe für `/puzzle buch:`.)
+- `rookhub`-Client: neue `get_books()`; `get_puzzle()`/`post_rookhub_puzzle()` akzeptieren `book_id`.
+
 ## [2.42.0] - 2026-06-03
 ### Added
 - **Heartbeat-Lebenszeichen an RookHub**: Der Bot sendet im bestehenden 60-s-Health-Loop ein

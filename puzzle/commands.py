@@ -187,17 +187,20 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
         if user:
             await dm.send(f'**{interaction.user.display_name}** schickt dir ein Rätsel 🧩')
         show_board = _pkg._get_user_show_board(target_uid)
-        # Auswahl kommt von RookHub (Pool "random"); Link wird aus der Puzzle-ID gebaut
-        # (immer auflösbar). exclude verhindert Wiederholungen innerhalb eines Aufrufs.
+        # Auswahl kommt von RookHub (Pool "random", optional aus Buch `buch`); der Link wird
+        # aus der Puzzle-ID gebaut (immer auflösbar). exclude verhindert Wiederholungen.
+        book_id = buch or None
         seen: list[int] = []
         for _ in range(anzahl):
             pid = await _pkg.post_rookhub_puzzle(
-                dm, 'random', user_id=target_uid, exclude=seen or None, show_board=show_board)
+                dm, 'random', user_id=target_uid, exclude=seen or None,
+                show_board=show_board, book_id=book_id)
             if pid is None:
                 break
             seen.append(pid)
         sent = len(seen)
-        note = ' (Buchwahl folgt – aktuell zufällig aus allen Büchern)' if buch else ''
+        note = '' if not buch else (f' (aus Buch {buch})' if sent else
+                                    f' – Buch {buch} unbekannt? `/kurs` zeigt die IDs.')
         dest = f'an {target_user.mention}' if user else 'dir'
         if sent == anzahl:
             msg = f'✅ {sent} Puzzle(s) wurde(n) {dest} per DM gesendet.{note}'
@@ -214,133 +217,60 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
 async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
     await interaction.response.defer(ephemeral=True)
     try:
-        all_lines = await asyncio.to_thread(_pkg.load_all_lines)
-        posted    = set((await asyncio.to_thread(_pkg.load_puzzle_state)).get('posted', []))
-        books_config = _pkg._load_books_config()
+        books = await asyncio.to_thread(_pkg.rookhub.get_books)
+        books = [b for b in (books or []) if b.get('bookId')]
+        books.sort(key=lambda b: b.get('bookFileName', ''))
+        web = _pkg.rookhub.ROOKHUB_WEB_URL or _pkg.rookhub.ROOKHUB_API_URL
 
-        # --- Detailansicht für ein einzelnes Buch ---
+        if not books:
+            await interaction.followup.send(
+                '⚠️ Keine Bücher in RookHub verfügbar.', ephemeral=True)
+            return
+
+        def _stars(rat):
+            return ('★' * rat + '☆' * (10 - rat)) if rat else ''
+
+        # --- Detailansicht für ein einzelnes Buch (buch = RookHub-Buch-ID) ---
         if buch > 0:
-            sorted_books = _pkg._list_pgn_files()
-            if buch > len(sorted_books):
+            b = next((x for x in books if x.get('bookId') == buch), None)
+            if b is None:
                 await interaction.followup.send(
-                    f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die Liste.',
-                    ephemeral=True)
+                    f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die IDs.', ephemeral=True)
                 return
-            book_fn = sorted_books[buch - 1]
-            book_name = _pkg._clean_book_name(book_fn)
-            meta  = books_config.get(book_fn, {})
-            diff  = meta.get('difficulty', '')
-            rat   = meta.get('rating', 0)
-            stars = '★' * rat + '☆' * (10 - rat) if rat else ''
-
-            # Persönlich abgehakte Puzzles (✅ oder ❌, netto >0)
-            from core import event_log as _elog
-            uid = interaction.user.id
-            user_done = await asyncio.to_thread(_elog.user_done_puzzles, uid)
-
-            # Kapitel aufbauen: round-Prefix → (name, total, done)
-            chapter_ignored = _pkg._load_chapter_ignore_list()
-            chapters: dict[str, dict] = {}
-            for lid, game in all_lines:
-                if lid.split(':')[0] != book_fn:
-                    continue
-                round_hdr = lid.split(':')[1] if ':' in lid else ''
-                prefix = round_hdr.split('.')[0] if '.' in round_hdr else round_hdr
-                if prefix not in chapters:
-                    h = dict(game.headers)
-                    chap_name = h.get('Black', '') or h.get('Event', '')
-                    ignored_key = f'{book_fn}:{prefix}'
-                    chapters[prefix] = {
-                        'name': chap_name,
-                        'total': 0,
-                        'posted': 0,
-                        'ignored': ignored_key in chapter_ignored,
-                    }
-                chapters[prefix]['total'] += 1
-                if lid in user_done:
-                    chapters[prefix]['posted'] += 1
-
-            total_book  = sum(c['total']  for c in chapters.values())
-            posted_book = sum(c['posted'] for c in chapters.values())
-
-            flags = []
-            if meta.get('random', True):  flags.append('🎲 Im Zufalls-/Daily-Pool')
-            if meta.get('blind'):          flags.append('🙈 Blind-Modus')
-
-            desc_parts = [f'**{posted_book}/{total_book}** von dir bewertet (✅/❌)']
+            name = _pkg._clean_book_name(b.get('bookFileName', ''))
+            diff = b.get('difficulty') or ''
+            stars = _stars(b.get('bookRating') or 0)
+            parts = [f'**{b.get("puzzleCount", 0)}** Puzzles']
             if diff:
-                desc_parts.append(f'{diff}  {stars}' if stars else diff)
-            desc_parts.extend(flags)
-
-            embed = discord.Embed(
-                title=f'📖 {book_name}',
-                description='\n'.join(desc_parts),
-                color=0x7fa650,
-            )
-
-            sorted_chapters = sorted(chapters.items())
-            # Bis zu 25 Felder (Discord-Limit)
-            for prefix, info in sorted_chapters[:25]:
-                chap_num = int(prefix) if prefix.isdigit() else prefix
-                done  = info['posted']
-                total = info['total']
-                is_ign = info['ignored']
-                bar   = '█' * round(done / total * 8) + '░' * (8 - round(done / total * 8)) if total else '░' * 8
-                label = f'Kap. {chap_num}: {info["name"]}' if info['name'] else f'Kapitel {chap_num}'
-                if len(label) > 250:
-                    label = label[:247] + '...'
-                name_field = f'~~{label}~~ 🚫' if is_ign else label
-                embed.add_field(
-                    name=name_field,
-                    value=f'`{bar}` {done}/{total}' + (' *(ignoriert)*' if is_ign else ''),
-                    inline=False,
-                )
-            if len(sorted_chapters) > 25:
-                embed.set_footer(text=f'… {len(sorted_chapters) - 25} weitere Kapitel nicht angezeigt')
+                parts.append(f'{diff}  {stars}' if stars else diff)
+            parts.append(f'Zufallspuzzle holen: `/puzzle buch:{buch}`')
+            if web:
+                parts.append(f'[Auf RookHub durcharbeiten]({web}/courses)')
+            embed = discord.Embed(title=f'📖 {name}', description='\n'.join(parts), color=0x7fa650)
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
-        # --- Übersichtsliste aller Bücher ---
-        total_per_book:  dict[str, int] = defaultdict(int)
-        posted_per_book: dict[str, int] = defaultdict(int)
-        for lid, _ in all_lines:
-            book = lid.split(':')[0]
-            total_per_book[book] += 1
-            if lid in posted:
-                posted_per_book[book] += 1
-
-        if not total_per_book:
-            await interaction.followup.send(
-                '⚠️ Keine Bücher gefunden. Bitte .pgn-Dateien in den `books/`-Ordner legen.',
-                ephemeral=True,
-            )
-            return
-
-        embed = discord.Embed(title='📚 Puzzle-Bücher', color=0x7fa650)
-        sorted_books = _pkg._list_pgn_files()
-        for i, book in enumerate(sorted_books[:25], 1):
-            name  = _pkg._clean_book_name(book)
-            total = total_per_book[book]
-            done  = posted_per_book[book]
-            meta  = books_config.get(book, {})
-            diff  = meta.get('difficulty', '')
-            rat   = meta.get('rating', 0)
-            stars = '★' * rat + '☆' * (10 - rat) if rat else ''
-            info  = f'{done}/{total} gepostet'
+        # --- Übersichtsliste aller Bücher (ID für /puzzle buch:<ID>) ---
+        embed = discord.Embed(
+            title='📚 Puzzle-Bücher (RookHub)',
+            description='Zufallspuzzle aus einem Buch: `/puzzle buch:<ID>`',
+            color=0x7fa650)
+        for b in books[:25]:
+            name = _pkg._clean_book_name(b.get('bookFileName', ''))
+            diff = b.get('difficulty') or ''
+            stars = _stars(b.get('bookRating') or 0)
+            info = f'{b.get("puzzleCount", 0)} Puzzles'
             if diff:
                 info += f'\n{diff}  {stars}' if stars else f'\n{diff}'
-            if meta.get('random', True):
-                info += '\n🎲 Im Zufalls-/Daily-Pool'
-            if meta.get('blind'):
-                info += '\n🙈 Blind-Modus verfügbar'
-            embed.add_field(name=f'{i}: {name}', value=info, inline=False)
-
-        total_all = sum(total_per_book.values())
-        done_all  = sum(posted_per_book.values())
-        footer = f'Gesamt: {done_all}/{total_all} Linien gepostet'
-        if len(sorted_books) > 25:
-            footer += f' — {len(sorted_books) - 25} weitere Bücher nicht angezeigt'
+            embed.add_field(name=f'ID {b.get("bookId")}: {name}', value=info, inline=False)
+        footer = f'{len(books)} Bücher'
+        if len(books) > 25:
+            footer += f' — {len(books) - 25} weitere nicht angezeigt'
         embed.set_footer(text=footer)
+        if web:
+            embed.add_field(name='​',
+                            value=f'[Alle Bücher auf RookHub durcharbeiten]({web}/courses)',
+                            inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
     except Exception as e:
         log.exception('/kurs fehlgeschlagen: %s', e)
