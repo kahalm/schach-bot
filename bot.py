@@ -668,6 +668,13 @@ async def _health_loop():
             await asyncio.to_thread(_write_health)
         except Exception as e:
             log.warning('Health-Write fehlgeschlagen: %s', e)
+        # Lebenszeichen an RookHub (→ rookhub-logs in ES), damit der log-watcher einen toten
+        # Bot an ausbleibenden Heartbeats erkennt. Fire-and-forget, blockiert den Loop nicht.
+        try:
+            from puzzle import rookhub
+            await asyncio.to_thread(rookhub.send_heartbeat)
+        except Exception as e:
+            log.debug('RookHub-Heartbeat fehlgeschlagen: %s', e)
 
 
 @tasks.loop(time=time(hour=PUZZLE_HOUR, minute=PUZZLE_MINUTE))

@@ -36,6 +36,26 @@ def _api(path: str) -> str:
     return f'{ROOKHUB_API_URL}{path}'
 
 
+def send_heartbeat(timeout: int = _LOOKUP_TIMEOUT) -> bool:
+    """Sendet ein Lebenszeichen an RookHubs ``/api/client-log`` (landet in ``rookhub-logs-*`` in
+    Elasticsearch), damit der log-watcher einen toten/hängenden Bot an AUSBLEIBENDEN Heartbeats
+    erkennt — der Bot selbst loggt nicht nach ES. Fire-and-forget: Fehler werden geschluckt.
+
+    Nutzt die API-URL oder (Fallback, via nginx-Proxy) die Web-URL. ``True`` bei erfolgreichem POST.
+    """
+    base = ROOKHUB_API_URL or ROOKHUB_WEB_URL
+    if not base:
+        return False
+    try:
+        requests.post(f'{base}/api/client-log',
+                      json={'kind': 'heartbeat_bot', 'detail': 'alive', 'url': '/bot'},
+                      timeout=timeout)
+        return True
+    except requests.RequestException as e:
+        log.debug('RookHub send_heartbeat fehlgeschlagen: %s', e)
+        return False
+
+
 def get_puzzle(pool: str = 'random', exclude=None, timeout: int = _TIMEOUT) -> dict | None:
     """Holt ein zufälliges Buch-Puzzle aus dem Pool (``daily`` | ``random`` | ``blind``).
 

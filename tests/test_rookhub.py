@@ -75,6 +75,47 @@ def test_get_puzzle_no_url():
     check('get_puzzle ohne API-URL → None', rh.get_puzzle('random') is None)
 
 
+def _patch_post(fn):
+    rh.requests.post = fn
+
+
+def test_send_heartbeat_ok():
+    rh.ROOKHUB_API_URL = 'http://rookhub:5001'
+    rh.ROOKHUB_WEB_URL = ''
+    captured = {}
+
+    def fake_post(url, json=None, timeout=None):
+        captured['url'] = url
+        captured['json'] = json
+        return _FakeResp(204)
+
+    _patch_post(fake_post)
+    ok = rh.send_heartbeat()
+    check('send_heartbeat True', ok is True)
+    check('send_heartbeat ruft /api/client-log', captured['url'].endswith('/api/client-log'))
+    check('send_heartbeat kind=heartbeat_bot', captured['json']['kind'] == 'heartbeat_bot')
+
+
+def test_send_heartbeat_no_url():
+    rh.ROOKHUB_API_URL = ''
+    rh.ROOKHUB_WEB_URL = ''
+    check('send_heartbeat ohne URL → False', rh.send_heartbeat() is False)
+
+
+def test_send_heartbeat_falls_back_to_web():
+    rh.ROOKHUB_API_URL = ''
+    rh.ROOKHUB_WEB_URL = 'http://web:8087'
+    captured = {}
+
+    def fake_post(url, json=None, timeout=None):
+        captured['url'] = url
+        return _FakeResp(204)
+
+    _patch_post(fake_post)
+    rh.send_heartbeat()
+    check('send_heartbeat Fallback auf Web-URL', captured['url'] == 'http://web:8087/api/client-log')
+
+
 def test_lookup_and_url():
     rh.ROOKHUB_API_URL = 'http://rookhub:5001'
     rh.ROOKHUB_WEB_URL = 'https://rookhub.example'
@@ -203,6 +244,7 @@ def test_game_from_puzzle_startply_midline():
 
 def main():
     for t in (test_get_puzzle_ok, test_get_puzzle_404, test_get_puzzle_no_url,
+              test_send_heartbeat_ok, test_send_heartbeat_no_url, test_send_heartbeat_falls_back_to_web,
               test_lookup_and_url, test_url_falls_back_to_api,
               test_lookup_caches_hit, test_lookup_caches_404,
               test_lookup_200_without_id_not_cached,

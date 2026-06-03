@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.42.0] - 2026-06-03
+### Added
+- **Heartbeat-Lebenszeichen an RookHub**: Der Bot sendet im bestehenden 60-s-Health-Loop ein
+  Lebenszeichen an RookHubs `POST /api/client-log` (`kind=heartbeat_bot`). Da der Bot nicht direkt
+  nach Elasticsearch loggt, wird er so im `rookhub-logs-*`-Index sichtbar und der log-watcher kann
+  einen toten/hängenden Bot an AUSBLEIBENDEN Heartbeats erkennen (statt nur an Stille). Fire-and-forget
+  (blockiert den Loop nicht), nutzt `ROOKHUB_API_URL` bzw. als Fallback `ROOKHUB_WEB_URL`.
+
 ## [2.41.0] - 2026-06-02
 ### Changed
 - **`/puzzle` holt jetzt von RookHub statt aus lokalen PGN-Dateien** (Phase 1 der „RookHub
