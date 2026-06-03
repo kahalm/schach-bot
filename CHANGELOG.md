@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.50.0] - 2026-06-03
+### Changed
+- Tagespuzzle-Posts verlinken jetzt auf den stabilen, **datumsbasierten** RookHub-Link
+  `…/puzzles/daily/{yyyyMMdd}` statt auf die wechselnde Puzzle-ID `…/puzzles/book/{id}`.
+  Derselbe Link zeigt dauerhaft auf das Tagespuzzle dieses Tages. Neuer Helper
+  `rookhub.daily_web_url()`; `post_rookhub_puzzle(pool='daily')` nutzt ihn. (Setzt die
+  RookHub-Route `/puzzles/daily/:date` voraus — RookHub ≥ 0.80.0.)
+
 ## [2.49.2] - 2026-06-03
 ### Changed
 - `docker-compose.yml`: Webhook-Port-Mapping vereinfacht — Host-Port `${WEBHOOK_PORT}`

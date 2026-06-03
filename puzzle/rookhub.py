@@ -11,6 +11,7 @@ testbar.
 import os
 import logging
 import threading
+from datetime import datetime, timezone
 
 import chess
 import chess.pgn
@@ -157,6 +158,20 @@ def puzzle_web_url(puzzle_id: int | None) -> str | None:
     if puzzle_id is None or not ROOKHUB_WEB_URL:
         return None
     return f'{ROOKHUB_WEB_URL}/puzzles/book/{puzzle_id}'
+
+
+def daily_web_url(date_str: str | None = None) -> str | None:
+    """RookHub-Link zum Tagespuzzle eines Datums — `…/puzzles/daily/{yyyyMMdd}`.
+
+    Default = heutiges UTC-Datum (entspricht der serverseitigen Daily-Zuordnung).
+    Stabil/teilbar: dieselbe Datums-URL zeigt immer dasselbe Tagespuzzle, unabhängig
+    von der Puzzle-ID. Ohne ROOKHUB_WEB_URL: kein Link.
+    """
+    if not ROOKHUB_WEB_URL:
+        return None
+    if not date_str:
+        date_str = datetime.now(timezone.utc).strftime('%Y%m%d')
+    return f'{ROOKHUB_WEB_URL}/puzzles/daily/{date_str}'
 
 
 def web_url_for_line(line_id: str) -> str | None:

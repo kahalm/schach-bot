@@ -908,11 +908,12 @@ def test_post_rookhub_puzzle_daily_uses_minimal_embed():
     async def fake_render(game):
         return ('white', io.BytesIO(b'PNGDATA'))
 
-    orig = (posting.rookhub.get_puzzle, posting.rookhub.puzzle_web_url,
+    orig = (posting.rookhub.get_puzzle, posting.rookhub.puzzle_web_url, posting.rookhub.daily_web_url,
             posting.safe_render_board,
             posting._resilient_send, posting._register_puzzle_msg, posting.discord.DMChannel)
     posting.rookhub.get_puzzle = lambda pool, exclude=None, book_id=None: dict(DTO)
     posting.rookhub.puzzle_web_url = lambda pid: f'https://rookhub.test/puzzles/book/{pid}'
+    posting.rookhub.daily_web_url = lambda date_str=None: 'https://rookhub.test/puzzles/daily/20260603'
     posting.safe_render_board = fake_render
     posting._resilient_send = fake_send
     posting._register_puzzle_msg = lambda *a, **k: None
@@ -946,12 +947,12 @@ def test_post_rookhub_puzzle_daily_uses_minimal_embed():
         link_msgs = [s for s in sent if s.get('content') and 'Auf RookHub' in s.get('content', '')]
         check('daily: RookHub-Link als Plaintext-Nachricht', len(link_msgs) == 1)
         if link_msgs:
-            check('daily: Link enthält die URL', 'https://rookhub.test/puzzles/book/77' in link_msgs[0]['content'])
+            check('daily: Link enthält die datumsbasierte URL', 'https://rookhub.test/puzzles/daily/20260603' in link_msgs[0]['content'])
             check('daily: Link-Nachricht ohne Embed', link_msgs[0].get('embed') is None)
             check('daily: Link unterdrückt URL-Auto-Preview',
                   link_msgs[0].get('suppress_embeds') is True)
     finally:
-        (posting.rookhub.get_puzzle, posting.rookhub.puzzle_web_url,
+        (posting.rookhub.get_puzzle, posting.rookhub.puzzle_web_url, posting.rookhub.daily_web_url,
          posting.safe_render_board,
          posting._resilient_send, posting._register_puzzle_msg, posting.discord.DMChannel) = orig
         teardown_temp_config(tmpdir)

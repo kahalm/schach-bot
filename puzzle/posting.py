@@ -358,7 +358,8 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
 
     pid = dto.get('id')
     line_id = dto.get('lineId', '')
-    web_url = rookhub.puzzle_web_url(pid)
+    # Tagespuzzle: stabiler datumsbasierter Link (…/puzzles/daily/{yyyyMMdd}); sonst per Puzzle-ID.
+    web_url = rookhub.daily_web_url() if pool == 'daily' else rookhub.puzzle_web_url(pid)
     diff = dto.get('difficulty') or ''
     rating = dto.get('bookRating') or 0
 
