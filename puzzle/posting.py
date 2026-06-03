@@ -402,6 +402,15 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
             else:
                 msg = await _resilient_send(target, embed=embed)
             rendered = msg is not None
+            # Tagespuzzle: den RookHub-Link als separate Plaintext-Nachricht
+            # nachschieben, damit er ohne den gruenen Embed-Strich erscheint.
+            # `suppress_embeds=True` verhindert das Auto-Preview der URL.
+            if rendered and pool == 'daily' and web_url:
+                await _send_optional(
+                    target,
+                    content=f'🧩 [Auf RookHub lösen]({web_url})',
+                    suppress_embeds=True,
+                    label=f'Daily-Link {line_id}')
         except Exception as e:
             log.exception('RookHub-Brett-Render fehlgeschlagen (%s) – nur Link: %s', line_id, e)
 
