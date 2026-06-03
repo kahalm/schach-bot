@@ -186,15 +186,13 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
 
         if user:
             await dm.send(f'**{interaction.user.display_name}** schickt dir ein Rätsel 🧩')
-        show_board = _pkg._get_user_show_board(target_uid)
-        # Auswahl kommt von RookHub (Pool "random", optional aus Buch `buch`); der Link wird
-        # aus der Puzzle-ID gebaut (immer auflösbar). exclude verhindert Wiederholungen.
+        # Auswahl kommt von RookHub (Pool "random", optional aus Buch `buch`); der Bot postet
+        # nur den Link (gelöst wird auf RookHub). exclude verhindert Wiederholungen.
         book_id = buch or None
         seen: list[int] = []
         for _ in range(anzahl):
             pid = await _pkg.post_rookhub_puzzle(
-                dm, 'random', user_id=target_uid, exclude=seen or None,
-                show_board=show_board, book_id=book_id)
+                dm, 'random', user_id=target_uid, exclude=seen or None, book_id=book_id)
             if pid is None:
                 break
             seen.append(pid)
@@ -278,84 +276,16 @@ async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
 
 
 async def _cmd_train(interaction: discord.Interaction, buch: int = None):
-    await interaction.response.defer(ephemeral=True)
-    user_id = interaction.user.id
-
-    if buch is None:
-        # Status anzeigen
-        training = _pkg._get_user_training(user_id)
-        if not training:
-            await interaction.followup.send(
-                '📭 Kein Training aktiv. Wähle ein Buch mit `/train <nummer>` '
-                '(Nummern aus `/kurs`).', ephemeral=True)
-            return
-        book_filename = training['book']
-        pos = training['position']
-        all_lines = await asyncio.to_thread(_pkg.load_all_lines)
-        total = sum(1 for lid, _ in all_lines if lid.startswith(book_filename + ':'))
-        name = _pkg._clean_book_name(book_filename)
-        books = _pkg._list_pgn_files()
-        kurs_nr = books.index(book_filename) + 1 if book_filename in books else 0
-        books_config = _pkg._load_books_config()
-        meta = books_config.get(book_filename, {})
-        diff = meta.get('difficulty', '')
-        rat = meta.get('rating', 0)
-        stars = ('★' * rat + '☆' * (10 - rat)) if rat else ''
-        pct = f' ({pos * 100 // total}%)' if total else ''
-
-        embed = discord.Embed(title=f'📖 Training: {name} ({kurs_nr})', color=0x7fa650)
-        embed.add_field(name='Fortschritt', value=f'{pos}/{total} Linien{pct}', inline=True)
-        if diff:
-            embed.add_field(name='Schwierigkeit',
-                            value=f'{diff}  {stars}' if stars else diff, inline=True)
-        embed.add_field(name='Nächster Schritt',
-                        value='`/next` `/next 5` `/next 10`', inline=False)
-        await interaction.followup.send(embed=embed, ephemeral=True)
-        return
-
-    if buch == 0:
-        _pkg._clear_user_training(user_id)
-        await interaction.followup.send('🔓 Training beendet.', ephemeral=True)
-        return
-
-    # Buch validieren
-    books = _pkg._list_pgn_files()
-    if not books:
-        await interaction.followup.send('⚠️ Kein books-Ordner.', ephemeral=True)
-        return
-    if buch < 1 or buch > len(books):
-        await interaction.followup.send(
-            f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die Liste.', ephemeral=True)
-        return
-
-    book_filename = books[buch - 1]
-    # Aktuelle Position beibehalten falls selbes Buch
-    training = _pkg._get_user_training(user_id)
-    if training and training.get('book') == book_filename:
-        pos = training['position']
-    else:
-        pos = 0
-
-    _pkg._set_user_training(user_id, book_filename, pos)
-
-    # Info anzeigen
-    all_lines = await asyncio.to_thread(_pkg.load_all_lines)
-    total = sum(1 for lid, _ in all_lines if lid.startswith(book_filename + ':'))
-    name = _pkg._clean_book_name(book_filename)
-    books_config = _pkg._load_books_config()
-    meta = books_config.get(book_filename, {})
-    diff = meta.get('difficulty', '')
-    rat = meta.get('rating', 0)
-    stars = ('★' * rat + '☆' * (10 - rat)) if rat else ''
-
-    embed = discord.Embed(title=f'📖 Training: {name} ({buch})', color=0x7fa650)
-    embed.add_field(name='Fortschritt', value=f'{pos}/{total} Linien', inline=True)
-    if diff:
-        embed.add_field(name='Schwierigkeit',
-                        value=f'{diff}  {stars}' if stars else diff, inline=True)
-    embed.add_field(name='Nächster Schritt',
-                    value='`/next` `/next 5` `/next 10`', inline=False)
-    await interaction.followup.send(embed=embed, ephemeral=True)
+    # Sequentielles Training läuft jetzt auf RookHub (Kurse, mit gespeichertem Fortschritt
+    # je Konto). Der Bot verlinkt nur noch dorthin.
+    web = _pkg.rookhub.ROOKHUB_WEB_URL or _pkg.rookhub.ROOKHUB_API_URL
+    msg = ('🎓 **Training läuft jetzt auf RookHub.** Dort wählst du ein Buch und arbeitest es '
+           'mit gespeichertem Fortschritt durch (am besten mit verknüpftem Konto → `/link`).')
+    if web:
+        msg += f'\n👉 {web}/courses'
+    msg += ('\nEinzelne Zufallspuzzles weiterhin im Discord: `/puzzle` · aus einem Buch: '
+            '`/puzzle buch:<ID>` (IDs via `/kurs`).')
+    await interaction.response.send_message(msg, ephemeral=True)
 
 
 async def send_next_training(channel, user_id: int, count: int = 1) -> dict:
@@ -458,35 +388,13 @@ async def send_next_training(channel, user_id: int, count: int = 1) -> dict:
 
 
 async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
-    await interaction.response.defer(ephemeral=True)
-    user_id = interaction.user.id
-
-    training = _pkg._get_user_training(user_id)
-    if not training:
-        await interaction.followup.send(
-            '⚠️ Kein Trainingsbuch gewählt. Nutze `/train <buch>` zuerst.',
-            ephemeral=True)
-        return
-
-    dm = await interaction.user.create_dm()
-    result = await send_next_training(dm, user_id, anzahl)
-
-    if result.get('error'):
-        await interaction.followup.send(
-            f'⚠️ {result["error"]}', ephemeral=True)
-        return
-
-    if result['finished']:
-        await interaction.followup.send(
-            f'✅ Alle Linien in **{result["book"]}** durchgearbeitet! '
-            f'Nutze `/train` erneut zum Zurücksetzen oder wähle ein neues Buch.',
-            ephemeral=True)
-        return
-
-    await interaction.followup.send(
-        f'✅ {result["sent"]} Linie(n) aus **{result["book"]}** per DM gesendet '
-        f'({result["new_position"]}/{result["total"]}).',
-        ephemeral=True)
+    # Sequentielles Training läuft jetzt auf RookHub (Kurse mit gespeichertem Fortschritt).
+    web = _pkg.rookhub.ROOKHUB_WEB_URL or _pkg.rookhub.ROOKHUB_API_URL
+    msg = '🎓 **Training läuft jetzt auf RookHub** (Kurse mit gespeichertem Fortschritt).'
+    if web:
+        msg += f'\n👉 {web}/courses'
+    msg += '\nEinzelnes Puzzle im Discord: `/puzzle` (optional `/puzzle buch:<ID>`).'
+    await interaction.response.send_message(msg, ephemeral=True)
 
 
 async def _cmd_endless(bot, interaction: discord.Interaction, buch: int = 0):

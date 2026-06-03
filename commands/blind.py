@@ -35,44 +35,10 @@ def setup(bot: commands.Bot):
                         anzahl: int = 1,
                         buch: int = 0,
                         user: discord.Member | None = None):
-        # Admin-Check fuer user:-Parameter
-        if user is not None and user.id != interaction.user.id:
-            if not is_privileged(interaction):
-                await interaction.response.send_message(
-                    '⚠️ Nur Admins dürfen Puzzles an andere User senden.',
-                    ephemeral=True)
-                return
-        target_user = user or interaction.user
-        log.info('/blind von %s: moves=%d anzahl=%d buch=%d user=%s',
-                 interaction.user, moves, anzahl, buch, target_user)
-        if not 1 <= moves <= 50:
-            await interaction.response.send_message(
-                '⚠️ `moves` muss zwischen 1 und 50 liegen.', ephemeral=True)
-            return
-        if not 1 <= anzahl <= 20:
-            await interaction.response.send_message(
-                '⚠️ `anzahl` muss zwischen 1 und 20 liegen.', ephemeral=True)
-            return
-        if buch < 0:
-            await interaction.response.send_message(
-                '⚠️ `buch` darf nicht negativ sein.', ephemeral=True)
-            return
-        await interaction.response.defer(ephemeral=True)
-        try:
-            dm = await target_user.create_dm()
-            if user:
-                await dm.send(f'**{interaction.user.display_name}** schickt dir ein Blind-Puzzle 🙈')
-            await puzzle.post_blind_puzzle(
-                dm,
-                moves=moves,
-                count=anzahl,
-                book_idx=buch,
-                user_id=target_user.id,
-            )
-            dest = f'an {target_user.mention}' if user else 'dir'
-            await interaction.followup.send(
-                f'🙈 Blind-Puzzle ({anzahl}× / {moves} Züge) {dest} per DM gesendet.',
-                ephemeral=True)
-        except Exception as e:
-            log.exception('/blind fehlgeschlagen')
-            await interaction.followup.send('❌ Ein Fehler ist aufgetreten.', ephemeral=True)
+        # Der Discord-Blind-Modus (lokale Bücher) wurde abgelöst: gelöst wird auf RookHub.
+        log.info('/blind von %s (abgelöst)', interaction.user)
+        await interaction.response.send_message(
+            '🙈 Der **Blind-Modus im Discord wurde abgelöst** — gelöst wird jetzt auf RookHub. '
+            'Hol dir ein Puzzle mit `/puzzle` (optional aus einem Buch: `/puzzle buch:<ID>`, '
+            'IDs via `/kurs`).',
+            ephemeral=True)

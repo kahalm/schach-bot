@@ -31,10 +31,10 @@ def test_puzzle():
         call_log = []
 
         async def fake_post_rookhub(channel, pool='random', user_id=None, exclude=None,
-                                    show_board=True, book_id=None):
+                                    book_id=None):
             call_log.append({'pool': pool, 'user_id': user_id,
                              'exclude': list(exclude) if exclude else None,
-                             'show_board': show_board, 'book_id': book_id})
+                             'book_id': book_id})
             return 1000 + len(call_log)   # eindeutige Puzzle-ID je Aufruf
 
         leg.post_rookhub_puzzle = fake_post_rookhub
@@ -47,11 +47,16 @@ def test_puzzle():
             check('post_rookhub_puzzle 2× aufgerufen', len(call_log) == 2)
             check('pool=random', call_log[0]['pool'] == 'random')
             check('zweiter Aufruf excludet das erste Puzzle', call_log[1]['exclude'] == [1001])
-            check('Standard ohne Brett (show_board=False)',
-                  call_log[0]['show_board'] is False)
+            check('ohne Buch → book_id None', call_log[0]['book_id'] is None)
             check('followup mit Bestaetigung',
                   len(ia.followup.calls) > 0 and
                   '2' in (ia.followup.calls[0].get('content') or ''))
+
+            # Test: buch:<ID> wird als book_id an RookHub durchgereicht
+            call_log.clear()
+            ia = make_interaction()
+            run_async(cmd(ia, anzahl=1, buch=7, id='', user=None))
+            check('buch → book_id durchgereicht', call_log and call_log[0]['book_id'] == 7)
 
             # Test: id nicht gefunden
             call_log.clear()
@@ -226,7 +231,7 @@ def test_kurs():
 
 
 def test_train():
-    """Smoke-Tests fuer /train Command."""
+    """/train verweist jetzt auf RookHub-Kurse (Training + Fortschritt liegen dort)."""
     print('[/train]')
     tmpdir = setup_temp_config()
     try:
@@ -234,79 +239,18 @@ def test_train():
         check('cmd_train gefunden', cmd is not None)
         if not cmd:
             return
-
-        import puzzle as leg
-
-        orig_get = leg._get_user_training
-        orig_set = leg._set_user_training
-        orig_clear = leg._clear_user_training
-        orig_load = leg.load_all_lines
-        orig_list = leg._list_pgn_files
-        orig_books = leg._load_books_config
-
-        _training = {}
-
-        def fake_get(uid):
-            return _training.get(uid)
-
-        def fake_set(uid, book, pos):
-            _training[uid] = {'book': book, 'position': pos}
-
-        def fake_clear(uid):
-            _training.pop(uid, None)
-
-        leg._get_user_training = fake_get
-        leg._set_user_training = fake_set
-        leg._clear_user_training = fake_clear
-        leg.load_all_lines = lambda: [
-            ('book1.pgn:001.001', MagicMock()),
-            ('book1.pgn:001.002', MagicMock()),
-        ]
-        leg._list_pgn_files = lambda: ['book1.pgn']
-        leg._load_books_config = lambda: {
-            'book1.pgn': {'difficulty': 'Anfaenger', 'rating': 3}
-        }
-
-        try:
-            # Test: Status ohne Training
-            ia = make_interaction()
-            run_async(cmd(ia, buch=None))
-            content = (ia.followup.calls[0].get('content') or '').lower()
-            check('kein Training → Hinweis', 'kein training' in content)
-
-            # Test: Buch waehlen
-            ia = make_interaction()
-            run_async(cmd(ia, buch=1))
-            check('Buch waehlen → Embed',
-                  len(ia.followup.calls) > 0 and
-                  ia.followup.calls[0].get('embed') is not None)
-            check('Training gesetzt', 12345 in _training)
-
-            # Test: Buch 0 = stoppen
-            ia = make_interaction()
-            run_async(cmd(ia, buch=0))
-            content = (ia.followup.calls[0].get('content') or '').lower()
-            check('Buch 0 → beendet', 'beendet' in content)
-
-            # Test: ungueliges Buch
-            ia = make_interaction()
-            run_async(cmd(ia, buch=99))
-            content = (ia.followup.calls[0].get('content') or '').lower()
-            check('ungültiges Buch → Fehler', 'nicht gefunden' in content)
-        finally:
-            leg._get_user_training = orig_get
-            leg._set_user_training = orig_set
-            leg._clear_user_training = orig_clear
-            leg.load_all_lines = orig_load
-            leg._list_pgn_files = orig_list
-            leg._load_books_config = orig_books
+        ia = make_interaction()
+        run_async(cmd(ia, buch=None))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('train → RookHub-Hinweis', 'rookhub' in content)
+        check('train → Verknüpfungs-/Puzzle-Hinweis', '/link' in content or '/puzzle' in content)
     finally:
         teardown_temp_config(tmpdir)
     print()
 
 
 def test_next():
-    """Smoke-Tests fuer /next Command."""
+    """/next verweist jetzt auf RookHub-Kurse."""
     print('[/next]')
     tmpdir = setup_temp_config()
     try:
@@ -314,21 +258,11 @@ def test_next():
         check('cmd_next gefunden', cmd is not None)
         if not cmd:
             return
-
-        import puzzle as leg
-
-        orig_get = leg._get_user_training
-        _training = {}
-        leg._get_user_training = lambda uid: _training.get(uid)
-
-        try:
-            # Test: kein Training → Fehler
-            ia = make_interaction()
-            run_async(cmd(ia, anzahl=1))
-            content = (ia.followup.calls[0].get('content') or '').lower()
-            check('kein Training → Fehler', 'kein trainingsbuch' in content)
-        finally:
-            leg._get_user_training = orig_get
+        ia = make_interaction()
+        run_async(cmd(ia, anzahl=1))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('next → RookHub-Hinweis', 'rookhub' in content)
+        check('next → /puzzle-Hinweis', '/puzzle' in content)
     finally:
         teardown_temp_config(tmpdir)
     print()
@@ -403,7 +337,7 @@ def test_endless():
 
 
 def test_blind():
-    """Smoke-Tests fuer /blind Command."""
+    """/blind ist abgelöst (Discord-Blind entfällt) → verweist auf /puzzle bzw. RookHub."""
     print('[/blind]')
     tmpdir = setup_temp_config()
     try:
@@ -411,31 +345,11 @@ def test_blind():
         check('cmd_blind gefunden', cmd is not None)
         if not cmd:
             return
-
-        import puzzle as puzzle_mod
-
-        orig_post = puzzle_mod.post_blind_puzzle
-
-        call_log = []
-        async def fake_post_blind(channel, moves=4, count=1, book_idx=0, user_id=None):
-            call_log.append({'moves': moves, 'count': count})
-
-        puzzle_mod.post_blind_puzzle = fake_post_blind
-
-        try:
-            # Test: moves < 1 → Fehler
-            ia = make_interaction()
-            run_async(cmd(ia, moves=0, anzahl=1, buch=0, user=None))
-            content = (ia.response.calls[0].get('content') or '').lower()
-            check('moves < 1 → Fehler', 'zwischen 1 und 50' in content)
-
-            # Test: Standard-Aufruf
-            ia = make_interaction()
-            run_async(cmd(ia, moves=4, anzahl=2, buch=0, user=None))
-            check('Standard → defer', ia.response.calls[0].get('type') == 'defer')
-            check('post_blind_puzzle aufgerufen', len(call_log) > 0)
-        finally:
-            puzzle_mod.post_blind_puzzle = orig_post
+        ia = make_interaction()
+        run_async(cmd(ia, moves=4, anzahl=1, buch=0, user=None))
+        content = (ia.response.calls[0].get('content') or '').lower()
+        check('blind → abgelöst/RookHub-Hinweis', 'abgelöst' in content or 'rookhub' in content)
+        check('blind → /puzzle-Hinweis', '/puzzle' in content)
     finally:
         teardown_temp_config(tmpdir)
     print()

@@ -837,24 +837,19 @@ def test_suppress_empty_fen():
     finally:
         teardown_temp_config(tmpdir)
 
-    # /blind Validierungen (anzahl, buch)
+    # /blind ist abgelöst (Discord-Blind entfällt) → verweist auf RookHub statt zu validieren
     cmd = _captured_commands.get('blind')
     if cmd:
         tmpdir = setup_temp_config()
         try:
             ia = make_interaction()
-            run_async(cmd(ia, moves=4, anzahl=25, buch=0, user=None))
+            run_async(cmd(ia, moves=4, anzahl=1, buch=0, user=None))
             content = (ia.response.calls[0].get('content') or '').lower()
-            check('/blind anzahl > 20 → Fehler', 'zwischen 1 und 20' in content)
-
-            ia = make_interaction()
-            run_async(cmd(ia, moves=4, anzahl=1, buch=-1, user=None))
-            content = (ia.response.calls[0].get('content') or '').lower()
-            check('/blind buch:-1 → Fehler', 'negativ' in content)
+            check('/blind abgelöst → RookHub-Hinweis', 'abgelöst' in content or 'rookhub' in content)
         finally:
             teardown_temp_config(tmpdir)
     else:
-        check('/blind Validierungen', False, 'cmd nicht gefunden')
+        check('/blind abgelöst', False, 'cmd nicht gefunden')
 
     # /reminder buch:-1 → Fehler
     cmd = _captured_commands.get('reminder')

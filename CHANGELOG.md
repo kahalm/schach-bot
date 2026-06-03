@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.44.0] - 2026-06-03
+### Changed
+- **Bot postet bei `/puzzle` + Tagespuzzle nur noch den RookHub-Link** (Phase 3 „schlank"):
+  `post_rookhub_puzzle` rendert kein Brett/Embed/Lösung mehr — gelöst wird auf RookHub. Der
+  `showBoard`-Schalter ist damit für den RookHub-Pfad gegenstandslos.
+- **`/train` und `/next` verweisen jetzt auf die RookHub-Kurse** (Training + Fortschritt laufen
+  dort, mit verknüpftem Konto via `/link`) — kein bot-seitiger Trainings-Cursor mehr.
+- **`/blind` ist abgelöst**: Der Discord-Blind-Modus entfällt (kein Web-Pendant); der Befehl
+  verweist auf `/puzzle` bzw. RookHub.
+### Hinweis
+- Bewusst „schlank": Endless-Modus, Chat-getriggerte Puzzles, `/reminder` und die In-Discord-
+  Lösen-Buttons sowie die lokalen Bücher bleiben vorerst unverändert (nutzen weiter lokale Logik).
+
 ## [2.43.0] - 2026-06-03
 ### Added
 - **Buchwahl bei `/puzzle` via RookHub** (Phase 2 der „RookHub liefert die Puzzles"-Umstellung):
