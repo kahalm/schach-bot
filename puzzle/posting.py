@@ -386,21 +386,29 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
             game, _solution = rookhub.game_from_puzzle(dto)
             turn, img = await safe_render_board(game)
             if pool == 'daily':
-                # Minimaler Tagespuzzle-Embed: nur Brett, Am Zug, Solver-Slot, Lösungs-Spoiler.
+                # Minimaler Tagespuzzle-Embed: NUR Text (Am Zug, Solver-Slot, Lösung).
+                # Das Brett wird bewusst NICHT ins Embed gesetzt — der File-Anhang allein
+                # rendert das Brett. Sonst kombiniert Discord beim spaeteren refresh()
+                # die CDN-URL im Embed mit dem losen Anhang und zeigt das Brett doppelt.
                 solution_san = _solution_pgn(game)
                 embed = build_daily_embed(turn=turn, solution_san=solution_san)
+                if img:
+                    file = discord.File(img, filename='board.png')
+                    msg = await _resilient_send(target, file=file, embed=embed)
+                else:
+                    msg = await _resilient_send(target, embed=embed)
             else:
                 embed = build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating,
                                            line_id=line_id)
                 if web_url:
                     embed.add_field(name='​', value=f'🧩 [Auf RookHub lösen]({web_url})',
                                     inline=False)
-            if img:
-                file = discord.File(img, filename='board.png')
-                embed.set_image(url='attachment://board.png')
-                msg = await _resilient_send(target, file=file, embed=embed)
-            else:
-                msg = await _resilient_send(target, embed=embed)
+                if img:
+                    file = discord.File(img, filename='board.png')
+                    embed.set_image(url='attachment://board.png')
+                    msg = await _resilient_send(target, file=file, embed=embed)
+                else:
+                    msg = await _resilient_send(target, embed=embed)
             rendered = msg is not None
             # Tagespuzzle: den RookHub-Link als separate Plaintext-Nachricht
             # nachschieben, damit er ohne den gruenen Embed-Strich erscheint.

@@ -4,6 +4,22 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.48.0] - 2026-06-03
+### Fixed
+- **Tagespuzzle: 2. Brettbild beim refresh wirklich weg.** Die Geometrie war das eigentliche
+  Problem — Brett im Embed (`set_image`) PLUS File-Anhang fuehrt nach einem `msg.edit` dazu,
+  dass Discord beide separat rendert (attachment://-Dedup geht beim Edit verloren, CDN-URL-Reset
+  oder attachments=[]-Drop reichen nicht). Loesung: das Brett liegt jetzt NUR noch als File-Anhang
+  vor (kein `embed.set_image` im daily-Pfad), der Embed ist text-only (Am Zug, Solver-Slot,
+  Lösung). `refresh()` editiert nur die Embed-Felder, der Anhang bleibt unangetastet — Duplikat
+  unmöglich. Sicherheitshalber wird `embed.image` beim Edit explizit geleert (alte Posts).
+### Changed
+- **User-Links nutzen strikt `ROOKHUB_WEB_URL`** — kein Fallback mehr auf `ROOKHUB_API_URL`,
+  sonst landen interne Docker-Adressen (z. B. `http://10.24.13.6:8087`) in User-Posts auf
+  Discord (`/puzzle`-Link, `/train`-Link, `/buecher`-Link). `puzzle_web_url()` + die drei
+  Stellen in `commands.py` liefern jetzt `None` bzw. den Hinweis-Text, wenn `ROOKHUB_WEB_URL`
+  nicht konfiguriert ist.
+
 ## [2.47.2] - 2026-06-03
 ### Fixed
 - **Tagespuzzle: zweites Brettbild beim 5-Min-Refresh weg.** Der vorherige Fix (2.46.1) hat das

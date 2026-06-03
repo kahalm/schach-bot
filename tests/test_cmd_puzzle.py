@@ -721,15 +721,19 @@ def test_daily_refresh_no_duplicate_board():
 
     edited = captured.get('edit_kwargs') or {}
     check('refresh: msg.edit aufgerufen', bool(edited))
-    check('refresh: attachments=[] (loser Anhang weg)',
-          edited.get('attachments') == [])
+    # Wichtig: KEIN attachments-Parameter mehr — den Anhang lassen wir in Ruhe,
+    # damit Discord ihn unveraendert als Brett rendert (nicht ins Embed). Sonst
+    # wuerde Discord beim Edit das Brett doppelt zeigen.
+    check('refresh: kein attachments-Parameter (vorhandener Anhang bleibt)',
+          'attachments' not in edited)
     edited_embed = edited.get('embed')
     check('refresh: embed mitgeschickt', edited_embed is not None)
     if edited_embed is not None:
-        # FakeEmbed legt set_image-kw in _image als dict ab
+        # embed.image ist explizit geleert, damit ein Alt-Embed mit CDN-URL
+        # nicht zusaetzlich zum File-Anhang rendert.
         img_dict = getattr(edited_embed, '_image', None) or {}
-        check('refresh: embed.image auf Anhang-CDN-URL gesetzt',
-              img_dict.get('url') == _Att.url)
+        check('refresh: embed.image geleert (kein doppeltes Brett)',
+              not img_dict.get('url'))
         field_values = [str(f.get('value', '')) for f in edited_embed.fields]
         check('refresh: SOLVER_FIELD enthaelt Gelöst-Zeile',
               any('Gelöst' in v for v in field_values))
@@ -824,6 +828,14 @@ def test_post_rookhub_puzzle_daily_uses_minimal_embed():
                   not any('Auf RookHub' in v for v in values))
             check('daily: Tagespuzzle-Slot vorhanden', '🏆 Tagespuzzle' in names)
             check('daily: Lösungs-Spoiler vorhanden', '💡 Lösung' in names)
+            # Wichtig: kein embed.image — sonst rendert Discord beim Refresh
+            # das Brett doppelt (Anhang + Embed.image)
+            img_dict = getattr(emb, '_image', None) or {}
+            check('daily: kein embed.image (Brett kommt rein als File-Anhang)',
+                  not img_dict.get('url'))
+        # File-Anhang im 1. Send: das Brettbild ist nicht im Embed sondern als File mitgeschickt
+        file_present = sent and sent[0].get('file') is not None
+        check('daily: Brett als File-Anhang gesendet (nicht im Embed)', bool(file_present))
         # RookHub-Link als separate Plaintext-Nachricht (keine Embed-Border)
         link_msgs = [s for s in sent if s.get('content') and 'Auf RookHub' in s.get('content', '')]
         check('daily: RookHub-Link als Plaintext-Nachricht', len(link_msgs) == 1)

@@ -218,7 +218,9 @@ async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
         books = await asyncio.to_thread(_pkg.rookhub.get_books)
         books = [b for b in (books or []) if b.get('bookId')]
         books.sort(key=lambda b: b.get('bookFileName', ''))
-        web = _pkg.rookhub.ROOKHUB_WEB_URL or _pkg.rookhub.ROOKHUB_API_URL
+        # Strikt WEB_URL — kein Fallback auf API_URL, sonst landen interne Docker-Adressen
+        # (z. B. http://10.24.13.6:8087) in User-Posts.
+        web = _pkg.rookhub.ROOKHUB_WEB_URL
 
         if not books:
             await interaction.followup.send(
@@ -278,7 +280,9 @@ async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
 async def _cmd_train(interaction: discord.Interaction, buch: int = None):
     # Sequentielles Training läuft jetzt auf RookHub (Kurse, mit gespeichertem Fortschritt
     # je Konto). Der Bot verlinkt nur noch dorthin.
-    web = _pkg.rookhub.ROOKHUB_WEB_URL or _pkg.rookhub.ROOKHUB_API_URL
+    # Strikt WEB_URL — kein Fallback auf API_URL, sonst landen interne Docker-Adressen
+    # (z. B. http://10.24.13.6:8087) in User-Posts.
+    web = _pkg.rookhub.ROOKHUB_WEB_URL
     msg = ('🎓 **Training läuft jetzt auf RookHub.** Dort wählst du ein Buch und arbeitest es '
            'mit gespeichertem Fortschritt durch (am besten mit verknüpftem Konto → `/link`).')
     if web:
@@ -389,7 +393,9 @@ async def send_next_training(channel, user_id: int, count: int = 1) -> dict:
 
 async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
     # Sequentielles Training läuft jetzt auf RookHub (Kurse mit gespeichertem Fortschritt).
-    web = _pkg.rookhub.ROOKHUB_WEB_URL or _pkg.rookhub.ROOKHUB_API_URL
+    # Strikt WEB_URL — kein Fallback auf API_URL, sonst landen interne Docker-Adressen
+    # (z. B. http://10.24.13.6:8087) in User-Posts.
+    web = _pkg.rookhub.ROOKHUB_WEB_URL
     msg = '🎓 **Training läuft jetzt auf RookHub** (Kurse mit gespeichertem Fortschritt).'
     if web:
         msg += f'\n👉 {web}/courses'

@@ -148,11 +148,15 @@ def get_daily_results(puzzle_id, since: str | None = None, timeout: int = _TIMEO
 
 
 def puzzle_web_url(puzzle_id: int | None) -> str | None:
-    """Baut die anklickbare RookHub-URL zum interaktiven Lösen."""
-    if puzzle_id is None:
+    """Baut die anklickbare RookHub-URL zum interaktiven Lösen.
+
+    Nutzt strikt ROOKHUB_WEB_URL — kein Fallback auf ROOKHUB_API_URL, sonst
+    landen interne Docker-Adressen (z. B. http://10.24.13.6:8087) in
+    User-Posts auf Discord. Wenn WEB_URL nicht konfiguriert ist: kein Link.
+    """
+    if puzzle_id is None or not ROOKHUB_WEB_URL:
         return None
-    base = ROOKHUB_WEB_URL or ROOKHUB_API_URL
-    return f'{base}/puzzles/book/{puzzle_id}' if base else None
+    return f'{ROOKHUB_WEB_URL}/puzzles/book/{puzzle_id}'
 
 
 def web_url_for_line(line_id: str) -> str | None:

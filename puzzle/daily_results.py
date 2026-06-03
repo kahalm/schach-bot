@@ -111,20 +111,21 @@ async def refresh(bot) -> None:
             embed.add_field(name=SOLVER_FIELD, value=line, inline=False)
         else:
             embed.set_field_at(idx, name=SOLVER_FIELD, value=line, inline=False)
-        # Den losen Brettbild-Anhang dropen, damit Discord ihn nicht zusaetzlich
-        # als 2. Bild unter dem Embed rendert. Die CDN-URL aus msg.attachments
-        # bleibt vorher in embed.image stehen — Discord cached die Datei weiter
-        # ueber der attachment-id-URL, auch nachdem sie aus der Nachricht
-        # entfernt wurde. (Der vorherige Versuch mit `attachment://filename` +
-        # `attachments=msg.attachments` brachte nichts: attachment:// funktioniert
-        # nur beim Erst-Upload, nicht bei `msg.edit` auf einen schon hochgeladenen
-        # Anhang, deshalb wurde das Embed-Bild unaufgeloest und der Anhang
-        # zusaetzlich unten gerendert.)
-        if msg.attachments:
-            embed.set_image(url=msg.attachments[0].url)
-            await msg.edit(embed=embed, attachments=[])
-        else:
-            await msg.edit(embed=embed)
+        # Anhang in Ruhe lassen (das Brett ist der einzige File-Anhang und wird
+        # NICHT mehr ins Embed gesetzt — siehe post_rookhub_puzzle daily-Pfad).
+        # Wir editieren nur die Embed-Felder; attachments-Parameter bleibt weg
+        # (Default: vorhandene Anhaenge bleiben unveraendert).
+        # Sicherheitshalber: falls ein Alt-Post noch ein embed.image (CDN-URL)
+        # gesetzt hat, das jetzt mit dem Anhang doppelt rendern wuerde — die
+        # URL ueberschreiben mit etwas Leerem, damit Discord das Embed-Bild
+        # ignoriert.
+        if hasattr(embed, 'set_image'):
+            try:
+                embed.set_image(url=None)
+            except Exception:
+                # FakeEmbed im Test akzeptiert ggf. nur **kw — egal.
+                pass
+        await msg.edit(embed=embed)
         if results.get('solvedCount', 0) > 0:
             try:
                 await msg.add_reaction('✅')
