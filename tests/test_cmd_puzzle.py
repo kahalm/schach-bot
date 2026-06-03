@@ -642,6 +642,98 @@ def test_build_puzzle_embed():
     print()
 
 
+def test_build_daily_embed():
+    """Minimaler Tagespuzzle-Embed: Am Zug, Tagespuzzle-Slot, Lösungs-Spoiler — sonst nichts."""
+    print('[build_daily_embed]')
+    import chess
+    from puzzle.embed import build_daily_embed, DAILY_SOLVER_FIELD
+
+    # Weiss am Zug + Lösung
+    e = build_daily_embed(turn=chess.WHITE, solution_san='1. Qxh7+ Kxh7 2. Rh3#')
+    names = [f.get('name', '') for f in e.fields]
+    values = [str(f.get('value', '')) for f in e.fields]
+
+    check('kein Titel', not getattr(e, 'title', None))
+    check('keine Footer', not getattr(e, '_footer', None) or not e._footer.get('text'))
+    check('Am-Zug-Feld vorhanden', 'Am Zug' in names)
+    check('Weiss am Zug', any('Weiß' in v for v in values))
+    check('Tagespuzzle-Slot vorhanden', DAILY_SOLVER_FIELD in names)
+    check('Tagespuzzle-Slot Placeholder', any('Noch niemand gelöst' in v for v in values))
+    check('Lösung als Spoiler', '💡 Lösung' in names and any('||' in v for v in values))
+    check('Reihenfolge Am-Zug → Tagespuzzle → Lösung',
+          names == ['Am Zug', DAILY_SOLVER_FIELD, '💡 Lösung'])
+    check('kein Kapitel-Feld', not any('Kapitel' in n for n in names))
+    check('kein Linie-Feld', not any('Linie' in n for n in names))
+    check('kein Schwierigkeit-Feld', not any('Schwierigkeit' in n for n in names))
+    check('kein RookHub-Link-Feld', not any('RookHub' in v for v in values))
+
+    # Schwarz am Zug, ohne Lösung
+    e2 = build_daily_embed(turn=chess.BLACK)
+    names2 = [f.get('name', '') for f in e2.fields]
+    values2 = [str(f.get('value', '')) for f in e2.fields]
+    check('Schwarz am Zug', any('Schwarz' in v for v in values2))
+    check('ohne Lösung kein Spoiler-Feld', '💡 Lösung' not in names2)
+    check('SOLVER_FIELD sync mit daily_results',
+          DAILY_SOLVER_FIELD == __import__('puzzle.daily_results', fromlist=['SOLVER_FIELD']).SOLVER_FIELD)
+    print()
+
+
+def test_post_rookhub_puzzle_daily_uses_minimal_embed():
+    """pool='daily' nutzt den minimalen build_daily_embed (kein Titel, kein Auf-RookHub-Link-Feld)."""
+    print('[post_rookhub_puzzle daily minimal-embed]')
+    import io
+    import puzzle.posting as posting
+
+    tmpdir = setup_temp_config()
+    DTO = {'id': 77, 'lineId': 'b.pgn:1', 'bookFileName': 'b.pgn',
+           'fen': 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+           'moves': 'e2e4 e7e5 g1f3', 'startPly': 0,
+           'difficulty': 'Anfaenger', 'bookRating': 3}
+    sent = []
+
+    class _Msg:
+        id = 999
+
+    class _Ch:
+        pass
+
+    async def fake_send(target, *a, **kw):
+        sent.append(kw)
+        return _Msg()
+
+    async def fake_render(game):
+        return ('white', io.BytesIO(b'PNGDATA'))
+
+    orig = (posting.rookhub.get_puzzle, posting.safe_render_board,
+            posting._resilient_send, posting._register_puzzle_msg, posting.discord.DMChannel)
+    posting.rookhub.get_puzzle = lambda pool, exclude=None, book_id=None: dict(DTO)
+    posting.safe_render_board = fake_render
+    posting._resilient_send = fake_send
+    posting._register_puzzle_msg = lambda *a, **k: None
+    posting.discord.DMChannel = _Ch
+    try:
+        sent.clear()
+        run_async(posting.post_rookhub_puzzle(_Ch(), 'daily', user_id=None, with_board=True))
+        emb = sent[0].get('embed') if sent else None
+        check('daily: Embed gesendet', emb is not None)
+        if emb is not None:
+            names = [f.get('name', '') for f in emb.fields]
+            values = [str(f.get('value', '')) for f in emb.fields]
+            check('daily: kein Titel', not getattr(emb, 'title', None))
+            check('daily: kein Footer',
+                  not getattr(emb, '_footer', None) or not emb._footer.get('text'))
+            check('daily: kein Kapitel-Feld', not any('Kapitel' in n for n in names))
+            check('daily: kein Linie-Feld', not any('Linie' in n for n in names))
+            check('daily: kein "Auf RookHub"-Feld', not any('Auf RookHub' in v for v in values))
+            check('daily: Tagespuzzle-Slot vorhanden', '🏆 Tagespuzzle' in names)
+            check('daily: Lösungs-Spoiler vorhanden', '💡 Lösung' in names)
+    finally:
+        (posting.rookhub.get_puzzle, posting.safe_render_board,
+         posting._resilient_send, posting._register_puzzle_msg, posting.discord.DMChannel) = orig
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_post_rookhub_puzzle_board_vs_link():
     """Tagespuzzle: with_board=True rendert die Stellung (Embed + Brettbild) aus der RookHub-DTO;
     with_board=False (z. B. /puzzle) postet nur den Link."""

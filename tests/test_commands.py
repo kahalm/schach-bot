@@ -17,8 +17,8 @@ from test_cmd_info import (
 from test_cmd_puzzle import (
     test_puzzle, test_puzzle_blind_by_id, test_puzzle_link_only, test_kurs, test_train, test_next, test_endless, test_blind,
     test_buttons, test_format_blind_moves, test_puzzle_anzahl_validation,
-    test_posted_reset_per_pool, test_build_puzzle_embed,
-    test_post_rookhub_puzzle_board_vs_link,
+    test_posted_reset_per_pool, test_build_puzzle_embed, test_build_daily_embed,
+    test_post_rookhub_puzzle_board_vs_link, test_post_rookhub_puzzle_daily_uses_minimal_embed,
 )
 from test_cmd_community import (
     test_elo, test_resourcen, test_collection_limits, test_youtube,
@@ -112,7 +112,9 @@ def main():
     test_wochenpost_sub()
     test_healthcheck()
     test_build_puzzle_embed()
+    test_build_daily_embed()
     test_post_rookhub_puzzle_board_vs_link()
+    test_post_rookhub_puzzle_daily_uses_minimal_embed()
     test_dm_log_internals()
     test_dm_log_incoming()
     test_dm_permissions()

@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.47.0] - 2026-06-03
+### Changed
+- **Tagespuzzle-Embed entschlackt.** Nur noch Brett (oben), `Am Zug`, `🏆 Tagespuzzle` (Solver-Zeile,
+  vom `daily_results.refresh`-Update gefüllt) und ein Spoiler `💡 Lösung` mit der SAN-Lösung. Entfernt
+  wurden: Titel (Buchname), `📖 Kapitel`, `📝 Linie`, `📊 Schwierigkeit`, das separate `🧩 Auf RookHub
+  lösen`-Feld und der `ID:`-Footer. Neue Funktion `puzzle.embed.build_daily_embed`; `post_rookhub_puzzle`
+  nutzt sie für `pool='daily'`. (15 + 8 neue Tests.)
+
 ## [2.46.1] - 2026-06-03
 ### Fixed
 - **Tagespuzzle: kein doppeltes Brettbild mehr.** Beim 5-Min-Solver-Update (`daily_results.refresh`)

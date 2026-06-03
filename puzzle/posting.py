@@ -14,7 +14,7 @@ import discord
 from core import stats
 from core import discord_link
 from puzzle.buttons import fresh_view as _fresh_button_view
-from puzzle.embed import build_puzzle_embed
+from puzzle.embed import build_daily_embed, build_puzzle_embed
 import puzzle.rookhub as rookhub
 from puzzle.processing import (
     _solution_pgn, _prelude_pgn, _trim_to_training_position,
@@ -385,11 +385,16 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
         try:
             game, _solution = rookhub.game_from_puzzle(dto)
             turn, img = await safe_render_board(game)
-            embed = build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating,
-                                       line_id=line_id)
-            if web_url:
-                embed.add_field(name='​', value=f'🧩 [Auf RookHub lösen]({web_url})',
-                                inline=False)
+            if pool == 'daily':
+                # Minimaler Tagespuzzle-Embed: nur Brett, Am Zug, Solver-Slot, Lösungs-Spoiler.
+                solution_san = _solution_pgn(game)
+                embed = build_daily_embed(turn=turn, solution_san=solution_san)
+            else:
+                embed = build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating,
+                                           line_id=line_id)
+                if web_url:
+                    embed.add_field(name='​', value=f'🧩 [Auf RookHub lösen]({web_url})',
+                                    inline=False)
             if img:
                 file = discord.File(img, filename='board.png')
                 embed.set_image(url='attachment://board.png')

@@ -19,6 +19,8 @@ from core.paths import CONFIG_DIR
 log = logging.getLogger('schach-bot')
 
 DAILY_FILE = os.path.join(CONFIG_DIR, 'daily_post.json')
+# Wird auch von puzzle.embed.build_daily_embed verwendet (dort als
+# DAILY_SOLVER_FIELD). Wenn der Name hier geaendert wird, dort mitziehen.
 SOLVER_FIELD = '🏆 Tagespuzzle'
 MAX_NAMES = 15
 
