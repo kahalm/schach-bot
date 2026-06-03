@@ -21,10 +21,9 @@ services:
       - SFTPGO_SHARE_PASSWORD=${SFTPGO_SHARE_PASSWORD}
       # RookHub-Webhook (Solver-Updates). Secret == RookHubs SCHACH_BOT_WEBHOOK_SECRET; leer = deaktiviert.
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
-      - WEBHOOK_PORT=${WEBHOOK_PORT:-9000}
     ports:
-      # Webhook-Empfaenger; intern via Host-IP erreichbar (z.B. http://10.24.13.6:9000/webhook/puzzle-attempt).
-      - "${WEBHOOK_PORT:-9000}:${WEBHOOK_PORT:-9000}"
+      # Host-Port (= Port in der RookHub-URL) -> fester Container-Port 9000. Erreichbar via Host-IP.
+      - "${WEBHOOK_PORT:-9000}:9000"
     volumes:
       - ./config:/app/config
       - ./books:/app/books

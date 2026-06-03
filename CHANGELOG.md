@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.49.2] - 2026-06-03
+### Changed
+- `docker-compose.yml`: Webhook-Port-Mapping vereinfacht — Host-Port `${WEBHOOK_PORT}`
+  (= Port in der RookHub-URL) → fester Container-Port `9000`; `WEBHOOK_PORT` wird nicht
+  mehr ins Container-Env gereicht (Bot lauscht intern fix auf 9000). Klarer als das
+  vorherige `${WEBHOOK_PORT}:${WEBHOOK_PORT}`. Reiner Compose-Fix.
+
 ## [2.49.1] - 2026-06-03
 ### Changed
 - `docker-compose.yml`: Webhook-Empfänger verdrahtet — `WEBHOOK_SECRET` + `WEBHOOK_PORT`
