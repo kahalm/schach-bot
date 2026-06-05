@@ -34,7 +34,7 @@ _channel_id = 0
 
 
 def _state_default():
-    return {"posted_ids": [], "last_poll": None, "seeded": False}
+    return {"posted_ids": [], "last_poll": None, "seeded": False, "threads": {}}
 
 
 def _posted_ids() -> set:
@@ -86,9 +86,107 @@ async def _post_announcement(channel, post: dict):
     embed = discord.Embed(title=title, color=EMBED_COLOR)
     if url:
         embed.description = f'\U0001f4ec Neuer Wochenpost zum Durchspielen auf RookHub:\n{url}'
-    await thread.send(embed=embed)
+    msg = await thread.send(embed=embed)
+    # Embed-Message merken → später per Webhook mit dem Fortschritt aktualisieren.
+    remember_weekly(post.get('id'), getattr(thread, 'id', None), getattr(msg, 'id', None))
     if url:
         await thread.send(url)   # zusätzlicher Plaintext-Link (klickbar + Vorschau)
+
+
+# ---------------------------------------------------------------------------
+# Fortschritts-Anzeige im Thread (per RookHub-Webhook aktualisiert)
+# ---------------------------------------------------------------------------
+
+_WEEKLY_FIELD = '\U0001f3c6 Fortschritt'   # 🏆 Fortschritt
+_WEEKLY_MAX_NAMES = 15
+
+
+def remember_weekly(weekly_id, thread_id, message_id) -> None:
+    """Merkt sich die Embed-Message des Ankündigungs-Threads (für spätere Fortschritts-Updates)."""
+    if weekly_id is None or not thread_id or not message_id:
+        return
+
+    def _u(data):
+        if not isinstance(data, dict):
+            data = _state_default()
+        threads = data.setdefault('threads', {})
+        threads[str(weekly_id)] = {'channel_id': int(thread_id), 'message_id': int(message_id)}
+        return data
+
+    atomic_update(WEEKLY_STATE_FILE, _u, _state_default)
+
+
+def _thread_for(weekly_id):
+    data = atomic_read(WEEKLY_STATE_FILE, default=_state_default)
+    if not isinstance(data, dict):
+        return None
+    return (data.get('threads') or {}).get(str(weekly_id))
+
+
+def _field_name(f):
+    """Feld-Name von EmbedProxy (prod) oder dict (FakeEmbed-Tests)."""
+    return f.get('name') if isinstance(f, dict) else getattr(f, 'name', None)
+
+
+def _fmt_secs(s) -> str:
+    s = int(s or 0)
+    m, sec = divmod(s, 60)
+    if m >= 60:
+        h, m = divmod(m, 60)
+        return f'{h}:{m:02d}:{sec:02d}'
+    return f'{m}:{sec:02d}'
+
+
+def format_weekly_results(results: dict) -> str:
+    """Baut den Embed-Feld-Text: wer erledigt + gelöst/total + Gesamtzeit je User (rein, testbar)."""
+    players = results.get('players') or []
+    total = results.get('total', 0)
+    completed = results.get('completedCount', 0)
+    if not players:
+        return 'Noch niemand dabei.'
+    lines = []
+    for p in players[:_WEEKLY_MAX_NAMES]:
+        did = p.get('discordId')
+        name = f'<@{did}>' if did else (p.get('name') or '—')
+        mark = '✅ ' if p.get('completed') else ''   # ✅ bei erledigt
+        lines.append(f"{mark}{name} — {p.get('solvedCount', 0)}/{total} · {_fmt_secs(p.get('totalSeconds', 0))}")
+    more = len(players) - len(lines)
+    body = '\n'.join(lines)
+    if more > 0:
+        body += f'\n+{more} weitere'
+    head = f'{completed} erledigt' if completed else 'noch keiner fertig'
+    return f'{body}\n_({head})_'
+
+
+async def apply_weekly_update(bot, weekly_id, results: dict) -> None:
+    """Aktualisiert das Embed-Feld des gemerkten Wochenpost-Threads mit dem Fortschritt."""
+    import discord
+    t = _thread_for(weekly_id)
+    if not t:
+        log.debug('Weekly-Update: kein gemerkter Thread fuer %s', weekly_id)
+        return
+    channel = bot.get_channel(t['channel_id'])
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(t['channel_id'])
+        except Exception:
+            return
+    try:
+        msg = await channel.fetch_message(t['message_id'])
+    except Exception as e:
+        log.debug('Weekly-Message %s nicht gefunden: %s', t.get('message_id'), e)
+        return
+    value = format_weekly_results(results)
+    try:
+        embed = msg.embeds[0] if msg.embeds else discord.Embed()
+        idx = next((i for i, f in enumerate(embed.fields) if _field_name(f) == _WEEKLY_FIELD), None)
+        if idx is None:
+            embed.add_field(name=_WEEKLY_FIELD, value=value, inline=False)
+        else:
+            embed.set_field_at(idx, name=_WEEKLY_FIELD, value=value, inline=False)
+        await msg.edit(embed=embed)
+    except Exception as e:
+        log.warning('Weekly-Post-Update fehlgeschlagen: %s', e)
 
 
 async def run_weekly_announcements():

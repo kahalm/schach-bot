@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.55.0] - 2026-06-05
+### Added
+- **Wochenpost-Fortschritt live im Thread.** RookHub feuert nach jedem neuen Lösungsversuch einen
+  HMAC-signierten Webhook an `POST /webhook/weekly-progress`; der Bot aktualisiert daraufhin das
+  Embed-Feld „🏆 Fortschritt" im Ankündigungs-Thread: je Person `{✅ }{@Mention|Name} — gelöst/total ·
+  Gesamtzeit` (m:ss bzw. h:mm:ss), „+N weitere" ab 15 Einträgen, Header „N erledigt". Beim Ankündigen
+  merkt sich `commands/weeklypost.py` Thread+Message (`config/weekly_posts.json` → `threads{}`);
+  `apply_weekly_update` editiert genau diese Message. Reiner Formatter `format_weekly_results` ist
+  testbar. Neuer aiohttp-Handler in `core/webhook_server.py` (gleiches `WEBHOOK_SECRET`).
+
 ## [2.54.0] - 2026-06-05
 ### Added
 - `/motivation_send` hat einen optionalen `zeit`-Parameter: ohne → nur Sofort-DM (wie bisher); mit

@@ -67,3 +67,26 @@ def test_weekly_announcer():
         wp._bot, wp._channel_id = old_bot, old_cid
         teardown_temp_config(tmpdir)
     print()
+
+
+def test_weekly_results_format():
+    """format_weekly_results: wer erledigt + gelöst/total + Gesamtzeit je User (rein)."""
+    print('[weekly results format]')
+    empty = wp.format_weekly_results({'players': [], 'total': 5, 'completedCount': 0})
+    check('leer → Hinweis', 'niemand' in empty.lower())
+
+    res = {
+        'total': 5, 'completedCount': 1,
+        'players': [
+            {'name': 'Alice', 'discordId': 'd1', 'solvedCount': 4, 'playedCount': 5, 'totalSeconds': 90, 'completed': True},
+            {'name': 'Bob', 'discordId': None, 'solvedCount': 2, 'playedCount': 3, 'totalSeconds': 605, 'completed': False},
+        ],
+    }
+    out = wp.format_weekly_results(res)
+    check('discord-mention', '<@d1>' in out)
+    check('name-fallback ohne discord', 'Bob' in out)
+    check('x/y angezeigt', '4/5' in out and '2/5' in out)
+    check('gesamtzeit formatiert (m:ss)', '1:30' in out and '10:05' in out)
+    check('erledigt-marker ✅', '✅' in out)
+    check('completed-count im Header', '1 erledigt' in out)
+    print()

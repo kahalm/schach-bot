@@ -88,6 +88,33 @@ def _make_handler(bot, secret: str):
     return handle
 
 
+def _make_weekly_handler(bot, secret: str):
+    """Handler für ``POST /webhook/weekly-progress`` — aktualisiert den Wochenpost-Thread."""
+    from commands import weeklypost
+
+    async def handle(request: web.Request) -> web.Response:
+        raw = await request.read()
+        sig = request.headers.get('X-Webhook-Signature')
+        if not _verify_signature(secret, raw, sig):
+            log.warning('Weekly-Webhook: HMAC-Signatur ungueltig')
+            return web.Response(status=401, text='invalid signature')
+        try:
+            payload: dict[str, Any] = json.loads(raw.decode('utf-8'))
+        except Exception as e:
+            log.warning('Weekly-Webhook: kaputter JSON-Body: %s', e)
+            return web.Response(status=400, text='invalid json')
+
+        wid = payload.get('weeklyPostId')
+        if not isinstance(wid, int):
+            return web.Response(status=400, text='missing weeklyPostId')
+
+        results = payload.get('results') if isinstance(payload.get('results'), dict) else payload
+        await weeklypost.apply_weekly_update(bot, wid, results)
+        return web.Response(status=200, text='ok')
+
+    return handle
+
+
 async def start(bot, host: str, port: int, secret: str) -> web.AppRunner | None:
     """Startet den aiohttp-Webhook-Server. Gibt den ``AppRunner`` zurueck (zum spaeteren Stop).
 
@@ -99,6 +126,7 @@ async def start(bot, host: str, port: int, secret: str) -> web.AppRunner | None:
 
     app = web.Application()
     app.router.add_post('/webhook/puzzle-attempt', _make_handler(bot, secret))
+    app.router.add_post('/webhook/weekly-progress', _make_weekly_handler(bot, secret))
     # Health-Endpoint fuer Compose-Healthcheck.
     app.router.add_get('/webhook/health', lambda r: web.Response(status=200, text='ok'))
 
