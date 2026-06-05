@@ -141,21 +141,35 @@ def test_motivation_builder():
 
 
 def test_motivation_random_spruch():
-    """_random_spruch (aus wochenpost wiederverwendet) liefert formatierte Sprueche."""
+    """random_spruch (aus core.sprueche, vom Motivations-Builder genutzt) liefert formatierte Sprueche."""
     print('[motivation spruch]')
-    import commands.wochenpost as wp
-    old = wp._sprueche_cache
+    import core.sprueche as sp
+    old = sp._sprueche_cache
     try:
-        wp._sprueche_cache = []
+        sp._sprueche_cache = []
         check('spruch leer → leerer String', mot._random_spruch() == '')
 
-        wp._sprueche_cache = [{'text': 'Testspruch', 'autor': 'TestAutor'}]
+        sp._sprueche_cache = [{'text': 'Testspruch', 'autor': 'TestAutor'}]
         r = mot._random_spruch()
         check('spruch mit Autor → _" enthalten', '_"' in r and 'TestAutor' in r)
 
-        wp._sprueche_cache = [{'text': 'NurText', 'autor': None}]
+        sp._sprueche_cache = [{'text': 'NurText', 'autor': None}]
         r = mot._random_spruch()
         check('spruch ohne Autor → kein —', '_"' in r and '—' not in r)
     finally:
-        wp._sprueche_cache = old
+        sp._sprueche_cache = old
+    print()
+
+
+def test_parse_zeit():
+    """parse_zeit (aus core.datetime_utils, vom /motivation-Command genutzt)."""
+    print('[parse_zeit]')
+    pz = mot._parse_zeit
+    check('parse "17" → (17,0)', pz('17') == (17, 0))
+    check('parse "1730" → (17,30)', pz('1730') == (17, 30))
+    check('parse "17:30" → (17,30)', pz('17:30') == (17, 30))
+    check('parse "17 30" → (17,30)', pz('17 30') == (17, 30))
+    check('parse "25" → None', pz('25') is None)
+    check('parse "" → None', pz('') is None)
+    check('parse "abc" → None', pz('abc') is None)
     print()

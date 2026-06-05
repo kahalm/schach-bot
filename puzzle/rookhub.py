@@ -182,6 +182,35 @@ def get_player_progress(discord_id, timeout: int = _TIMEOUT) -> dict | None:
         return None
 
 
+def get_weekly_posts(timeout: int = _TIMEOUT) -> list | None:
+    """Liste der Wochenposts von RookHub (`GET /api/weekly-posts`).
+
+    Jeder Eintrag: ``id``, ``title``, ``fileName``, ``fileSize``, ``scheduledAt`` (ISO), ``createdAt``,
+    ``updatedAt`` — absteigend nach ``scheduledAt``. ``None`` bei Fehler / fehlender API-URL.
+    """
+    if not ROOKHUB_API_URL:
+        log.warning('ROOKHUB_API_URL nicht gesetzt – kann keine Wochenposts holen.')
+        return None
+    try:
+        r = requests.get(_api('/api/weekly-posts'), timeout=timeout)
+        r.raise_for_status()
+        data = r.json()
+        return data if isinstance(data, list) else []
+    except (requests.RequestException, ValueError) as e:
+        log.warning('RookHub get_weekly_posts fehlgeschlagen: %s', e)
+        return None
+
+
+def weekly_web_url(weekly_id: int | None) -> str | None:
+    """Anklickbare RookHub-URL zum Durchspielen eines Wochenposts — `…/weekly/{id}`.
+
+    Nutzt strikt ROOKHUB_WEB_URL (sonst kein Link, damit keine internen Adressen nach Discord gelangen).
+    """
+    if weekly_id is None or not ROOKHUB_WEB_URL:
+        return None
+    return f'{ROOKHUB_WEB_URL}/weekly/{weekly_id}'
+
+
 def puzzle_web_url(puzzle_id: int | None) -> str | None:
     """Baut die anklickbare RookHub-URL zum interaktiven Lösen.
 

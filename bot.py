@@ -129,7 +129,7 @@ tree = bot.tree
 # Module laden
 import puzzle
 import library
-from commands import reminder, resourcen, youtube, elo, release_notes, blind, test, wanted, schachrallye, wochenpost, chat, link, motivation
+from commands import reminder, resourcen, youtube, elo, release_notes, blind, test, wanted, schachrallye, weeklypost, chat, link, motivation
 
 puzzle.setup(bot)
 library.setup(bot)
@@ -142,7 +142,7 @@ blind.setup(bot)
 test.setup(bot)
 wanted.setup(bot)
 schachrallye.setup(bot, tournament_channel_id=TOURNAMENT_CHANNEL_ID)
-wochenpost.setup(bot, wochenpost_channel_id=WOCHENPOST_CHANNEL_ID)
+weeklypost.setup(bot, wochenpost_channel_id=WOCHENPOST_CHANNEL_ID)
 chat.setup(bot)
 link.setup(bot)
 motivation.setup(bot)
@@ -178,8 +178,6 @@ async def on_ready():
     _ready_done = True
     # Persistente Button-Views registrieren
     bot.add_view(puzzle.PuzzleView())
-    from commands.wochenpost_buttons import WochenpostView
-    bot.add_view(WochenpostView())
     from commands.turnier_buttons import TurnierReviewView
     bot.add_view(TurnierReviewView())
     for attempt, delay in enumerate([0, 5, 15, 30], 1):
@@ -419,9 +417,6 @@ def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str
             ('/turnier_parse', 'Termine von tirol.chess.at importieren.'),
             ('/turnier_review', 'Als Turnier-Reviewer subscriben (Toggle).'),
             ('/turnier_pending', 'Ausstehende Turniere anzeigen.'),
-            ('/wochenpost', 'Geplante Wochenposts anzeigen.'),
-            ('/wochenpost_add <datum> <titel>', 'Wochenpost anlegen (Freitags).'),
-            ('/wochenpost_del <id>', 'Wochenpost löschen.'),
             ('/chat_whitelist [user] [aktion]',
              'KI-Chat Whitelist verwalten.\n'
              '`/chat_whitelist user:@X` — Hinzufügen\n'
@@ -468,7 +463,7 @@ async def cmd_help(interaction: discord.Interaction, bereich: str = ''):
                         inline=False)
         if is_admin:
             embed.add_field(name='🔧 admin',
-                            value='`/daily` `/stats` `/announce` `/log` `/dm-log` `/ignore_kapitel` `/test` `/wanted_delete` `/schachrallye_add` `/schachrallye_del` `/turnier_review` `/turnier_pending` `/wochenpost` `/chat_whitelist`',
+                            value='`/daily` `/stats` `/announce` `/log` `/dm-log` `/ignore_kapitel` `/test` `/wanted_delete` `/schachrallye_add` `/schachrallye_del` `/turnier_review` `/turnier_pending` `/chat_whitelist`',
                             inline=False)
 
     embed.set_footer(text=f'Schach-Bot v{VERSION}')

@@ -24,13 +24,12 @@ from zoneinfo import ZoneInfo
 import discord
 from discord.ext import tasks
 
-from core.datetime_utils import parse_utc as _parse_utc
+from core.datetime_utils import parse_utc as _parse_utc, parse_zeit as _parse_zeit
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 from core import discord_link
+from core.sprueche import random_spruch as _random_spruch
 from puzzle import rookhub
-# Zeit-Parser + Spruch-Pool aus wochenpost wiederverwenden (keine duplizierte Logik).
-from commands.wochenpost import _parse_zeit, _random_spruch
 
 log = logging.getLogger('schach-bot')
 
@@ -97,6 +96,19 @@ def _facts_summary(progress: dict, cats, has_goal: bool) -> str:
         if streak:
             extra += f', aktuelle Serie: {streak}'
         lines.append(extra)
+
+    # Wochenpost-Stand (falls einer existiert) — der Bot soll darauf reagieren können.
+    wp = progress.get('weeklyPost')
+    if wp:
+        title = wp.get('title') or 'Wochenpost'
+        total = wp.get('total', 0)
+        if wp.get('completed'):
+            lines.append(f'Wochenpost "{title}": erledigt ({wp.get("solvedCount", 0)}/{total} gelöst)')
+        elif wp.get('playedCount', 0) > 0:
+            lines.append(f'Wochenpost "{title}": {wp.get("playedCount", 0)}/{total} gespielt (noch nicht fertig)')
+        else:
+            lines.append(f'Wochenpost "{title}": noch nicht angefangen')
+
     return '\n'.join(lines)
 
 

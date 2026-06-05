@@ -410,8 +410,7 @@ def setup_temp_config():
     _patch_file_constant('puzzle.state', 'PUZZLE_CONTEXT_FILE', tmpdir)
     _patch_file_constant('commands.reminder', 'REMINDER_FILE', tmpdir)
     _patch_file_constant('commands.schachrallye', 'TURNIER_FILE', tmpdir)
-    _patch_file_constant('commands.wochenpost', 'WOCHENPOST_FILE', tmpdir)
-    _patch_file_constant('commands.wochenpost', 'WOCHENPOST_SUB_FILE', tmpdir)
+    _patch_file_constant('commands.weeklypost', 'WEEKLY_STATE_FILE', tmpdir)
     _patch_file_constant('commands.motivation', 'MOTIVATION_SUB_FILE', tmpdir)
     _patch_file_constant('commands.chat', 'CHAT_FILE', tmpdir)
     _patch_file_constant('core.stats', 'STATS_FILE', tmpdir)
@@ -492,8 +491,7 @@ import commands.wanted as wanted_mod
 import commands.release_notes as release_notes_mod
 import commands.reminder as reminder_mod
 import commands.schachrallye as schachrallye_mod
-import commands.wochenpost as wochenpost_mod
-import commands.wochenpost_buttons as wp_buttons_mod
+import commands.weeklypost as weeklypost_mod
 import commands.turnier_buttons as turnier_buttons_mod
 import commands.chat as chat_mod
 import commands.motivation as motivation_mod
@@ -506,11 +504,11 @@ import bot as bot_mod
 # _CapturingTree registriert)
 _cap_bot = _CapturingBot()
 for mod in (elo_mod, resourcen_mod, youtube_mod, wanted_mod,
-            release_notes_mod, reminder_mod, schachrallye_mod, wochenpost_mod,
+            release_notes_mod, reminder_mod, schachrallye_mod, weeklypost_mod,
             chat_mod, motivation_mod):
     if mod is schachrallye_mod:
         mod.setup(_cap_bot, tournament_channel_id=0)
-    elif mod is wochenpost_mod:
+    elif mod is weeklypost_mod:
         mod.setup(_cap_bot, wochenpost_channel_id=0)
     else:
         mod.setup(_cap_bot)

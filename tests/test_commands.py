@@ -29,11 +29,11 @@ from test_cmd_community import (
 from test_cmd_events import (
     test_schachrallye, test_turnier_sub, test_turnier_prune,
     test_turnier_review, test_turnier_approve_modal,
-    test_wochenpost, test_wochenpost_batch, test_wochenpost_buttons,
-    test_parse_zeit,
 )
+from test_cmd_weeklypost import test_weekly_announcer
 from test_cmd_motivation import (
     test_motivation_command, test_motivation_builder, test_motivation_random_spruch,
+    test_parse_zeit,
 )
 from test_cmd_library import (
     test_bibliothek, test_tag, test_autor, test_reindex, test_reindex_requires_admin,
@@ -109,9 +109,7 @@ def main():
     test_turnier_review()
     test_turnier_approve_modal()
     test_posted_reset_per_pool()
-    test_wochenpost()
-    test_wochenpost_batch()
-    test_wochenpost_buttons()
+    test_weekly_announcer()
     test_parse_zeit()
     test_motivation_command()
     test_motivation_builder()

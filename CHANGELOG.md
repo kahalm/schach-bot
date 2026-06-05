@@ -4,6 +4,25 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.52.0] - 2026-06-05
+### Changed
+- **Wochenpost wandert nach RookHub.** Der Bot legt keine Wochenposts mehr selbst an/postet sie nicht
+  mehr aus Eigenregie — RookHub ist jetzt die Quelle. Neues `commands/weeklypost.py` **pollt**
+  `GET /api/weekly-posts` (alle 30 min) und kündigt jeden fälligen, noch nicht geposteten Wochenpost als
+  Discord-Thread mit Link auf `…/weekly/{id}` an. Gepostete IDs liegen in `config/weekly_posts.json`
+  (kein Doppelposten, Catch-up bei Downtime, 7-Tage-Fenster). **First-Run-Seed:** beim ersten Lauf werden
+  alle bestehenden Posts als „gepostet" markiert (Hochwassermarke) → kein nachträglicher Backlog-Spam.
+- `commands/wochenpost.py` + `commands/wochenpost_buttons.py` **entfernt** (Autoren-Commands `/wochenpost`,
+  `/wochenpost_add`, `/wochenpost_del`, der 18:00-Post-Loop, Threads/PDF/Buttons). Geteilte Helfer nach
+  `core/` verschoben: `random_spruch` → `core/sprueche.py`, `parse_zeit` → `core/datetime_utils.py`
+  (von `commands/motivation.py` weiter genutzt).
+### Added
+- `puzzle/rookhub.get_weekly_posts()` + `weekly_web_url(id)`.
+- Motivations-DM bezieht jetzt den **Wochenpost-Stand** mit ein: `get_player_progress` liefert über
+  RookHubs erweitertes `/api/bot/player-progress` einen `weeklyPost`-Block (aktueller Post + gespielt/gelöst/
+  erledigt), der in den Claude-Prompt einfließt — der Bot kann auf „noch nicht angefangen / X/Y gespielt /
+  erledigt" reagieren.
+
 ## [2.51.0] - 2026-06-05
 ### Added
 - **Motivations-DM (`/motivation`)** — taeglicher, stats-gestuetzter Motivations-DM, der den
