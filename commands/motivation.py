@@ -1,18 +1,19 @@
 """Motivations-DM: taegliche, stats-gestuetzte Motivation auf Basis der RookHub-Trainingsziele.
 
 Ersetzt den frueheren Wochenpost-Reminder. Abonnenten bekommen einmal taeglich zu ihrer Wunschzeit
-eine DM, die Claude anhand des konkreten Fortschritts (Wochenziele: Puzzle-/Buch-Minuten heute +
-Rapid/Classical-Partien pro Woche, dazu Puzzle-Elo/Streak) formuliert:
+eine DM, die Claude formuliert:
 
-* Alle Tagesziele erfuellt  → whimsisches Lob, KEINE Aufforderung mehr zu tun.
-* Ziele noch offen          → ermutigender Nudge zum konkreten Rueckstand (Puzzlen/Trainieren/Spielen).
+* Verknuepftes RookHub-Konto:
+  - Alle Tagesziele erfuellt  → whimsisches Lob, KEINE Aufforderung mehr zu tun.
+  - Ziele noch offen          → ermutigender Nudge zum konkreten Rueckstand (Puzzlen/Trainieren/Spielen).
+  - Bezieht den aktuellen Wochenpost-Stand mit ein.
+* NICHT verknuepft → allgemeine Motivation + Hinweis, sich auf RookHub zu registrieren/zu verknuepfen
+  (Link aus ``ROOKHUB_WEB_URL`` mit signiertem dl-Token).
 
-Voraussetzung: der Discord-Account ist mit RookHub verknuepft (`/link`) — sonst gibt es keine Stats
-und der Bot schickt stattdessen den Verknuepfungs-Hinweis.
-
-/motivation an [zeit]   — abonnieren (Default 18:00 MEZ/MESZ)
-/motivation aus         — abbestellen
-/motivation status      — eigenen Status anzeigen
+/motivation an [zeit] [user]   — abonnieren (Default 18:00 MEZ/MESZ); `user` nur fuer Admins
+/motivation aus [user]         — abbestellen; `user` nur fuer Admins
+/motivation status [user]      — eigener Status; Admins sehen ohne `user` ALLE Abos, mit `user` dessen Status
+/motivation_send <user>        — (Admin) Motivations-DM sofort an einen User senden
 """
 
 import asyncio
@@ -28,6 +29,7 @@ from core.datetime_utils import parse_utc as _parse_utc, parse_zeit as _parse_ze
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 from core import discord_link
+from core.permissions import is_privileged, display_name_cached
 from core.sprueche import random_spruch as _random_spruch
 from puzzle import rookhub
 
@@ -127,21 +129,18 @@ _NUDGE_SYSTEM = (
     'ermutigend und konkret. Beziehe dich auf den konkreten Rueckstand und lade locker zum Puzzlen, '
     'Trainieren oder Spielen ein — ohne Druck, ohne erhobenen Zeigefinger.'
 )
+_GENERAL_SYSTEM = (
+    'Du bist ein warmherziger, verspielter Schach-Buddy. Du schreibst Deutsch, kurz (2-3 Saetze), '
+    'und laedst allgemein zum Schach/Puzzlen ein. Dir liegen KEINE konkreten Statistiken vor — '
+    'bleib daher allgemein, ohne Zahlen, freundlich und einladend.'
+)
 
 
-async def _motivation_via_claude(facts: str, all_met: bool) -> str | None:
-    """Formuliert die Motivation per Claude (one-shot). None bei fehlendem Client/Fehler."""
+async def _via_claude(system: str, prompt: str) -> str | None:
+    """Formuliert Text per Claude (one-shot, kein Chat-Verlauf). None bei fehlendem Client/Fehler."""
     from commands.chat import _client, _MODEL
     if _client is None:
         return None
-    system = _PRAISE_SYSTEM if all_met else _NUDGE_SYSTEM
-    prompt = (
-        'Hier ist der heutige Trainingsstand eines Spielers:\n\n'
-        f'{facts}\n\n'
-        + ('Alle Tagesziele sind erreicht — feiere das.'
-           if all_met else
-           'Es sind noch Ziele offen — motiviere passend zum Rueckstand.')
-    )
     try:
         resp = await _client.messages.create(
             model=_MODEL,
@@ -176,11 +175,19 @@ def _fallback_text(cats, has_goal: bool, all_met: bool) -> str:
 
 
 async def _build_motivation_text(uid: int, progress: dict) -> str:
-    """Baut den Motivations-DM-Text. Wird vom Loop UND von /test genutzt (keine Duplikat-Logik)."""
+    """Baut den Motivations-DM-Text fuer einen VERKNUEPFTEN Spieler (mit Stats)."""
     cats, has_goal, all_met = _analyze_progress(progress)
     facts = _facts_summary(progress, cats, has_goal)
 
-    text = await _motivation_via_claude(facts, all_met)
+    system = _PRAISE_SYSTEM if all_met else _NUDGE_SYSTEM
+    prompt = (
+        'Hier ist der heutige Trainingsstand eines Spielers:\n\n'
+        f'{facts}\n\n'
+        + ('Alle Tagesziele sind erreicht — feiere das.'
+           if all_met else
+           'Es sind noch Ziele offen — motiviere passend zum Rueckstand.')
+    )
+    text = await _via_claude(system, prompt)
     if not text:
         text = _fallback_text(cats, has_goal, all_met)
 
@@ -193,19 +200,56 @@ async def _build_motivation_text(uid: int, progress: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Verknuepfungs-Hinweis (wenn Account nicht mit RookHub verbunden)
+# Nicht verknuepft: allgemeine Motivation + Registrier-/Verknuepfungs-CTA
 # ---------------------------------------------------------------------------
 
-def _link_hint(user) -> str:
+def _register_cta(user) -> str:
+    """Aufforderung, sich auf RookHub zu registrieren + Discord zu verknuepfen (Link aus ENV)."""
     web_url = os.getenv('ROOKHUB_WEB_URL', '').rstrip('/')
     if web_url and discord_link.is_enabled():
-        url = discord_link.append_dl(f'{web_url}/profile', user.id, user.name) \
-            or f'{web_url}/profile'
-        return ('\U0001f517 Fuer die Motivation muss dein Discord-Account mit RookHub verknuepft sein.\n'
-                'Oeffne diesen persoenlichen Link (eingeloggt auf RookHub):\n'
+        url = discord_link.append_dl(f'{web_url}/register', user.id, user.name) \
+            or f'{web_url}/register'
+        return ('\U0001f517 Registrier dich auf RookHub und verknuepf dabei dein Discord-Konto — '
+                'dann motiviere ich dich passend zu deinem echten Fortschritt:\n'
                 f'{url}')
-    return ('\U0001f517 Fuer die Motivation muss dein Discord-Account mit RookHub verknuepft sein. '
-            'Nutze dazu `/link`.')
+    if web_url:
+        return (f'\U0001f517 Registrier dich auf RookHub: {web_url}/register '
+                '(danach `/link` zum Verknuepfen).')
+    return '\U0001f517 Verknuepf dein Konto mit `/link`, dann motiviere ich dich persoenlich.'
+
+
+async def _build_unlinked_text(user) -> str:
+    """Allgemeine Motivation + Registrier-/Verknuepfungs-Hinweis fuer NICHT verknuepfte User."""
+    text = await _via_claude(
+        _GENERAL_SYSTEM,
+        'Motiviere allgemein und freundlich zum Schach/Puzzlen — kurz, ohne konkrete Zahlen.')
+    if not text:
+        spruch = _random_spruch()
+        body = ('♟️ Lust auf ein paar Puzzles oder eine Partie? '
+                'Schach wird mit etwas taeglichem Training spuerbar besser.')
+        text = f'{spruch}\n\n{body}' if spruch else body
+    return f'{text}\n\n{_register_cta(user)}'
+
+
+# ---------------------------------------------------------------------------
+# Senden (Loop + manuell + /test)
+# ---------------------------------------------------------------------------
+
+async def _send_motivation_to(uid_int: int, user_obj=None) -> bool:
+    """Schickt EINEM User die passende Motivations-DM (verknuepft → persoenlich, sonst allgemein + CTA).
+
+    ``user_obj`` optional (spart das fetch_user); sonst wird er ueber den Bot geholt. Gibt True bei Versand.
+    """
+    progress = await asyncio.to_thread(rookhub.get_player_progress, uid_int)
+    if user_obj is None:
+        user_obj = await _bot.fetch_user(uid_int)
+    if progress is not None:
+        text = await _build_motivation_text(uid_int, progress)
+    else:
+        text = await _build_unlinked_text(user_obj)
+    dm = await user_obj.create_dm()
+    await dm.send(text)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -228,15 +272,8 @@ async def _run_motivation_dms():
             continue
 
         try:
-            progress = await asyncio.to_thread(rookhub.get_player_progress, int(uid_str))
-            if progress is not None:
-                text = await _build_motivation_text(int(uid_str), progress)
-                user = await _bot.fetch_user(int(uid_str))
-                dm = await user.create_dm()
-                await dm.send(text)
-                log.info('Motivations-DM an User %s gesendet.', uid_str)
-            else:
-                log.info('Motivations-DM uebersprungen (User %s nicht verknuepft).', uid_str)
+            await _send_motivation_to(int(uid_str))
+            log.info('Motivations-DM an User %s gesendet.', uid_str)
         except Exception:
             log.warning('Motivations-DM an User %s fehlgeschlagen', uid_str)
 
@@ -259,6 +296,31 @@ async def _run_motivation_dms():
 
 
 # ---------------------------------------------------------------------------
+# Subscribe-Helfer
+# ---------------------------------------------------------------------------
+
+def _subscribe(uid: str, h: int, m: int) -> bool:
+    """Legt/aktualisiert ein Abo an. Gibt True zurueck, wenn es vorher schon existierte."""
+    now_vienna = datetime.now(_VIENNA)
+    next_dt = now_vienna.replace(hour=h, minute=m, second=0, microsecond=0)
+    if next_dt <= now_vienna:
+        next_dt += timedelta(days=1)
+    next_iso = next_dt.astimezone(timezone.utc).isoformat()
+    result = {'updated': False}
+
+    def _sub(data):
+        if not isinstance(data, dict):
+            data = _sub_default()
+        subs = data.setdefault('subscribers', {})
+        result['updated'] = uid in subs
+        subs[uid] = {'hour': h, 'minute': m, 'next': next_iso}
+        return data
+
+    atomic_update(MOTIVATION_SUB_FILE, _sub, _sub_default)
+    return result['updated']
+
+
+# ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
 
@@ -271,7 +333,8 @@ def setup(bot):
                   description='Taegliche Motivations-DM nach deinen RookHub-Trainingszielen')
     @discord.app_commands.describe(
         aktion='an = abonnieren, aus = abbestellen, status = Status',
-        zeit='Uhrzeit MEZ/MESZ (z.B. 17, 17:30, 1730) — nur bei "an", Default 18:00')
+        zeit='Uhrzeit MEZ/MESZ (z.B. 17, 17:30, 1730) — nur bei "an", Default 18:00',
+        user='Anderen User verwalten (nur Admin/Mod)')
     @discord.app_commands.choices(aktion=[
         discord.app_commands.Choice(name='an', value='an'),
         discord.app_commands.Choice(name='aus', value='aus'),
@@ -279,16 +342,52 @@ def setup(bot):
     ])
     async def cmd_motivation(interaction: discord.Interaction,
                              aktion: str = 'status',
-                             zeit: str = None):
-        uid = str(interaction.user.id)
+                             zeit: str = None,
+                             user: discord.User = None):
+        # Fremd-User nur fuer Admins/Mods.
+        if user is not None and not is_privileged(interaction):
+            await interaction.response.send_message(
+                '⚠️ Nur Admins/Moderatoren koennen andere User verwalten.', ephemeral=True)
+            return
 
         # --- Status -------------------------------------------------------
         if aktion == 'status':
             sub_data = await asyncio.to_thread(atomic_read, MOTIVATION_SUB_FILE, _sub_default)
             subs = sub_data.get('subscribers', {})
-            if uid in subs:
-                h = subs[uid].get('hour', _DEFAULT_HOUR)
-                m = subs[uid].get('minute', _DEFAULT_MINUTE)
+
+            if user is not None:
+                # Admin: Status eines bestimmten Users
+                info = subs.get(str(user.id))
+                if info:
+                    h, m = info.get('hour', _DEFAULT_HOUR), info.get('minute', _DEFAULT_MINUTE)
+                    await interaction.response.send_message(
+                        f'**{user.display_name}** hat die Motivations-DM **aktiv** — '
+                        f'taeglich um **{h}:{m:02d} MEZ/MESZ**.', ephemeral=True)
+                else:
+                    await interaction.response.send_message(
+                        f'**{user.display_name}** hat keine Motivations-DM abonniert.', ephemeral=True)
+                return
+
+            if is_privileged(interaction):
+                # Admin ohne user → alle Abos auflisten
+                if not subs:
+                    await interaction.response.send_message(
+                        'Keine aktiven Motivations-Abos.', ephemeral=True)
+                    return
+                lines = []
+                for sub_uid, info in subs.items():
+                    h, m = info.get('hour', _DEFAULT_HOUR), info.get('minute', _DEFAULT_MINUTE)
+                    name = display_name_cached(_bot, int(sub_uid), interaction.guild)
+                    lines.append(f'- **{name}** — {h}:{m:02d} MEZ/MESZ')
+                await interaction.response.send_message(
+                    f'**{len(subs)} aktive(s) Motivations-Abo(s):**\n' + '\n'.join(lines),
+                    ephemeral=True)
+                return
+
+            # normaler User: eigener Status
+            info = subs.get(str(interaction.user.id))
+            if info:
+                h, m = info.get('hour', _DEFAULT_HOUR), info.get('minute', _DEFAULT_MINUTE)
                 await interaction.response.send_message(
                     f'Deine Motivations-DM ist **aktiv** — taeglich um **{h}:{m:02d} MEZ/MESZ**.\n'
                     'Abbestellen: `/motivation aus`', ephemeral=True)
@@ -297,6 +396,10 @@ def setup(bot):
                     'Du hast keine Motivations-DM abonniert.\nAbonnieren: `/motivation an`',
                     ephemeral=True)
             return
+
+        target = user or interaction.user
+        uid = str(target.id)
+        for_other = user is not None
 
         # --- Abbestellen --------------------------------------------------
         if aktion == 'aus':
@@ -312,18 +415,18 @@ def setup(bot):
                 return data
 
             await asyncio.to_thread(atomic_update, MOTIVATION_SUB_FILE, _unsub, _sub_default)
-            await interaction.response.send_message(
-                '✅ Motivations-DM abbestellt.' if result['found']
-                else '⚠️ Du hast keine Motivations-DM abonniert.', ephemeral=True)
+            who = f'**{target.display_name}**' if for_other else 'Deine Motivations-DM'
+            if result['found']:
+                await interaction.response.send_message(
+                    f'✅ {who} abbestellt.' if for_other else '✅ Motivations-DM abbestellt.',
+                    ephemeral=True)
+            else:
+                await interaction.response.send_message(
+                    (f'⚠️ {who} hat kein Abo.' if for_other
+                     else '⚠️ Du hast keine Motivations-DM abonniert.'), ephemeral=True)
             return
 
-        # --- Abonnieren ("an") -------------------------------------------
-        # Verknuepfung pruefen: ohne RookHub-Stats keine Motivation.
-        progress = await asyncio.to_thread(rookhub.get_player_progress, interaction.user.id)
-        if progress is None:
-            await interaction.response.send_message(_link_hint(interaction.user), ephemeral=True)
-            return
-
+        # --- Abonnieren ("an") — auch ohne Verknuepfung erlaubt -----------
         if zeit is None:
             h, m = _DEFAULT_HOUR, _DEFAULT_MINUTE
         else:
@@ -335,28 +438,41 @@ def setup(bot):
                 return
             h, m = parsed
 
-        now_vienna = datetime.now(_VIENNA)
-        next_dt = now_vienna.replace(hour=h, minute=m, second=0, microsecond=0)
-        if next_dt <= now_vienna:
-            next_dt += timedelta(days=1)
-        next_iso = next_dt.astimezone(timezone.utc).isoformat()
-
-        result = {'updated': False}
-
-        def _sub(data):
-            if not isinstance(data, dict):
-                data = _sub_default()
-            subs = data.setdefault('subscribers', {})
-            result['updated'] = uid in subs
-            subs[uid] = {'hour': h, 'minute': m, 'next': next_iso}
-            return data
-
-        await asyncio.to_thread(atomic_update, MOTIVATION_SUB_FILE, _sub, _sub_default)
-        verb = 'aktualisiert' if result['updated'] else 'abonniert'
+        updated = await asyncio.to_thread(_subscribe, uid, h, m)
+        # Verknuepfungs-Status nur fuer den Hinweis im Bestaetigungstext.
+        progress = await asyncio.to_thread(rookhub.get_player_progress, target.id)
+        linked = progress is not None
+        verb = 'aktualisiert' if updated else 'abonniert'
+        wer = f'**{target.display_name}**: ' if for_other else ''
+        zeit_txt = f'taeglich um **{h}:{m:02d} MEZ/MESZ**'
+        if linked:
+            note = ('Es kommt eine persoenliche Nachricht zum Fortschritt.' if for_other
+                    else 'Du bekommst taeglich eine kurze, persoenliche Nachricht zu deinem Fortschritt.')
+        else:
+            note = ('Konto noch nicht mit RookHub verknuepft — bis dahin gibt es allgemeine '
+                    'Motivation + einen Registrier-/Verknuepfungs-Hinweis.')
         await interaction.response.send_message(
-            f'✅ Motivations-DM {verb}: taeglich um **{h}:{m:02d} MEZ/MESZ**.\n'
-            'Du bekommst taeglich eine kurze, persoenliche Nachricht zu deinem Fortschritt.',
-            ephemeral=True)
+            f'✅ {wer}Motivations-DM {verb}: {zeit_txt}.\n{note}', ephemeral=True)
+
+    @tree.command(name='motivation_send',
+                  description='Motivations-DM sofort an einen User senden (Admin)')
+    @discord.app_commands.default_permissions(administrator=True)
+    @discord.app_commands.describe(user='User, der die Motivations-DM jetzt bekommen soll')
+    async def cmd_motivation_send(interaction: discord.Interaction, user: discord.User):
+        if not is_privileged(interaction):
+            await interaction.response.send_message(
+                '⚠️ Nur fuer Admins/Moderatoren.', ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        try:
+            await _send_motivation_to(user.id, user)
+            await interaction.followup.send(
+                f'✅ Motivations-DM an **{user.display_name}** gesendet.', ephemeral=True)
+        except Exception:
+            log.warning('Manuelle Motivations-DM an %s fehlgeschlagen', user.id)
+            await interaction.followup.send(
+                f'❌ DM an **{user.display_name}** konnte nicht gesendet werden (DMs deaktiviert?).',
+                ephemeral=True)
 
     # --- Loop (alle 30 min; feuert pro User taeglich zur Wunschzeit) ------
     @tasks.loop(minutes=30)

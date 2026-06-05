@@ -417,6 +417,9 @@ def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str
             ('/turnier_parse', 'Termine von tirol.chess.at importieren.'),
             ('/turnier_review', 'Als Turnier-Reviewer subscriben (Toggle).'),
             ('/turnier_pending', 'Ausstehende Turniere anzeigen.'),
+            ('/motivation_send <user>', 'Motivations-DM sofort an einen User senden.'),
+            ('/motivation <an|aus|status> [zeit] [user]',
+             '`user:@X` (Admin): Abo für einen anderen User setzen/entfernen, `status` ohne `user` listet alle Abos.'),
             ('/chat_whitelist [user] [aktion]',
              'KI-Chat Whitelist verwalten.\n'
              '`/chat_whitelist user:@X` — Hinzufügen\n'
@@ -463,7 +466,7 @@ async def cmd_help(interaction: discord.Interaction, bereich: str = ''):
                         inline=False)
         if is_admin:
             embed.add_field(name='🔧 admin',
-                            value='`/daily` `/stats` `/announce` `/log` `/dm-log` `/ignore_kapitel` `/test` `/wanted_delete` `/schachrallye_add` `/schachrallye_del` `/turnier_review` `/turnier_pending` `/chat_whitelist`',
+                            value='`/daily` `/stats` `/announce` `/log` `/dm-log` `/ignore_kapitel` `/test` `/wanted_delete` `/schachrallye_add` `/schachrallye_del` `/turnier_review` `/turnier_pending` `/motivation_send` `/chat_whitelist`',
                             inline=False)
 
     embed.set_footer(text=f'Schach-Bot v{VERSION}')

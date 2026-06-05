@@ -3,7 +3,7 @@
 import test_helpers as h
 from test_helpers import (
     check, run_async, setup_temp_config, teardown_temp_config,
-    make_interaction, _captured_commands, atomic_read,
+    make_interaction, _captured_commands, atomic_read, FakeUser,
 )
 import commands.motivation as mot
 
@@ -55,21 +55,23 @@ def test_motivation_command():
         c = (ia.response.calls[0].get('content') or '')
         check('status ohne Abo → Hinweis', '/motivation an' in c)
 
-        # 2) an OHNE Verknuepfung → Link-Hinweis, KEIN Abo
+        # 2) an OHNE Verknuepfung → trotzdem Abo + Verknuepfungs-Hinweis (neue Regel)
         _patch_progress(None)
         ia = make_interaction()
         run_async(cmd(ia, aktion='an', zeit='18'))
-        c = (ia.response.calls[0].get('content') or '').lower()
-        check('an ohne Verknuepfung → Hinweis', 'verkn' in c or '/link' in c)
+        c = (ia.response.calls[0].get('content') or '')
+        check('an ohne Verknuepfung → abonniert', 'abonniert' in c)
+        check('an ohne Verknuepfung → Verknuepfungs-Hinweis', 'verknuepf' in c.lower())
         sub = atomic_read(mot.MOTIVATION_SUB_FILE, default=dict)
-        check('an ohne Verknuepfung → kein Abo', not sub.get('subscribers'))
+        check('an ohne Verknuepfung → Abo trotzdem da', str(ia.user.id) in sub.get('subscribers', {}))
 
-        # 3) an MIT Verknuepfung → Abo angelegt
+        # 3) an MIT Verknuepfung → Abo aktualisiert + persoenlicher Hinweis
         _patch_progress(_progress(puzzle_min=10))
         ia = make_interaction()
         run_async(cmd(ia, aktion='an', zeit='17:30'))
         c = (ia.response.calls[0].get('content') or '')
-        check('an mit Verknuepfung → Bestaetigung', 'abonniert' in c and '17:30' in c)
+        check('an mit Verknuepfung → Bestaetigung', ('abonniert' in c or 'aktualisiert' in c) and '17:30' in c)
+        check('an mit Verknuepfung → persoenlich', 'persoenlich' in c.lower())
         sub = atomic_read(mot.MOTIVATION_SUB_FILE, default=dict)
         uid = str(ia.user.id)
         check('Abo gespeichert', uid in sub.get('subscribers', {}))
@@ -95,6 +97,54 @@ def test_motivation_command():
         check('aus → Bestaetigung', 'abbestellt' in c)
         sub = atomic_read(mot.MOTIVATION_SUB_FILE, default=dict)
         check('Abo entfernt', uid not in sub.get('subscribers', {}))
+
+        # --- Admin-Funktionen ---
+        target = FakeUser(uid=777, name='Ziel')
+
+        # 7) Nicht-Admin mit user → abgelehnt
+        ia = make_interaction(admin=False)
+        run_async(cmd(ia, aktion='an', user=target))
+        c = (ia.response.calls[0].get('content') or '').lower()
+        check('Nicht-Admin + user → abgelehnt', 'nur admin' in c)
+        sub = atomic_read(mot.MOTIVATION_SUB_FILE, default=dict)
+        check('Nicht-Admin → kein Fremd-Abo', '777' not in sub.get('subscribers', {}))
+
+        # 8) Admin abonniert anderen User (unverknuepft) → Abo + Hinweis
+        _patch_progress(None)
+        ia = make_interaction(admin=True)
+        run_async(cmd(ia, aktion='an', zeit='9', user=target))
+        c = (ia.response.calls[0].get('content') or '')
+        check('Admin an user → Bestaetigung mit Namen', 'Ziel' in c and 'abonniert' in c)
+        sub = atomic_read(mot.MOTIVATION_SUB_FILE, default=dict)
+        check('Fremd-Abo gespeichert', '777' in sub.get('subscribers', {}))
+
+        # 9) Admin status ohne user → Liste aller Abos
+        ia = make_interaction(admin=True)
+        run_async(cmd(ia, aktion='status'))
+        c = (ia.response.calls[0].get('content') or '')
+        check('Admin status → Liste mit Anzahl', '1 aktive' in c)
+
+        # 10) Admin status mit user → dessen Status
+        ia = make_interaction(admin=True)
+        run_async(cmd(ia, aktion='status', user=target))
+        c = (ia.response.calls[0].get('content') or '')
+        check('Admin status user → Ziel aktiv', 'Ziel' in c and 'aktiv' in c)
+
+        # 11) Admin aus user → Fremd-Abo entfernt
+        ia = make_interaction(admin=True)
+        run_async(cmd(ia, aktion='aus', user=target))
+        sub = atomic_read(mot.MOTIVATION_SUB_FILE, default=dict)
+        check('Admin aus user → Fremd-Abo entfernt', '777' not in sub.get('subscribers', {}))
+
+        # 12) /motivation_send → DM sofort senden
+        send_cmd = _captured_commands.get('motivation_send')
+        check('cmd_motivation_send gefunden', send_cmd is not None)
+        if send_cmd:
+            _patch_progress(None)   # unverknuepft → allgemeine Motivation + CTA
+            ia = make_interaction(admin=True)
+            run_async(send_cmd(ia, user=target))
+            fu = (ia.followup.calls[0].get('content') or '') if ia.followup.calls else ''
+            check('send → Bestaetigung (DM ohne Fehler gesendet)', 'gesendet' in fu)
 
     finally:
         mot.rookhub.get_player_progress = orig
@@ -134,6 +184,12 @@ def test_motivation_builder():
                           play_games_target=3, play_games_done=1)))
         check('Nudge → Puzzle-Rueckstand', 'Puzzle' in text)
         check('Nudge → Spielen-Rueckstand', 'Spielen' in text)
+
+        # c) NICHT verknuepft → allgemeine Motivation + Registrier-/Verknuepfungs-CTA
+        unlinked = run_async(mot._build_unlinked_text(FakeUser(uid=55, name='Neu')))
+        check('Unlinked-Text vorhanden', isinstance(unlinked, str) and len(unlinked) > 0)
+        check('Unlinked → Verknuepfungs-/Registrier-Hinweis',
+              'link' in unlinked.lower() or 'registr' in unlinked.lower())
 
     finally:
         teardown_temp_config(tmpdir)

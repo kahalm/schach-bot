@@ -656,12 +656,9 @@ async def _trigger_test_reminders(interaction, bot):
         import commands.motivation as mot
         sub_data = atomic_read(mot.MOTIVATION_SUB_FILE, default=dict)
         if uid in sub_data.get('subscribers', {}):
-            progress = await asyncio.to_thread(mot.rookhub.get_player_progress, uid_int)
-            if progress is not None:
-                msg = await mot._build_motivation_text(uid_int, progress)
-                dm = await interaction.user.create_dm()
-                await dm.send(msg)
-                sent.append('motivation')
+            # verknuepft → persoenlich, sonst allgemeine Motivation + Registrier-/Verknuepfungs-Hinweis
+            await mot._send_motivation_to(uid_int, interaction.user)
+            sent.append('motivation')
     except Exception as e:
         log.debug('Test-Reminder motivation: %s', e)
 

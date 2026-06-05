@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.53.0] - 2026-06-05
+### Added
+- **Motivation: Admin-Funktionen.** `/motivation status` listet Admins **alle** Abonnenten (mit Uhrzeit);
+  `/motivation an|aus user:@X` (Admin) verwaltet das Abo eines **anderen** Users; `/motivation status user:@X`
+  zeigt dessen Status. Neuer Admin-Command **`/motivation_send <user>`** schickt sofort eine Motivations-DM.
+- **Motivation für NICHT-Verknüpfte.** Wer (noch) kein verknüpftes RookHub-Konto hat, wird nicht mehr
+  übersprungen, sondern bekommt eine **allgemeine** Motivations-DM + einen **Registrier-/Verknüpfungs-Hinweis**
+  mit Link (`{ROOKHUB_WEB_URL}/register` inkl. signiertem dl-Token; Fallback `/link`). Abonnieren ist damit
+  auch ohne Verknüpfung möglich (vorher blockiert).
+### Changed
+- Sende-Logik in `_send_motivation_to()` gebündelt (Loop, `/motivation_send`, `/test` nutzen denselben Pfad):
+  verknüpft → persönlich (Stats + Wochenpost), sonst allgemein + CTA.
+
 ## [2.52.0] - 2026-06-05
 ### Changed
 - **Wochenpost wandert nach RookHub.** Der Bot legt keine Wochenposts mehr selbst an/postet sie nicht
