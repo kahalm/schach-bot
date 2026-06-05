@@ -4,6 +4,25 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.51.0] - 2026-06-05
+### Added
+- **Motivations-DM (`/motivation`)** — taeglicher, stats-gestuetzter Motivations-DM, der den
+  frueheren Wochenpost-Reminder ersetzt. Abonnenten bekommen einmal taeglich zur Wunschzeit eine
+  von Claude (one-shot, kein Chat-Verlauf) personalisierte Nachricht auf Basis ihrer RookHub-
+  Trainingsziele: alle Tagesziele erreicht → whimsisches Lob (ohne „mach mehr"), sonst ein
+  ermutigender Nudge zum konkreten Rueckstand (Puzzlen/Trainieren/Spielen). Voraussetzung ist eine
+  RookHub-Verknuepfung (`/link`) — sonst schickt der Bot den Verknuepfungs-Hinweis.
+  Befehle: `/motivation an [zeit]` · `/motivation aus` · `/motivation status` (Opt-in,
+  Default 18:00 MEZ/MESZ). Fallback auf Template + Spruch, wenn kein `CLAUDE_API_KEY` gesetzt ist.
+- `puzzle/rookhub.get_player_progress(discord_id)` — liest den Fortschritt eines verknuepften
+  Spielers von RookHubs neuem `GET /api/bot/player-progress` (HMAC-signiert via neuem
+  `ROOKHUB_STATS_SECRET`, identisch zu RookHubs `SchachBot__StatsSecret`).
+### Changed
+- `commands/wochenpost.py`: Reminder-DM-Mechanik entfernt (`/wochenpost_sub`, `/wochenpost_unsub`,
+  `/wochenpost_remind` + der 30-Min-Reminder-Loop). Die **Wochenpost-Channel-Posts** (`/wochenpost`,
+  `/wochenpost_add`, `/wochenpost_del`, Buttons, Catch-up) bleiben unveraendert. `/test` loest jetzt
+  den Motivations-DM aus statt des Wochenpost-Reminders.
+
 ## [2.50.0] - 2026-06-03
 ### Changed
 - Tagespuzzle-Posts verlinken jetzt auf den stabilen, **datumsbasierten** RookHub-Link

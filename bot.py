@@ -129,7 +129,7 @@ tree = bot.tree
 # Module laden
 import puzzle
 import library
-from commands import reminder, resourcen, youtube, elo, release_notes, blind, test, wanted, schachrallye, wochenpost, chat, link
+from commands import reminder, resourcen, youtube, elo, release_notes, blind, test, wanted, schachrallye, wochenpost, chat, link, motivation
 
 puzzle.setup(bot)
 library.setup(bot)
@@ -145,6 +145,7 @@ schachrallye.setup(bot, tournament_channel_id=TOURNAMENT_CHANNEL_ID)
 wochenpost.setup(bot, wochenpost_channel_id=WOCHENPOST_CHANNEL_ID)
 chat.setup(bot)
 link.setup(bot)
+motivation.setup(bot)
 
 
 _ready_done = False
@@ -382,12 +383,10 @@ def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str
              'Für Turnier-Tag subscriben (Ping bei neuen Turnieren).\n'
              'Tags z.B.: `schnellschach`, `blitz`, `960`, `schachrallye`'),
             ('/turnier_unsub <tag> [user]', 'Turnier-Tag-Abo abbestellen.'),
-            ('/wochenpost_sub [zeit] [user]',
-             'Täglich DM-Erinnerung an den aktuellen Wochenpost.\n'
-             '`zeit` — Uhrzeit MEZ/MESZ (0-23, Standard: 17)\n'
-             '`/wochenpost_sub` — Selbst · `/wochenpost_sub user:@X` — Admin subscribed anderen\n'
-             'Endet wenn du den Post als erledigt markierst.'),
-            ('/wochenpost_unsub [user]', 'Wochenpost-Erinnerungen abbestellen.'),
+            ('/motivation <an|aus|status> [zeit]',
+             'Tägliche, persönliche Motivations-DM nach deinen RookHub-Trainingszielen.\n'
+             '`an` — abonnieren (`zeit` = Uhrzeit MEZ/MESZ, Standard: 18) · `aus` — abbestellen · `status`\n'
+             'Voraussetzung: dein Discord-Account ist mit RookHub verknüpft (`/link`).'),
         ]
     if bereich == 'info':
         return 'ℹ️ Info', [

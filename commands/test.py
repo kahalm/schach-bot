@@ -651,30 +651,19 @@ async def _trigger_test_reminders(interaction, bot):
     uid_int = interaction.user.id
     sent = []
 
-    # --- Wochenpost-Erinnerung ---
+    # --- Motivations-DM (stats-basiert, ersetzt den frueheren Wochenpost-Reminder) ---
     try:
-        import commands.wochenpost as wp
-        sub_data = atomic_read(wp.WOCHENPOST_SUB_FILE, default=dict)
+        import commands.motivation as mot
+        sub_data = atomic_read(mot.MOTIVATION_SUB_FILE, default=dict)
         if uid in sub_data.get('subscribers', {}):
-            entry = wp._get_latest_posted()
-            if entry and 'msg_id' in entry:
-                titel = entry.get('titel', '')
-                thread_id = entry.get('thread_id')
-
-                thread_url = ''
-                if thread_id and wp._wochenpost_channel_id:
-                    channel = bot.get_channel(wp._wochenpost_channel_id)
-                    if channel:
-                        guild_id = getattr(getattr(channel, 'guild', None), 'id', None)
-                        if guild_id:
-                            thread_url = f'https://discord.com/channels/{guild_id}/{thread_id}'
-
-                msg = await wp._build_reminder_text(uid_int, titel, thread_url)
+            progress = await asyncio.to_thread(mot.rookhub.get_player_progress, uid_int)
+            if progress is not None:
+                msg = await mot._build_motivation_text(uid_int, progress)
                 dm = await interaction.user.create_dm()
                 await dm.send(msg)
-                sent.append('wochenpost')
+                sent.append('motivation')
     except Exception as e:
-        log.debug('Test-Reminder wochenpost: %s', e)
+        log.debug('Test-Reminder motivation: %s', e)
 
     # --- Turnier-Erinnerung ---
     try:

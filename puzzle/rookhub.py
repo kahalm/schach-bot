@@ -8,6 +8,8 @@ Bewusst ohne discord-Abhängigkeit (nur requests + python-chess), damit eigenst�
 testbar.
 """
 
+import hashlib
+import hmac
 import os
 import logging
 import threading
@@ -21,6 +23,9 @@ log = logging.getLogger('schach-bot')
 
 ROOKHUB_API_URL = os.getenv('ROOKHUB_API_URL', '').rstrip('/')
 ROOKHUB_WEB_URL = os.getenv('ROOKHUB_WEB_URL', '').rstrip('/')
+# Geteiltes HMAC-Secret fuer den Bot-Stats-Endpoint (== RookHubs SchachBot__StatsSecret).
+# Leer → get_player_progress liefert immer None (Feature inaktiv).
+ROOKHUB_STATS_SECRET = os.getenv('ROOKHUB_STATS_SECRET', '')
 
 _TIMEOUT = 15
 # Kürzerer Timeout für den (häufigen, per Puzzle aufgerufenen) Link-Lookup, damit ein
@@ -145,6 +150,35 @@ def get_daily_results(puzzle_id, since: str | None = None, timeout: int = _TIMEO
         return r.json()
     except requests.RequestException as e:
         log.debug('get_daily_results(%s) fehlgeschlagen: %s', puzzle_id, e)
+        return None
+
+
+def get_player_progress(discord_id, timeout: int = _TIMEOUT) -> dict | None:
+    """Holt den Trainings-/Puzzle-Fortschritt eines mit RookHub verknuepften Spielers.
+
+    Authentifiziert ueber eine HMAC-Signatur (``X-Bot-Signature: sha256=<hex>``) ueber die Discord-ID
+    mit dem geteilten ``ROOKHUB_STATS_SECRET`` (== RookHubs ``SchachBot__StatsSecret``).
+
+    Rueckgabe: ``BotPlayerProgressDto`` als dict (``username``, ``displayName``, ``today`` mit
+    ``goal``/``puzzles``/``book``/``play``/``status``/``weekDaysMet``/``weeklyDaysTarget``, ``puzzles``-Stats)
+    — oder ``None``, wenn der Spieler NICHT verknuepft ist (404), das Feature/Secret fehlt oder ein
+    Fehler auftritt. ``None`` heisst fuer den Aufrufer: keine Motivation, stattdessen Verknuepfungs-Hinweis.
+    """
+    if not ROOKHUB_API_URL or not ROOKHUB_STATS_SECRET or discord_id is None:
+        return None
+    did = str(discord_id)
+    sig = hmac.new(ROOKHUB_STATS_SECRET.encode('utf-8'), did.encode('utf-8'),
+                   hashlib.sha256).hexdigest()
+    try:
+        r = requests.get(_api(f'/api/bot/player-progress/{did}'),
+                         headers={'X-Bot-Signature': f'sha256={sig}'}, timeout=timeout)
+        if r.status_code == 404:
+            # Nicht verknuepft (oder Feature serverseitig aus) → kein Fortschritt.
+            return None
+        r.raise_for_status()
+        return r.json()
+    except requests.RequestException as e:
+        log.warning('RookHub get_player_progress(%s) fehlgeschlagen: %s', did, e)
         return None
 
 

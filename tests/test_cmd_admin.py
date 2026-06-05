@@ -296,20 +296,26 @@ def test_test_cmd():
         check('build_result_embed: gruen bei 100%',
               all_ok_embed.colour != 0xe74c3c)
 
-        # --- Test-Reminder (Wochenpost + Turnier) ---
-        import commands.wochenpost as wp_mod
+        # --- Test-Reminder (Motivation + Turnier) ---
+        import commands.motivation as mot_mod
         import commands.schachrallye as sr_mod
         from datetime import timedelta
 
-        # Wochenpost: User subscribed + geposteter Eintrag
-        atomic_write(wp_mod.WOCHENPOST_FILE, [
-            {'id': 1, 'datum': '2026-04-25', 'titel': '25.04.2026',
-             'posted': True, 'msg_id': 111, 'thread_id': 222},
-        ])
-        atomic_write(wp_mod.WOCHENPOST_SUB_FILE, {
+        # Motivation: User subscribed + verknuepft (get_player_progress liefert Stats)
+        _orig_progress = mot_mod.rookhub.get_player_progress
+        mot_mod.rookhub.get_player_progress = lambda uid: {
+            'username': 'tester', 'displayName': 'Tester',
+            'today': {'goal': {'puzzleMinutes': 10, 'bookMinutes': 0, 'playGames': 0},
+                      'puzzles': {'targetMinutes': 10, 'doneSeconds': 120, 'met': False},
+                      'book': {'targetMinutes': 0, 'doneSeconds': 0, 'met': False},
+                      'play': {'targetGames': 0, 'doneGames': 0, 'met': False},
+                      'status': 'partial', 'weekDaysMet': 0, 'weeklyDaysTarget': 0},
+            'puzzles': {'puzzleElo': 1500, 'currentStreak': 0, 'solved': 5,
+                        'totalAttempts': 6, 'bestStreak': 3, 'accuracy': 0.8},
+        }
+        atomic_write(mot_mod.MOTIVATION_SUB_FILE, {
             'subscribers': {'12345': {'hour': 17, 'minute': 0,
                                       'next': '2099-01-01T00:00:00+00:00'}},
-            'resolved': {},
         })
 
         # Turnier: User subscribed + zukuenftiges Event
@@ -324,26 +330,28 @@ def test_test_cmd():
             'next_id': 2,
         })
 
-        ia = make_interaction(admin=True)
-        run_async(cmd(ia, modus='status', kurs=0, puzzle=0, lichess=0))
-        reminder_calls = [c for c in ia.followup.calls
-                          if 'Test-Reminder' in (c.get('content') or '')]
-        check('test-reminder: followup vorhanden', len(reminder_calls) > 0)
-        if reminder_calls:
-            content = reminder_calls[0].get('content', '')
-            check('test-reminder: wochenpost', 'wochenpost' in content)
-            check('test-reminder: turnier', 'turnier' in content)
+        try:
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, modus='status', kurs=0, puzzle=0, lichess=0))
+            reminder_calls = [c for c in ia.followup.calls
+                              if 'Test-Reminder' in (c.get('content') or '')]
+            check('test-reminder: followup vorhanden', len(reminder_calls) > 0)
+            if reminder_calls:
+                content = reminder_calls[0].get('content', '')
+                check('test-reminder: motivation', 'motivation' in content)
+                check('test-reminder: turnier', 'turnier' in content)
 
-        # Ohne Subscriptions → kein Reminder-Followup
-        atomic_write(wp_mod.WOCHENPOST_SUB_FILE, {
-            'subscribers': {}, 'resolved': {}})
-        atomic_write(sr_mod.TURNIER_FILE, {
-            'events': [], 'subscribers': {}, 'next_id': 1})
-        ia = make_interaction(admin=True)
-        run_async(cmd(ia, modus='status', kurs=0, puzzle=0, lichess=0))
-        reminder_calls = [c for c in ia.followup.calls
-                          if 'Test-Reminder' in (c.get('content') or '')]
-        check('test-reminder: ohne Sub kein Reminder', len(reminder_calls) == 0)
+            # Ohne Subscriptions → kein Reminder-Followup
+            atomic_write(mot_mod.MOTIVATION_SUB_FILE, {'subscribers': {}})
+            atomic_write(sr_mod.TURNIER_FILE, {
+                'events': [], 'subscribers': {}, 'next_id': 1})
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia, modus='status', kurs=0, puzzle=0, lichess=0))
+            reminder_calls = [c for c in ia.followup.calls
+                              if 'Test-Reminder' in (c.get('content') or '')]
+            check('test-reminder: ohne Sub kein Reminder', len(reminder_calls) == 0)
+        finally:
+            mot_mod.rookhub.get_player_progress = _orig_progress
 
     finally:
         teardown_temp_config(tmpdir)
