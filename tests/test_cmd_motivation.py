@@ -136,7 +136,7 @@ def test_motivation_command():
         sub = atomic_read(mot.MOTIVATION_SUB_FILE, default=dict)
         check('Admin aus user → Fremd-Abo entfernt', '777' not in sub.get('subscribers', {}))
 
-        # 12) /motivation_send → DM sofort senden
+        # 12) /motivation_send → DM sofort senden (ohne zeit → KEIN Abo)
         send_cmd = _captured_commands.get('motivation_send')
         check('cmd_motivation_send gefunden', send_cmd is not None)
         if send_cmd:
@@ -145,6 +145,27 @@ def test_motivation_command():
             run_async(send_cmd(ia, user=target))
             fu = (ia.followup.calls[0].get('content') or '') if ia.followup.calls else ''
             check('send → Bestaetigung (DM ohne Fehler gesendet)', 'gesendet' in fu)
+            sub = atomic_read(mot.MOTIVATION_SUB_FILE, default=dict)
+            check('send ohne zeit → kein Abo', '777' not in sub.get('subscribers', {}))
+
+            # 13) /motivation_send mit zeit → DM + Abo zur Uhrzeit
+            ia = make_interaction(admin=True)
+            run_async(send_cmd(ia, user=target, zeit='8:15'))
+            fu = (ia.followup.calls[0].get('content') or '') if ia.followup.calls else ''
+            check('send mit zeit → abonniert-Hinweis', 'abonniert' in fu and '8:15' in fu)
+            sub = atomic_read(mot.MOTIVATION_SUB_FILE, default=dict)
+            check('send mit zeit → Abo angelegt', '777' in sub.get('subscribers', {}))
+            if '777' in sub.get('subscribers', {}):
+                check('send mit zeit → Uhrzeit korrekt',
+                      sub['subscribers']['777']['hour'] == 8 and sub['subscribers']['777']['minute'] == 15)
+
+            # 14) /motivation_send mit ungueltiger zeit → Fehler, kein Versand/Abo
+            ia = make_interaction(admin=True)
+            run_async(send_cmd(ia, user=FakeUser(uid=888, name='Z2'), zeit='99'))
+            resp = (ia.response.calls[0].get('content') or '') if ia.response.calls else ''
+            check('send ungueltige zeit → Fehler', 'ungueltig' in resp.lower() or 'ungültig' in resp.lower())
+            sub = atomic_read(mot.MOTIVATION_SUB_FILE, default=dict)
+            check('send ungueltige zeit → kein Abo', '888' not in sub.get('subscribers', {}))
 
     finally:
         mot.rookhub.get_player_progress = orig

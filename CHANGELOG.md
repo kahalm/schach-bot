@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.54.0] - 2026-06-05
+### Added
+- `/motivation_send` hat einen optionalen `zeit`-Parameter: ohne → nur Sofort-DM (wie bisher); mit
+  gültiger Uhrzeit (MEZ/MESZ) → Sofort-DM **plus** taegliches Abo des Users zu dieser Zeit (nutzt
+  denselben `_subscribe`-Helfer wie `/motivation an`). Ungültige Zeit → Fehlermeldung, kein Versand/Abo.
+
 ## [2.53.0] - 2026-06-05
 ### Added
 - **Motivation: Admin-Funktionen.** `/motivation status` listet Admins **alle** Abonnenten (mit Uhrzeit);

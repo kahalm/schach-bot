@@ -13,7 +13,7 @@ eine DM, die Claude formuliert:
 /motivation an [zeit] [user]   — abonnieren (Default 18:00 MEZ/MESZ); `user` nur fuer Admins
 /motivation aus [user]         — abbestellen; `user` nur fuer Admins
 /motivation status [user]      — eigener Status; Admins sehen ohne `user` ALLE Abos, mit `user` dessen Status
-/motivation_send <user>        — (Admin) Motivations-DM sofort an einen User senden
+/motivation_send <user> [zeit] — (Admin) Motivations-DM sofort senden; mit `zeit` zusaetzlich taeglich abonnieren
 """
 
 import asyncio
@@ -455,24 +455,45 @@ def setup(bot):
             f'✅ {wer}Motivations-DM {verb}: {zeit_txt}.\n{note}', ephemeral=True)
 
     @tree.command(name='motivation_send',
-                  description='Motivations-DM sofort an einen User senden (Admin)')
+                  description='Motivations-DM sofort an einen User senden (Admin); mit Zeit zusaetzlich abonnieren')
     @discord.app_commands.default_permissions(administrator=True)
-    @discord.app_commands.describe(user='User, der die Motivations-DM jetzt bekommen soll')
-    async def cmd_motivation_send(interaction: discord.Interaction, user: discord.User):
+    @discord.app_commands.describe(
+        user='User, der die Motivations-DM jetzt bekommen soll',
+        zeit='Optional: Uhrzeit MEZ/MESZ — wenn gesetzt, wird der User zusaetzlich taeglich dazu abonniert')
+    async def cmd_motivation_send(interaction: discord.Interaction,
+                                  user: discord.User, zeit: str = None):
         if not is_privileged(interaction):
             await interaction.response.send_message(
                 '⚠️ Nur fuer Admins/Moderatoren.', ephemeral=True)
             return
+
+        # Zeit (falls angegeben) zuerst validieren — vor dem defer, damit der Fehler sauber zurueckkommt.
+        sub_time = None
+        if zeit is not None:
+            sub_time = _parse_zeit(zeit)
+            if sub_time is None:
+                await interaction.response.send_message(
+                    '⚠️ Ungueltige Uhrzeit. Beispiele: `17`, `17:30`, `1730`, `17 30`.',
+                    ephemeral=True)
+                return
+
         await interaction.response.defer(ephemeral=True)
+
+        sent_ok = True
         try:
             await _send_motivation_to(user.id, user)
-            await interaction.followup.send(
-                f'✅ Motivations-DM an **{user.display_name}** gesendet.', ephemeral=True)
         except Exception:
+            sent_ok = False
             log.warning('Manuelle Motivations-DM an %s fehlgeschlagen', user.id)
-            await interaction.followup.send(
-                f'❌ DM an **{user.display_name}** konnte nicht gesendet werden (DMs deaktiviert?).',
-                ephemeral=True)
+
+        parts = ['✅ Motivations-DM gesendet.' if sent_ok
+                 else '⚠️ Sofort-DM fehlgeschlagen (DMs deaktiviert?).']
+        if sub_time is not None:
+            h, m = sub_time
+            await asyncio.to_thread(_subscribe, str(user.id), h, m)
+            parts.append(f'📅 Zusaetzlich taeglich um **{h}:{m:02d} MEZ/MESZ** abonniert.')
+        await interaction.followup.send(
+            f'**{user.display_name}** — ' + ' '.join(parts), ephemeral=True)
 
     # --- Loop (alle 30 min; feuert pro User taeglich zur Wunschzeit) ------
     @tasks.loop(minutes=30)
