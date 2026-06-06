@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Deployment-Regel (ABSOLUT PFLICHT!)
+
+**Niemals auf Prod deployen ohne explizite Anweisung** — auch nicht im Auto-Mode, auch nicht nach einem erfolgreichen Build. Erst pushen/taggen, dann warten bis der User sagt "deploy".
+
 ## Commands
 
 ```bash

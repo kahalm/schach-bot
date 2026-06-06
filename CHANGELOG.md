@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.56.5] - 2026-06-06
+### Changed
+- `/dm-log` Übersicht: User nach letzter Nachricht sortiert (neueste zuerst).
+
 ## [2.56.4] - 2026-06-06
 ### Changed
 - Slacker-DM kann nach 3h erneut gesendet werden (statt einmalig pro Session).

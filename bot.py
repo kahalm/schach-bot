@@ -530,8 +530,16 @@ async def cmd_dm_log(interaction: discord.Interaction, user: discord.User = None
     names = {uid: _display_name_cached(uid, interaction.guild)
              for uid in subset}
 
+    def _last_ts(entries):
+        try:
+            return entries[-1].get('ts', '') if entries else ''
+        except Exception:
+            return ''
+
+    sorted_items = sorted(subset.items(), key=lambda kv: _last_ts(kv[1]), reverse=True)
+
     lines = []
-    for uid, entries in subset.items():
+    for uid, entries in sorted_items:
         name = names.get(uid, f'User {uid}')
         if user:
             # Detailansicht: letzte 10 DMs mit Inhalt
