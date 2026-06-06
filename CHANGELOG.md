@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.55.1] - 2026-06-06
+### Changed
+- Tagespuzzle: Der Bot setzt **keine ✅-Reaction** mehr auf den Daily-Post, wenn jemand löst —
+  die Löser stehen ohnehin im Embed-Feld „✅ Gelöst (…)" (redundant). `apply_solver_update`
+  editiert nur noch das Embed.
+
 ## [2.55.0] - 2026-06-05
 ### Added
 - **Wochenpost-Fortschritt live im Thread.** RookHub feuert nach jedem neuen Lösungsversuch einen

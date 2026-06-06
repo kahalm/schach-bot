@@ -2,8 +2,9 @@
 
 Merkt sich den Daily-Post (Channel/Message/Puzzle-ID) und pollt RookHub
 (``GET /api/book-puzzles/{id}/results``). Der Post wird dann aktualisiert:
-✅-Reaction + ein Embed-Feld mit der Solver-Zeile (verknüpfte User als @mention,
-sonst RookHub-Name; Fehlversuche nur als Zahl).
+ein Embed-Feld mit der Solver-Zeile (verknüpfte User als @mention, sonst
+RookHub-Name; Fehlversuche nur als Zahl). Keine ✅-Reaction mehr — die Solver
+stehen ohnehin im Embed-Feld (redundant).
 
 Top-Level bewusst ohne discord-/puzzle-Paket-Importe (nur stdlib + core), damit die
 reine Formatierungslogik eigenständig testbar ist; schwere Importe liegen in refresh().
@@ -86,9 +87,9 @@ def _field_name(f):
 
 
 async def apply_solver_update(bot, cur: dict, results: dict) -> None:
-    """Wendet einen Solver-Stand auf den gemerkten Daily-Post an (Embed editieren,
-    ✅-Reaction setzen). Wird sowohl vom 5-Min-Polling (refresh) als auch vom
-    RookHub-Webhook (webhook_server) aufgerufen.
+    """Wendet einen Solver-Stand auf den gemerkten Daily-Post an (Embed editieren).
+    Wird sowohl vom 5-Min-Polling (refresh) als auch vom RookHub-Webhook
+    (webhook_server) aufgerufen.
 
     cur: Daten aus :func:`current` (channel_id, message_id, puzzle_id).
     results: ``GET /api/book-puzzles/{id}/results``-Payload bzw. das gleiche
@@ -125,11 +126,6 @@ async def apply_solver_update(bot, cur: dict, results: dict) -> None:
             except Exception:
                 pass
         await msg.edit(embed=embed)
-        if results.get('solvedCount', 0) > 0 or results.get('anonymousSolvedCount', 0) > 0:
-            try:
-                await msg.add_reaction('✅')
-            except Exception:
-                pass
     except Exception as e:
         log.warning('Daily-Post-Update fehlgeschlagen: %s', e)
 
