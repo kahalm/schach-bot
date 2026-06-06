@@ -33,7 +33,7 @@ from test_cmd_events import (
 from test_cmd_weeklypost import test_weekly_announcer, test_weekly_results_format
 from test_cmd_motivation import (
     test_motivation_command, test_motivation_builder, test_motivation_random_spruch,
-    test_parse_zeit,
+    test_parse_zeit, test_activity_watcher, test_slacker_text,
 )
 from test_cmd_library import (
     test_bibliothek, test_tag, test_autor, test_reindex, test_reindex_requires_admin,
@@ -115,6 +115,8 @@ def main():
     test_motivation_command()
     test_motivation_builder()
     test_motivation_random_spruch()
+    test_activity_watcher()
+    test_slacker_text()
     test_healthcheck()
     test_build_puzzle_embed()
     test_build_daily_embed()

@@ -122,6 +122,7 @@ def welcome_message_for(user) -> str:
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
+intents.presences = True  # Privilegierter Intent: muss im Discord Developer Portal aktiviert sein
 bot = commands.Bot(command_prefix=commands.when_mentioned, intents=intents)
 bot._task_loops = {}
 tree = bot.tree

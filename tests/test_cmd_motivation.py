@@ -1,5 +1,7 @@
 """Tests fuer /motivation + den stats-basierten Motivations-DM-Builder."""
 
+from datetime import datetime, timedelta, timezone
+
 import test_helpers as h
 from test_helpers import (
     check, run_async, setup_temp_config, teardown_temp_config,
@@ -249,4 +251,185 @@ def test_parse_zeit():
     check('parse "25" → None', pz('25') is None)
     check('parse "" → None', pz('') is None)
     check('parse "abc" → None', pz('abc') is None)
+    print()
+
+
+# ---------------------------------------------------------------------------
+# Helpers fuer Activity-Watch-Tests
+# ---------------------------------------------------------------------------
+
+class _FakeActivityType:
+    playing = 'playing'
+
+
+class _FakeActivity:
+    def __init__(self, name, act_type='playing'):
+        self.name = name
+        self.type = act_type
+
+
+class _FakeMember:
+    def __init__(self, activities=()):
+        self.activities = activities
+        self.display_name = 'Tester'
+        self.id = 42
+        self.name = 'tester'
+
+
+def test_activity_watcher():
+    """Tests fuer _get_current_game und _check_activities."""
+    print('[activity watcher]')
+    tmpdir = setup_temp_config()
+
+    # Patch discord.ActivityType.playing im Modul
+    import discord as _discord_mod
+    orig_at = getattr(_discord_mod, 'ActivityType', None)
+    _discord_mod.ActivityType = _FakeActivityType()
+
+    orig_progress = mot.rookhub.get_player_progress
+
+    try:
+        # --- _get_current_game ---
+
+        # 1) kein Member → None
+        check('get_game None member → None', mot._get_current_game(None) is None)
+
+        # 2) Member ohne Aktivitaeten → None
+        check('get_game keine Aktivitaet → None',
+              mot._get_current_game(_FakeMember()) is None)
+
+        # 3) Nicht-playing-Typ → None
+        m = _FakeMember([_FakeActivity('Spotify', 'listening')])
+        check('get_game listening → None', mot._get_current_game(m) is None)
+
+        # 4) playing-Spiel → Name zurueck
+        m = _FakeMember([_FakeActivity('Valorant', 'playing')])
+        check('get_game Valorant → "Valorant"', mot._get_current_game(m) == 'Valorant')
+
+        # 5) Schach-Spiel wird ignoriert
+        m = _FakeMember([_FakeActivity('Chess.com', 'playing')])
+        check('get_game chess.com → None', mot._get_current_game(m) is None)
+
+        # 6) playing mit leerem Namen → None
+        m = _FakeMember([_FakeActivity('', 'playing')])
+        check('get_game leerer Name → None', mot._get_current_game(m) is None)
+
+        # --- _check_activities (End-to-End mit gemocktem Bot) ---
+
+        # Mock-Bot mit Guild-Member aufsetzen
+        import unittest.mock as mock
+        fake_uid = 42
+        fake_member = _FakeMember([_FakeActivity('Valorant', 'playing')])
+        fake_guild = mock.MagicMock()
+        fake_guild.get_member = lambda uid: fake_member if uid == fake_uid else None
+        fake_bot = mock.MagicMock()
+        fake_bot.get_guild.return_value = fake_guild
+        fake_bot.guilds = [fake_guild]
+
+        from core import permissions as perm
+        orig_guild_id = perm._guild_id
+        perm._guild_id = 99  # irgendeine Guild-ID
+
+        orig_bot = mot._bot
+        mot._bot = fake_bot
+
+        # Abo anlegen
+        from core.json_store import atomic_write
+        atomic_write(mot.MOTIVATION_SUB_FILE, {
+            'subscribers': {str(fake_uid): {'hour': 18, 'minute': 0, 'next': '2099-01-01T00:00:00+00:00'}}
+        })
+
+        # 7) Neues Spiel → Watch-State wird angelegt, keine DM (< 60 min)
+        mot.rookhub.get_player_progress = lambda uid: _progress(puzzle_min=10, puzzle_done_min=0)
+        run_async(mot._check_activities())
+        from core.json_store import atomic_read
+        watch = atomic_read(mot.ACTIVITY_WATCH_FILE, default=dict)
+        state = watch.get('watching', {}).get(str(fake_uid), {})
+        check('neues Spiel → Watch-State angelegt', state.get('name') == 'Valorant')
+        check('neues Spiel → dm_sent=False', state.get('dm_sent') is False)
+
+        # 8) Noch keine Stunde → keine DM
+        from datetime import timedelta, timezone as tz
+        state['since'] = (datetime.now(tz.utc) - timedelta(minutes=30)).isoformat()
+        state['dm_sent'] = False
+        atomic_write(mot.ACTIVITY_WATCH_FILE, {'watching': {str(fake_uid): state}})
+        sent_dms = []
+        async def _fake_send(text):
+            sent_dms.append(text)
+        fake_dm = mock.MagicMock()
+        fake_dm.send = _fake_send
+        fake_member.create_dm = mock.AsyncMock(return_value=fake_dm)
+        run_async(mot._check_activities())
+        check('<60 min → keine DM gesendet', len(sent_dms) == 0)
+
+        # 9) Ueber eine Stunde, Ziele offen → DM wird gesendet
+        state['since'] = (datetime.now(tz.utc) - timedelta(minutes=75)).isoformat()
+        state['dm_sent'] = False
+        atomic_write(mot.ACTIVITY_WATCH_FILE, {'watching': {str(fake_uid): state}})
+        sent_dms.clear()
+        run_async(mot._check_activities())
+        check('>60 min + offene Ziele → DM gesendet', len(sent_dms) == 1)
+        check('DM enthaelt Spielname', 'Valorant' in (sent_dms[0] if sent_dms else ''))
+        watch2 = atomic_read(mot.ACTIVITY_WATCH_FILE, default=dict)
+        check('dm_sent nach Versand = True',
+              watch2.get('watching', {}).get(str(fake_uid), {}).get('dm_sent') is True)
+
+        # 10) DM bereits gesendet → kein Duplikat
+        sent_dms.clear()
+        run_async(mot._check_activities())
+        check('dm_sent=True → kein Duplikat', len(sent_dms) == 0)
+
+        # 11) Alle Ziele erfuellt → keine DM
+        mot.rookhub.get_player_progress = lambda uid: _progress(puzzle_min=10, puzzle_done_min=15)
+        state2 = {'name': 'CS2', 'since': (datetime.now(tz.utc) - timedelta(minutes=90)).isoformat(), 'dm_sent': False}
+        atomic_write(mot.ACTIVITY_WATCH_FILE, {'watching': {str(fake_uid): state2}})
+        sent_dms.clear()
+        run_async(mot._check_activities())
+        check('Ziele erfuellt → keine Slacker-DM', len(sent_dms) == 0)
+
+        # 12) Nicht verknuepft → DM mit Registrierungs-CTA
+        mot.rookhub.get_player_progress = lambda uid: None
+        # Gleiche Aktivitaet wie member (Valorant), >60 min
+        state3 = {'name': 'Valorant', 'since': (datetime.now(tz.utc) - timedelta(minutes=90)).isoformat(), 'dm_sent': False}
+        atomic_write(mot.ACTIVITY_WATCH_FILE, {'watching': {str(fake_uid): state3}})
+        sent_dms.clear()
+        run_async(mot._check_activities())
+        check('nicht verknuepft + >60min → DM gesendet', len(sent_dms) == 1)
+        dm_text = sent_dms[0] if sent_dms else ''
+        check('nicht verknuepft DM → Spielname enthalten', 'Valorant' in dm_text)
+        check('nicht verknuepft DM → Registrier-CTA enthalten',
+              'registr' in dm_text.lower() or 'rookhub' in dm_text.lower() or 'link' in dm_text.lower())
+
+        # 13) Kein Spiel aktiv → Watch-State wird geloescht
+        fake_member.activities = []
+        atomic_write(mot.ACTIVITY_WATCH_FILE, {'watching': {str(fake_uid): state3}})
+        run_async(mot._check_activities())
+        watch3 = atomic_read(mot.ACTIVITY_WATCH_FILE, default=dict)
+        check('kein Spiel → Watch-State leer',
+              str(fake_uid) not in watch3.get('watching', {}))
+
+    finally:
+        mot.rookhub.get_player_progress = orig_progress
+        mot._bot = orig_bot
+        perm._guild_id = orig_guild_id
+        if orig_at is not None:
+            _discord_mod.ActivityType = orig_at
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_slacker_text():
+    """_build_slacker_text/_build_slacker_unlinked_text (Fallback, kein Claude)."""
+    print('[slacker text]')
+    cats = [('Puzzle', 3, 10, False, 'min'), ('Spielen', 1, 3, False, 'Partien diese Woche')]
+    text = run_async(mot._build_slacker_text('Valorant', cats, 75))
+    check('slacker text → Spielname enthalten', 'Valorant' in text)
+    check('slacker text → Puzzle-Rueckstand', 'Puzzle' in text)
+    check('slacker text → Spielen-Rueckstand', 'Spielen' in text)
+
+    user = FakeUser(uid=99, name='test')
+    utext = run_async(mot._build_slacker_unlinked_text('Minecraft', 42, user))
+    check('unlinked slacker → Spielname enthalten', 'Minecraft' in utext)
+    check('unlinked slacker → Registrier-CTA enthalten',
+          'registr' in utext.lower() or 'rookhub' in utext.lower() or 'link' in utext.lower())
     print()

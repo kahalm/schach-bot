@@ -36,6 +36,7 @@ from puzzle import rookhub
 log = logging.getLogger('schach-bot')
 
 MOTIVATION_SUB_FILE = os.path.join(CONFIG_DIR, 'motivation_sub.json')
+ACTIVITY_WATCH_FILE = os.path.join(CONFIG_DIR, 'activity_watch.json')
 
 _VIENNA = ZoneInfo('Europe/Vienna')
 _DEFAULT_HOUR = 18
@@ -46,6 +47,55 @@ _bot = None
 
 def _sub_default():
     return {"subscribers": {}}
+
+
+def _watch_default():
+    return {"watching": {}}
+
+
+# ---------------------------------------------------------------------------
+# Activity-Watch (Rich Presence)
+# ---------------------------------------------------------------------------
+
+def _get_member(uid_int: int):
+    """Gibt das Member-Objekt des Users zurueck (Heim-Server zuerst, dann alle Guilds)."""
+    if _bot is None:
+        return None
+    from core.permissions import _guild_id
+    if _guild_id:
+        guild = _bot.get_guild(_guild_id)
+        if guild:
+            m = guild.get_member(uid_int)
+            if m:
+                return m
+    for g in _bot.guilds:
+        m = g.get_member(uid_int)
+        if m:
+            return m
+    return None
+
+
+def _get_current_game(member) -> str | None:
+    """Gibt den Namen des aktiven Spiels zurueck (nur playing-Typ; Schach-Apps ignoriert).
+
+    Prueft ``member.activities`` auf ``ActivityType.playing``-Eintraege. Ist der User
+    offline oder hat keine passende Aktivitaet, wird ``None`` zurueckgegeben.
+    """
+    if member is None:
+        return None
+    for act in getattr(member, 'activities', ()):
+        act_type = getattr(act, 'type', None)
+        try:
+            is_playing = (act_type == discord.ActivityType.playing)
+        except Exception:
+            # Stub-Umgebung (Tests): Typ als int oder String vergleichen
+            is_playing = str(act_type) in ('ActivityType.playing', 'playing', '0') or (
+                hasattr(act_type, 'value') and act_type.value == 0)
+        if is_playing:
+            name = (getattr(act, 'name', '') or '').strip()
+            if name and 'chess' not in name.lower():
+                return name
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +183,14 @@ _GENERAL_SYSTEM = (
     'Du bist ein warmherziger, verspielter Schach-Buddy. Du schreibst Deutsch, kurz (2-3 Saetze), '
     'und laedst allgemein zum Schach/Puzzlen ein. Dir liegen KEINE konkreten Statistiken vor — '
     'bleib daher allgemein, ohne Zahlen, freundlich und einladend.'
+)
+
+
+_SLACKER_SYSTEM = (
+    'Du bist ein freundlich-sarkastischer Schach-Buddy. Du schreibst Deutsch, '
+    'kurz (1-2 Saetze), mit einem liebevollen Augenzwinkern — kein erhobener Zeigefinger, '
+    'einfach locker aufziehen, dass der Spieler gerade nicht beim Schach ist. '
+    'Verwende den Namen des laufenden Spiels und beziehe dich auf den konkreten Rueckstand.'
 )
 
 
@@ -229,6 +287,131 @@ async def _build_unlinked_text(user) -> str:
                 'Schach wird mit etwas taeglichem Training spuerbar besser.')
         text = f'{spruch}\n\n{body}' if spruch else body
     return f'{text}\n\n{_register_cta(user)}'
+
+
+# ---------------------------------------------------------------------------
+# Slacker-DM (Activity Watch)
+# ---------------------------------------------------------------------------
+
+async def _build_slacker_unlinked_text(activity_name: str, elapsed_min: int, user) -> str:
+    """Sarkastischer Nudge fuer NICHT verknuepfte User — mit Registrierungs-CTA."""
+    prompt = (
+        f'Der User spielt gerade "{activity_name}" (seit {elapsed_min} Minuten) '
+        f'und hat RookHub noch nicht mal registriert/verknuepft. '
+        f'Schreib eine kurze sarkastisch-freundliche Nachricht im Stil von '
+        f'"Aha, fuer {activity_name} hast du Zeit, aber nicht mal fuer RookHub?"'
+    )
+    text = await _via_claude(_SLACKER_SYSTEM, prompt)
+    if not text:
+        text = (
+            f'Aha, fuer **{activity_name}** hast du Zeit, aber nicht mal fuer RookHub? \U0001f928'
+        )
+    return f'{text}\n\n{_register_cta(user)}'
+
+
+async def _build_slacker_text(activity_name: str, cats: list, elapsed_min: int) -> str:
+    """Baut den sarkastischen Nudge-Text wenn jemand statt Schach ein anderes Spiel spielt."""
+    offen = ', '.join(
+        f'{label} {done}/{target} {unit}'
+        for label, done, target, met, unit in cats if not met
+    )
+    prompt = (
+        f'Der Spieler spielt gerade "{activity_name}" (seit {elapsed_min} Minuten) '
+        f'und hat noch nicht: {offen}. '
+        f'Schreib eine kurze sarkastisch-freundliche Nachricht im Stil von '
+        f'"Aha, fuer {activity_name} hast du Zeit, aber nicht fuer Schach?"'
+    )
+    text = await _via_claude(_SLACKER_SYSTEM, prompt)
+    if not text:
+        text = (
+            f'Aha, fuer **{activity_name}** hast du Zeit, aber fuer dein Schachtraining nicht? \U0001f928\n'
+            f'Noch offen: {offen} — kurzer Schach-Break gefaellig? ♟️'
+        )
+    return text
+
+
+async def _check_activities():
+    """Prueft fuer alle Motivation-Abonnenten die Discord-Aktivitaet (alle 30 min).
+
+    Wer seit >60 min ein Nicht-Schach-Spiel spielt und noch offene Tagesziele hat,
+    bekommt genau einmal pro Aktivitaets-Session eine sarkastisch-freundliche DM.
+    """
+    now = datetime.now(timezone.utc)
+
+    sub_data = atomic_read(MOTIVATION_SUB_FILE, default=_sub_default)
+    subscribers = sub_data.get('subscribers', {}) if isinstance(sub_data, dict) else {}
+    if not subscribers:
+        return
+
+    watch_data = atomic_read(ACTIVITY_WATCH_FILE, default=_watch_default)
+    watching = watch_data.get('watching', {}) if isinstance(watch_data, dict) else {}
+
+    new_watching = {}
+
+    for uid_str in list(subscribers.keys()):
+        uid_int = int(uid_str)
+        member = _get_member(uid_int)
+        current_game = _get_current_game(member)
+
+        if current_game is None:
+            # Kein aktives Spiel → Watch-State verwerfen
+            continue
+
+        prev = watching.get(uid_str, {})
+
+        if prev.get('name', '') != current_game:
+            # Neues (oder anderes) Spiel → Tracking starten
+            new_watching[uid_str] = {
+                'name': current_game,
+                'since': now.isoformat(),
+                'dm_sent': False,
+            }
+            continue
+
+        # Gleiche Aktivitaet laeuft weiter
+        state = dict(prev)
+        new_watching[uid_str] = state
+
+        if state.get('dm_sent'):
+            continue
+
+        try:
+            since = datetime.fromisoformat(state['since'])
+        except (KeyError, ValueError):
+            continue
+
+        elapsed_minutes = (now - since).total_seconds() / 60
+        if elapsed_minutes < 60:
+            continue
+
+        # Tagesziele pruefen
+        progress = await asyncio.to_thread(rookhub.get_player_progress, uid_int)
+
+        try:
+            user_obj = member or await _bot.fetch_user(uid_int)
+            if progress is None:
+                # Nicht verknuepft → sarkastischer Nudge + Registrierungs-CTA
+                text = await _build_slacker_unlinked_text(current_game, round(elapsed_minutes), user_obj)
+            else:
+                cats, has_goal, all_met = _analyze_progress(progress)
+                if not has_goal or all_met:
+                    continue
+                text = await _build_slacker_text(current_game, cats, round(elapsed_minutes))
+            dm = await user_obj.create_dm()
+            await dm.send(text)
+            state['dm_sent'] = True
+            log.info('Slacker-DM an User %s (spielt %s seit %d min, linked=%s)',
+                     uid_str, current_game, round(elapsed_minutes), progress is not None)
+        except Exception:
+            log.warning('Slacker-DM an User %s fehlgeschlagen', uid_str)
+
+    def _save_watch(data):
+        if not isinstance(data, dict):
+            data = _watch_default()
+        data['watching'] = new_watching
+        return data
+
+    await asyncio.to_thread(atomic_update, ACTIVITY_WATCH_FILE, _save_watch, _watch_default)
 
 
 # ---------------------------------------------------------------------------
@@ -495,13 +678,17 @@ def setup(bot):
         await interaction.followup.send(
             f'**{user.display_name}** — ' + ' '.join(parts), ephemeral=True)
 
-    # --- Loop (alle 30 min; feuert pro User taeglich zur Wunschzeit) ------
+    # --- Loop (alle 30 min; DMs zur Wunschzeit + Activity-Watch) ----------
     @tasks.loop(minutes=30)
     async def _motivation_loop():
         try:
             await _run_motivation_dms()
         except Exception:
             log.exception('Motivations-Loop fehlgeschlagen')
+        try:
+            await _check_activities()
+        except Exception:
+            log.exception('Activity-Watch fehlgeschlagen')
 
     @bot.listen('on_ready')
     async def _start_motivation_loop():

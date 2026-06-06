@@ -4,6 +4,24 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.56.1] - 2026-06-06
+### Changed
+- Activity-Watch: Nicht-verknüpfte User bekommen jetzt ebenfalls eine sarkastische DM
+  (+ Registrierungs-CTA) wenn sie >60 min ein anderes Spiel spielen — bisher wurden
+  sie stillschweigend übersprungen.
+
+## [2.56.0] - 2026-06-06
+### Added
+- **Activity-Watch: sarkastischer Slacker-Nudge.** Der Motivations-Loop prüft alle 30 min die
+  Discord-Rich-Presence (Presences Intent, muss im Developer Portal aktiviert sein) aller
+  Motivation-Abonnenten. Wer seit >60 min ein Nicht-Schach-Spiel spielt und noch offene
+  Tagesziele hat, bekommt genau einmal pro Spiel-Session eine sarkastisch-freundliche DM
+  (Claude-formuliert, Fallback-Template). Watch-State wird in `config/activity_watch.json`
+  persistent gespeichert; bei Spielwechsel oder Ende wird der State zurückgesetzt.
+  Funktioniert nur für Spieler mit verknüpftem RookHub-Konto (Tagesziele müssen vorhanden sein).
+### Changed
+- `intents.presences = True` in `bot.py` (privilegierter Gateway-Intent für Rich Presence).
+
 ## [2.55.3] - 2026-06-06
 ### Fixed
 - Wochenpost: Link erschien doppelt (einmal im Embed, einmal als Plaintext-Nachricht).
