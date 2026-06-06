@@ -680,8 +680,8 @@ def setup(bot):
         await interaction.followup.send(
             f'**{user.display_name}** — ' + ' '.join(parts), ephemeral=True)
 
-    # --- Loop (alle 30 min; DMs zur Wunschzeit + Activity-Watch) ----------
-    @tasks.loop(minutes=30)
+    # --- Loop (alle 10 min; DMs zur Wunschzeit + Activity-Watch) ----------
+    @tasks.loop(minutes=10)
     async def _motivation_loop():
         try:
             await _run_motivation_dms()

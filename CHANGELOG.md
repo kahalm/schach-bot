@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.56.3] - 2026-06-06
+### Changed
+- Motivations-Loop läuft jetzt alle 10 Minuten statt 30 (feinmaschigerer Activity-Watch).
+
 ## [2.56.2] - 2026-06-06
 ### Fixed
 - Activity-Watch: `_get_current_game` gibt jetzt `(name, start)` zurück; `_check_activities`
