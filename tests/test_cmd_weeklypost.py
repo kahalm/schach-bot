@@ -44,7 +44,7 @@ def test_weekly_announcer():
         wp.rookhub.get_weekly_posts = lambda timeout=15: [due, future, old, new_due]
         run_async(wp.run_weekly_announcements())
         check('neuer faelliger Post → 1 Thread', len(ch.threads) == 1)
-        check('Thread-Name = Titel', ch.threads[0].name == 'Neu faellig')
+        check('Thread-Name enthält Datum + Titel', ch.threads[0].name.endswith('· Neu faellig') and ch.threads[0].name[:2].isdigit())
 
         # 3) Kein Doppelposten beim naechsten Poll.
         run_async(wp.run_weekly_announcements())

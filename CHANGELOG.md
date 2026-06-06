@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.55.3] - 2026-06-06
+### Fixed
+- Wochenpost: Link erschien doppelt (einmal im Embed, einmal als Plaintext-Nachricht).
+  URL wird jetzt als `content` der Embed-Nachricht gesendet — Discord unfurlt sie dort,
+  und ein zweites `thread.send(url)` entfällt.
+### Changed
+- Wochenpost: Thread-Name beginnt jetzt immer mit dem Datum des Posts (`dd.mm.yyyy · Titel`).
+
 ## [2.55.2] - 2026-06-06
 ### Fixed
 - Tagespuzzle: `🧩 X dran versucht` wird nicht mehr angezeigt, wenn alle Teilnehmer das

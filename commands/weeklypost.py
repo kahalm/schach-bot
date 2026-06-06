@@ -79,18 +79,30 @@ def _seed_if_first_run(all_ids) -> bool:
     return result['seeded']
 
 
+def _thread_name(post: dict) -> str:
+    """Erstellt den Thread-Namen: dd.mm.yyyy [· Titel]."""
+    scheduled = post.get('scheduledAt') or post.get('createdAt') or ''
+    try:
+        dt = _parse_utc(scheduled)
+        date_prefix = dt.strftime('%d.%m.%Y')
+    except Exception:
+        date_prefix = ''
+    title = (post.get('title') or '').strip()
+    if date_prefix and title:
+        return f'{date_prefix} · {title}'[:100]
+    return (date_prefix or title or 'Wochenpost')[:100]
+
+
 async def _post_announcement(channel, post: dict):
     title = (post.get('title') or 'Wochenpost').strip() or 'Wochenpost'
     url = rookhub.weekly_web_url(post.get('id'))
-    thread = await channel.create_thread(name=title[:100], type=discord.ChannelType.public_thread)
+    thread = await channel.create_thread(name=_thread_name(post), type=discord.ChannelType.public_thread)
     embed = discord.Embed(title=title, color=EMBED_COLOR)
-    if url:
-        embed.description = f'\U0001f4ec Neuer Wochenpost zum Durchspielen auf RookHub:\n{url}'
-    msg = await thread.send(embed=embed)
+    embed.description = '\U0001f4ec Neuer Wochenpost zum Durchspielen auf RookHub'
+    # URL als content → Discord unfurlt sie; im Embed-Text wäre keine Vorschau möglich.
+    msg = await thread.send(content=url or None, embed=embed)
     # Embed-Message merken → später per Webhook mit dem Fortschritt aktualisieren.
     remember_weekly(post.get('id'), getattr(thread, 'id', None), getattr(msg, 'id', None))
-    if url:
-        await thread.send(url)   # zusätzlicher Plaintext-Link (klickbar + Vorschau)
 
 
 # ---------------------------------------------------------------------------
