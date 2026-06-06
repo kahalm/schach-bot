@@ -393,13 +393,23 @@ def test_activity_watcher():
         check('>60 min + offene Ziele → DM gesendet', len(sent_dms) == 1)
         check('DM enthaelt Spielname', 'Valorant' in (sent_dms[0] if sent_dms else ''))
         watch2 = atomic_read(mot.ACTIVITY_WATCH_FILE, default=dict)
-        check('dm_sent nach Versand = True',
-              watch2.get('watching', {}).get(str(fake_uid), {}).get('dm_sent') is True)
+        dm_sent_val = watch2.get('watching', {}).get(str(fake_uid), {}).get('dm_sent')
+        check('dm_sent nach Versand = Timestamp', isinstance(dm_sent_val, str) and 'T' in dm_sent_val)
 
-        # 10) DM bereits gesendet → kein Duplikat
+        # 10) DM gerade erst gesendet → kein Duplikat (< 3h)
         sent_dms.clear()
         run_async(mot._check_activities())
-        check('dm_sent=True → kein Duplikat', len(sent_dms) == 0)
+        check('dm_sent < 3h → kein Duplikat', len(sent_dms) == 0)
+
+        # 10b) DM vor > 3h gesendet → erneut senden
+        state_r = watch2.get('watching', {}).get(str(fake_uid), {})
+        state_r['dm_sent'] = (datetime.now(timezone.utc) - timedelta(hours=3, minutes=5)).isoformat()
+        state_r['since'] = (datetime.now(timezone.utc) - timedelta(hours=4)).isoformat()
+        atomic_write(mot.ACTIVITY_WATCH_FILE, {'watching': {str(fake_uid): state_r}})
+        sent_dms.clear()
+        mot.rookhub.get_player_progress = lambda uid: _progress(puzzle_min=10, puzzle_done_min=0)
+        run_async(mot._check_activities())
+        check('dm_sent > 3h → erneut gesendet', len(sent_dms) == 1)
 
         # 11) Alle Ziele erfuellt → keine DM
         mot.rookhub.get_player_progress = lambda uid: _progress(puzzle_min=10, puzzle_done_min=15)

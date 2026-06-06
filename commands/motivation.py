@@ -374,8 +374,14 @@ async def _check_activities():
         state = dict(prev)
         new_watching[uid_str] = state
 
-        if state.get('dm_sent'):
-            continue
+        # dm_sent speichert den Timestamp der letzten DM (oder None); nach 3h erneut senden
+        dm_sent = state.get('dm_sent')
+        if dm_sent:
+            try:
+                if (now - datetime.fromisoformat(dm_sent)).total_seconds() < 3 * 3600:
+                    continue
+            except (TypeError, ValueError):
+                continue  # Legacy-Boolean True → ueberspringen
 
         try:
             since = datetime.fromisoformat(state['since'])
@@ -401,7 +407,7 @@ async def _check_activities():
                 text = await _build_slacker_text(current_game, cats, round(elapsed_minutes))
             dm = await user_obj.create_dm()
             await dm.send(text)
-            state['dm_sent'] = True
+            state['dm_sent'] = now.isoformat()
             log.info('Slacker-DM an User %s (spielt %s seit %d min, linked=%s)',
                      uid_str, current_game, round(elapsed_minutes), progress is not None)
         except Exception:
