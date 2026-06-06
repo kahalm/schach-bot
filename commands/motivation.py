@@ -75,11 +75,11 @@ def _get_member(uid_int: int):
     return None
 
 
-def _get_current_game(member) -> str | None:
-    """Gibt den Namen des aktiven Spiels zurueck (nur playing-Typ; Schach-Apps ignoriert).
+def _get_current_game(member) -> 'tuple[str, datetime | None] | None':
+    """Gibt (Name, Start) des aktiven Spiels zurueck (nur playing-Typ; Schach-Apps ignoriert).
 
-    Prueft ``member.activities`` auf ``ActivityType.playing``-Eintraege. Ist der User
-    offline oder hat keine passende Aktivitaet, wird ``None`` zurueckgegeben.
+    ``Start`` ist ``act.start`` aus dem Discord Rich Presence (datetime UTC) oder None.
+    Ist der User offline oder hat keine passende Aktivitaet, wird ``None`` zurueckgegeben.
     """
     if member is None:
         return None
@@ -94,7 +94,7 @@ def _get_current_game(member) -> str | None:
         if is_playing:
             name = (getattr(act, 'name', '') or '').strip()
             if name and 'chess' not in name.lower():
-                return name
+                return (name, getattr(act, 'start', None))
     return None
 
 
@@ -351,19 +351,21 @@ async def _check_activities():
     for uid_str in list(subscribers.keys()):
         uid_int = int(uid_str)
         member = _get_member(uid_int)
-        current_game = _get_current_game(member)
+        game_info = _get_current_game(member)
 
-        if current_game is None:
+        if game_info is None:
             # Kein aktives Spiel → Watch-State verwerfen
             continue
 
+        current_game, act_start = game_info
         prev = watching.get(uid_str, {})
 
         if prev.get('name', '') != current_game:
-            # Neues (oder anderes) Spiel → Tracking starten
+            # Neues (oder anderes) Spiel → Tracking starten; Discord-Start bevorzugen
+            since = act_start.isoformat() if act_start is not None else now.isoformat()
             new_watching[uid_str] = {
                 'name': current_game,
-                'since': now.isoformat(),
+                'since': since,
                 'dm_sent': False,
             }
             continue

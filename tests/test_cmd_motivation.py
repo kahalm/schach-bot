@@ -263,9 +263,10 @@ class _FakeActivityType:
 
 
 class _FakeActivity:
-    def __init__(self, name, act_type='playing'):
+    def __init__(self, name, act_type='playing', start=None):
         self.name = name
         self.type = act_type
+        self.start = start
 
 
 class _FakeMember:
@@ -302,9 +303,16 @@ def test_activity_watcher():
         m = _FakeMember([_FakeActivity('Spotify', 'listening')])
         check('get_game listening → None', mot._get_current_game(m) is None)
 
-        # 4) playing-Spiel → Name zurueck
+        # 4) playing-Spiel ohne Discord-Start → (Name, None)
         m = _FakeMember([_FakeActivity('Valorant', 'playing')])
-        check('get_game Valorant → "Valorant"', mot._get_current_game(m) == 'Valorant')
+        check('get_game Valorant → ("Valorant", None)', mot._get_current_game(m) == ('Valorant', None))
+
+        # 4b) playing-Spiel mit Discord-Start → (Name, start)
+        fake_start = datetime.now(timezone.utc) - timedelta(minutes=90)
+        m = _FakeMember([_FakeActivity('Valorant', 'playing', start=fake_start)])
+        result = mot._get_current_game(m)
+        check('get_game mit Discord-Start → Name korrekt', result is not None and result[0] == 'Valorant')
+        check('get_game mit Discord-Start → Start-Zeit korrekt', result is not None and result[1] == fake_start)
 
         # 5) Schach-Spiel wird ignoriert
         m = _FakeMember([_FakeActivity('Chess.com', 'playing')])
@@ -348,9 +356,23 @@ def test_activity_watcher():
         check('neues Spiel → Watch-State angelegt', state.get('name') == 'Valorant')
         check('neues Spiel → dm_sent=False', state.get('dm_sent') is False)
 
+        # 7b) Discord-Start-Timestamp wird als since uebernommen
+        discord_start = datetime.now(timezone.utc) - timedelta(minutes=90)
+        fake_member.activities = [_FakeActivity('Valorant', 'playing', start=discord_start)]
+        # Watch-State loeschen damit neues Tracking beginnt
+        from core.json_store import atomic_write as _aw
+        _aw(mot.ACTIVITY_WATCH_FILE, {'watching': {}})
+        run_async(mot._check_activities())
+        watch_b = atomic_read(mot.ACTIVITY_WATCH_FILE, default=dict)
+        state_b = watch_b.get('watching', {}).get(str(fake_uid), {})
+        stored_since = state_b.get('since', '')
+        check('Discord-Start → since entspricht act.start',
+              stored_since == discord_start.isoformat())
+        # Activity ohne Start zuruecksetzen fuer folgende Tests
+        fake_member.activities = [_FakeActivity('Valorant', 'playing')]
+
         # 8) Noch keine Stunde → keine DM
-        from datetime import timedelta, timezone as tz
-        state['since'] = (datetime.now(tz.utc) - timedelta(minutes=30)).isoformat()
+        state['since'] = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
         state['dm_sent'] = False
         atomic_write(mot.ACTIVITY_WATCH_FILE, {'watching': {str(fake_uid): state}})
         sent_dms = []
@@ -363,7 +385,7 @@ def test_activity_watcher():
         check('<60 min → keine DM gesendet', len(sent_dms) == 0)
 
         # 9) Ueber eine Stunde, Ziele offen → DM wird gesendet
-        state['since'] = (datetime.now(tz.utc) - timedelta(minutes=75)).isoformat()
+        state['since'] = (datetime.now(timezone.utc) - timedelta(minutes=75)).isoformat()
         state['dm_sent'] = False
         atomic_write(mot.ACTIVITY_WATCH_FILE, {'watching': {str(fake_uid): state}})
         sent_dms.clear()
@@ -381,7 +403,7 @@ def test_activity_watcher():
 
         # 11) Alle Ziele erfuellt → keine DM
         mot.rookhub.get_player_progress = lambda uid: _progress(puzzle_min=10, puzzle_done_min=15)
-        state2 = {'name': 'CS2', 'since': (datetime.now(tz.utc) - timedelta(minutes=90)).isoformat(), 'dm_sent': False}
+        state2 = {'name': 'CS2', 'since': (datetime.now(timezone.utc) - timedelta(minutes=90)).isoformat(), 'dm_sent': False}
         atomic_write(mot.ACTIVITY_WATCH_FILE, {'watching': {str(fake_uid): state2}})
         sent_dms.clear()
         run_async(mot._check_activities())
@@ -390,7 +412,7 @@ def test_activity_watcher():
         # 12) Nicht verknuepft → DM mit Registrierungs-CTA
         mot.rookhub.get_player_progress = lambda uid: None
         # Gleiche Aktivitaet wie member (Valorant), >60 min
-        state3 = {'name': 'Valorant', 'since': (datetime.now(tz.utc) - timedelta(minutes=90)).isoformat(), 'dm_sent': False}
+        state3 = {'name': 'Valorant', 'since': (datetime.now(timezone.utc) - timedelta(minutes=90)).isoformat(), 'dm_sent': False}
         atomic_write(mot.ACTIVITY_WATCH_FILE, {'watching': {str(fake_uid): state3}})
         sent_dms.clear()
         run_async(mot._check_activities())

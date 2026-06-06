@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.56.2] - 2026-06-06
+### Fixed
+- Activity-Watch: `_get_current_game` gibt jetzt `(name, start)` zurück; `_check_activities`
+  nutzt `act.start` aus dem Discord Rich Presence als `since`-Zeitstempel wenn verfügbar.
+  Damit ist die 60-Minuten-Schwelle exakt statt maximal +30 min zu spät.
+
 ## [2.56.1] - 2026-06-06
 ### Changed
 - Activity-Watch: Nicht-verknüpfte User bekommen jetzt ebenfalls eine sarkastische DM
