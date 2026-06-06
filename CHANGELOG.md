@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.55.2] - 2026-06-06
+### Fixed
+- Tagespuzzle: `🧩 X dran versucht` wird nicht mehr angezeigt, wenn alle Teilnehmer das
+  Puzzle gelöst haben (`attempts == total`). Vorher sah „Gelöst (1): @X · 🧩 1 dran versucht"
+  aus, als hätte eine zweite Person es versucht und nicht geschafft.
+
 ## [2.55.1] - 2026-06-06
 ### Changed
 - Tagespuzzle: Der Bot setzt **keine ✅-Reaction** mehr auf den Daily-Post, wenn jemand löst —

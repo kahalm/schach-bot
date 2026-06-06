@@ -70,25 +70,43 @@ def test_only_anonymous():
     check('nicht "Noch niemand"', 'Noch niemand' not in line)
 
 
+def test_all_solved_hides_try_count():
+    # Bug: wenn attempts == total, sah "Gelöst (1): @X · 🧩 1 dran versucht" aus als
+    # wäre eine zweite Person gescheitert. Fix: "dran versucht" nur bei attempts > total.
+    res = {'solvedCount': 1, 'attemptCount': 1, 'solvers': [{'name': 'Patrik', 'discordId': '42'}]}
+    line = dr.format_solver_line(res)
+    check('alle gelöst → kein "dran versucht"', 'dran versucht' not in line)
+    check('alle gelöst → Gelöst (1) steht drin', 'Gelöst (1)' in line)
+
+    # Wenn mehr versucht als gelöst → Zahl soll weiter erscheinen
+    res2 = {'solvedCount': 1, 'attemptCount': 3, 'solvers': [{'name': 'Patrik', 'discordId': '42'}]}
+    line2 = dr.format_solver_line(res2)
+    check('nicht alle gelöst → "dran versucht" zeigen', 'dran versucht' in line2)
+
+
 def test_remember_current_roundtrip():
     dr.DAILY_FILE = f'/tmp/test_daily_post_{os.getpid()}.json'
     if os.path.exists(dr.DAILY_FILE):
         os.remove(dr.DAILY_FILE)
     dr.remember(123, 456, 789)
     cur = dr.current()
-    check('current() liefert heutigen Post',
+    check('current() liefert gespeicherten Post',
           cur is not None and cur['channel_id'] == 123 and cur['message_id'] == 456 and cur['puzzle_id'] == 789)
 
+    # current() prüft KEIN Datum mehr (intentional: vermeidet eingefrorenes Embed
+    # zwischen UTC-Mitternacht und dem nächsten /daily-Lauf).
     from core.json_store import atomic_write
     stale = dict(cur); stale['date'] = '2000-01-01'
     atomic_write(dr.DAILY_FILE, stale)
-    check('altes Datum → current() = None', dr.current() is None)
+    check('altes Datum → current() gibt trotzdem Daten zurück', dr.current() is not None)
+
     os.remove(dr.DAILY_FILE)
 
 
 def main():
     for t in (test_no_solvers, test_mentions_and_names, test_truncates_long_list,
-              test_anonymous_counted, test_only_anonymous, test_remember_current_roundtrip):
+              test_anonymous_counted, test_only_anonymous, test_all_solved_hides_try_count,
+              test_remember_current_roundtrip):
         print(f'== {t.__name__} ==')
         t()
     print()

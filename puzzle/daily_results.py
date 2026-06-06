@@ -78,7 +78,8 @@ def format_solver_line(results: dict, max_names: int = MAX_NAMES) -> str:
         body = ', '.join(shown) + (f' +{more} weitere' if more > 0 else '')
     if anon > 0:
         body = (body + ' · ' if body else '') + f'{anon} anonym'
-    return f'✅ Gelöst ({total}): {body} · 🧩 {attempts} dran versucht'
+    suffix = f' · 🧩 {attempts} dran versucht' if attempts > total else ''
+    return f'✅ Gelöst ({total}): {body}{suffix}'
 
 
 def _field_name(f):
