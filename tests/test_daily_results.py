@@ -84,6 +84,34 @@ def test_all_solved_hides_try_count():
     check('nicht alle gelöst → "dran versucht" zeigen', 'dran versucht' in line2)
 
 
+def test_fmt_time():
+    check('0 s → leer', dr._fmt_time(0) == '')
+    check('45 s → "45s"', dr._fmt_time(45) == '45s')
+    check('60 s → "1:00"', dr._fmt_time(60) == '1:00')
+    check('83 s → "1:23"', dr._fmt_time(83) == '1:23')
+    check('3661 s → "61:01"', dr._fmt_time(3661) == '61:01')
+
+
+def test_time_display():
+    res = {'solvedCount': 2, 'attemptCount': 2, 'solvers': [
+        {'name': 'Anna', 'discordId': '111', 'timeSeconds': 45},
+        {'name': 'Ben', 'discordId': None, 'timeSeconds': 83},
+    ]}
+    line = dr.format_solver_line(res)
+    check('Zeit in Sekunden → "45s"', '(45s)' in line)
+    check('Zeit in Minuten → "1:23"', '(1:23)' in line)
+    check('@mention mit Zeit', '<@111> (45s)' in line)
+
+
+def test_time_zero_hidden():
+    res = {'solvedCount': 1, 'attemptCount': 1, 'solvers': [
+        {'name': 'Anna', 'discordId': '111', 'timeSeconds': 0},
+    ]}
+    line = dr.format_solver_line(res)
+    check('timeSeconds=0 → keine Klammern', '()' not in line)
+    check('name/mention weiterhin vorhanden', '<@111>' in line)
+
+
 def test_remember_current_roundtrip():
     dr.DAILY_FILE = f'/tmp/test_daily_post_{os.getpid()}.json'
     if os.path.exists(dr.DAILY_FILE):
@@ -106,6 +134,7 @@ def test_remember_current_roundtrip():
 def main():
     for t in (test_no_solvers, test_mentions_and_names, test_truncates_long_list,
               test_anonymous_counted, test_only_anonymous, test_all_solved_hides_try_count,
+              test_fmt_time, test_time_display, test_time_zero_hidden,
               test_remember_current_roundtrip):
         print(f'== {t.__name__} ==')
         t()

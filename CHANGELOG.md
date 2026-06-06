@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.57.0] - 2026-06-06
+### Added
+- Tagespuzzle-Embed: Lösungszeit je Solver hinter dem Namen (z. B. `<@123> (1:23)`); kein Zeitstempel wenn timeSeconds = 0.
+
 ## [2.56.5] - 2026-06-06
 ### Changed
 - `/dm-log` Übersicht: User nach letzter Nachricht sortiert (neueste zuerst).

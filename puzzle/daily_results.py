@@ -58,6 +58,15 @@ def current() -> dict | None:
     return data
 
 
+def _fmt_time(seconds: int) -> str:
+    """Formatiert Sekunden als m:ss (ab 60 s) oder Xs."""
+    if seconds <= 0:
+        return ''
+    if seconds < 60:
+        return f'{seconds}s'
+    return f'{seconds // 60}:{seconds % 60:02d}'
+
+
 def format_solver_line(results: dict, max_names: int = MAX_NAMES) -> str:
     """Baut die Solver-Zeile fürs Embed-Feld (rein, testbar). Eingeloggte Löser namentlich,
     anonyme Löser nur als Anzahl („+N anonym"). Gesamtzahl = eingeloggt + anonym."""
@@ -71,7 +80,9 @@ def format_solver_line(results: dict, max_names: int = MAX_NAMES) -> str:
     shown = []
     for s in solvers[:max_names]:
         did = s.get('discordId')
-        shown.append(f'<@{did}>' if did else (s.get('name') or '—'))
+        name = f'<@{did}>' if did else (s.get('name') or '—')
+        t = _fmt_time(s.get('timeSeconds', 0))
+        shown.append(f'{name} ({t})' if t else name)
     body = ''
     if shown:
         more = named - len(shown)
