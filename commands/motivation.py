@@ -491,20 +491,27 @@ async def _run_motivation_dms():
         if now < _parse_utc(raw_next):
             continue
 
+        hour = info.get('hour', _DEFAULT_HOUR)
+        minute = info.get('minute', _DEFAULT_MINUTE)
+
+        sent = False
         try:
             await _send_motivation_to(int(uid_str))
             log.info('Motivations-DM an User %s gesendet.', uid_str)
+            sent = True
         except Exception:
-            log.warning('Motivations-DM an User %s fehlgeschlagen', uid_str)
+            log.warning('Motivations-DM an User %s fehlgeschlagen — Retry in 60 min.', uid_str)
 
-        # next sofort auf morgen gleiche Zeit setzen (kein Duplikat bei Crash)
-        hour = info.get('hour', _DEFAULT_HOUR)
-        minute = info.get('minute', _DEFAULT_MINUTE)
-        tomorrow = (now_vienna + timedelta(days=1)).replace(
-            hour=hour, minute=minute, second=0, microsecond=0)
-        tomorrow_iso = tomorrow.astimezone(timezone.utc).isoformat()
+        if sent:
+            next_dt = (now_vienna + timedelta(days=1)).replace(
+                hour=hour, minute=minute, second=0, microsecond=0)
+        else:
+            # Retry in 60 min statt still überspringen
+            next_dt = (now + timedelta(hours=1)).astimezone(_VIENNA)
 
-        def _advance_one(data, _uid=uid_str, _iso=tomorrow_iso):
+        next_iso = next_dt.astimezone(timezone.utc).isoformat()
+
+        def _advance_one(data, _uid=uid_str, _iso=next_iso):
             if not isinstance(data, dict):
                 data = _sub_default()
             subs = data.setdefault('subscribers', {})

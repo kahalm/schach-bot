@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.59.1] - 2026-06-07
+### Fixed
+- Motivations-DM: `next` wird bei fehlgeschlagenem Send (z. B. DMs deaktiviert) nicht mehr auf morgen vorgerückt, sondern auf `now + 60 min` — damit erfolgt ein Retry statt stilles Überspringen.
+
 ## [2.59.0] - 2026-06-07
 ### Added
 - Positives Reinforcement: sofortige Glückwunsch-DM wenn ein Spieler das Tagespuzzle löst (via Webhook), einen Wochenpost fertigstellt (via Webhook) oder alle Tagesziele erfüllt (10-min-Poll für Motivation-Abonnenten). Neues Modul `core/reinforcement.py` mit State-Tracking (kein Doppel-DM) und Claude-generiertem Text mit Fallback.
