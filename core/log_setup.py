@@ -4,6 +4,33 @@ import logging
 import sys
 from logging.handlers import RotatingFileHandler
 
+from core import es_client
+
+
+_LEVEL_MAP = {
+    logging.DEBUG: 'Debug',
+    logging.INFO: 'Information',
+    logging.WARNING: 'Warning',
+    logging.ERROR: 'Error',
+    logging.CRITICAL: 'Fatal',
+}
+
+
+class _ESHandler(logging.Handler):
+    """Sendet Log-Records fire-and-forget an Elasticsearch."""
+
+    def emit(self, record: logging.LogRecord):
+        try:
+            level = _LEVEL_MAP.get(record.levelno, 'Information')
+            msg = self.format(record)
+            extra = {'logger': record.name}
+            if record.exc_info:
+                import traceback
+                extra['exception'] = ''.join(traceback.format_exception(*record.exc_info))
+            es_client.send_log(level, msg, extra)
+        except Exception:
+            pass
+
 
 class _SuppressEmptyFen:
     """python-chess schreibt Parsing-Warnungen direkt auf stdout/stderr –
@@ -60,5 +87,13 @@ def setup() -> logging.Logger:
     log.setLevel(logging.DEBUG)
     log.addHandler(file_handler)
     log.addHandler(term_handler)
+
+    if es_client.enabled():
+        es_handler = _ESHandler()
+        es_handler.setLevel(logging.INFO)
+        # Nur die reine Message ohne Zeitstempel (ES bekommt @timestamp separat)
+        es_handler.setFormatter(logging.Formatter('%(message)s'))
+        log.addHandler(es_handler)
+
     log.propagate = False
     return log

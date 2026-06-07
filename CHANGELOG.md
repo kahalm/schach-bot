@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.60.0] - 2026-06-07
+### Added
+- Elasticsearch-Logging: Alle `INFO`/`WARNING`/`ERROR`-Log-Records werden zusätzlich zur Datei fire-and-forget nach ES gesendet (`ES_URL`-Env-Var, optional; leer = deaktiviert). Index-Format: `{ES_INDEX_PREFIX}-{YYYY.MM}`, Default-Prefix `schach-bot-logs`.
+- Elasticsearch-Events: Puzzle-Reaktionen (`event_log.py`) und Stat-Inkremente (`stats.py`) werden als strukturierte Dokumente in einen separaten Events-Index gespiegelt (`schach-bot-events-{YYYY.MM}`). JSONL-Datei bleibt als lokaler Fallback erhalten.
+- Neues Modul `core/es_client.py`: non-blocking Background-Queue + Worker-Thread; ES-Ausfälle beeinflussen den Bot nicht.
+
 ## [2.59.1] - 2026-06-07
 ### Fixed
 - Motivations-DM: `next` wird bei fehlgeschlagenem Send (z. B. DMs deaktiviert) nicht mehr auf morgen vorgerückt, sondern auf `now + 60 min` — damit erfolgt ein Retry statt stilles Überspringen.

@@ -2,6 +2,7 @@
 
 import os
 
+from core import es_client
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 
@@ -17,6 +18,7 @@ def inc(user_id: int, key: str, n: int = 1):
         data[uid][key] = data[uid].get(key, 0) + n
         return data
     atomic_update(STATS_FILE, _update)
+    es_client.send_event('stat_inc', {'user_id': user_id, 'key': key, 'n': n})
 
 
 def get(user_id: int) -> dict:

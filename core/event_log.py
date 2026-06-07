@@ -17,6 +17,7 @@ import threading
 from collections import deque
 from datetime import datetime, timezone
 
+from core import es_client
 from core.paths import CONFIG_DIR
 
 log = logging.getLogger('schach-bot')
@@ -80,6 +81,8 @@ def log_reaction(user_id: int,
             _invalidate_user_done_cache()
     except OSError as e:
         log.warning('Reaction-Log Schreibfehler: %s', e)
+
+    es_client.send_event('reaction', entry)
 
 
 _MAX_LOG_LINES = 50_000

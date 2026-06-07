@@ -24,6 +24,9 @@ services:
       - SFTPGO_SHARE_PASSWORD=${SFTPGO_SHARE_PASSWORD}
       # RookHub-Webhook (Solver-Updates). Secret == RookHubs SCHACH_BOT_WEBHOOK_SECRET; leer = deaktiviert.
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      # Elasticsearch-Logging (optional). Leer = deaktiviert.
+      - ES_URL=${ES_URL:-}
+      - ES_INDEX_PREFIX=${ES_INDEX_PREFIX:-schach-bot-logs}
     ports:
       # Host-Port (= Port in der RookHub-URL) -> fester Container-Port 9000. Erreichbar via Host-IP.
       - "${WEBHOOK_PORT:-9000}:9000"
