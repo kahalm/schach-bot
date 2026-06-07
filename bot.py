@@ -204,7 +204,7 @@ async def on_ready():
     try:
         from core import webhook_server
         bot._webhook_runner = await webhook_server.start(
-            bot, WEBHOOK_BIND_HOST, WEBHOOK_PORT, WEBHOOK_SECRET)
+            bot, WEBHOOK_BIND_HOST, WEBHOOK_PORT, WEBHOOK_SECRET, channel_id=CHANNEL_ID)
     except Exception as e:
         log.exception('Webhook-Server konnte nicht starten: %s', e)
     # Verpasste Solver-Updates direkt nach Start einmal nachholen (Bot war evtl.

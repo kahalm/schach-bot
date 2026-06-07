@@ -748,6 +748,99 @@ def test_webhook_handler_dispatches_to_apply_solver_update():
     print()
 
 
+def test_daily_regenerate_webhook():
+    """POST /webhook/daily-regenerate: HMAC-verifiziert + postet neues Daily wenn date == current."""
+    print('[webhook daily-regenerate handler]')
+    import hashlib as _hashlib
+    import hmac as _hmac
+    import json as _json
+    from unittest.mock import MagicMock, AsyncMock, patch
+    from aiohttp import web
+    from core import webhook_server
+    from puzzle import daily_results as dr
+
+    secret = 'regen-secret'
+    posted = {}
+
+    orig_current = dr.current
+
+    async def fake_post_rookhub_puzzle(channel, pool, **kwargs):
+        posted['called'] = True
+        posted['pool'] = pool
+
+    async def make_request(body_dict: dict, sig_override=None) -> web.Response:
+        body = _json.dumps(body_dict).encode('utf-8')
+        sig = sig_override if sig_override is not None else \
+              _hmac.new(secret.encode(), body, _hashlib.sha256).hexdigest()
+        req = MagicMock()
+        req.read = AsyncMock(return_value=body)
+        req.headers = {'X-Webhook-Signature': sig} if sig else {}
+        return req
+
+    # Fake-Message für alten Thread (channel_id=1 aus current())
+    fake_old_msg = MagicMock()
+    fake_old_msg.reply = AsyncMock()
+    fake_old_ch = MagicMock()
+    fake_old_ch.fetch_message = AsyncMock(return_value=fake_old_msg)
+
+    # Haupt-Channel (channel_id=999, wird für den neuen Post verwendet)
+    fake_channel = MagicMock()
+
+    def get_channel_by_id(cid):
+        if cid == 1:
+            return fake_old_ch
+        return fake_channel
+
+    fake_bot = MagicMock()
+    fake_bot.get_channel = MagicMock(side_effect=get_channel_by_id)
+    fake_bot.fetch_channel = AsyncMock(return_value=fake_old_ch)
+
+    with patch('puzzle.posting.post_rookhub_puzzle', fake_post_rookhub_puzzle):
+        handler = webhook_server._make_daily_regenerate_handler(
+            bot=fake_bot, secret=secret, channel_id=999)
+
+        # 1) Datum == aktuelles Daily → neues Puzzle posten, alter Thread bekommt Hinweis
+        dr.current = lambda: {'date': '2026-06-06', 'channel_id': 1, 'message_id': 555, 'puzzle_id': 100}
+        posted.clear()
+        req = run_async(make_request({'date': '2026-06-06', 'puzzleId': 200}))
+        resp = run_async(handler(req))
+        check('current date → status 200', resp.status == 200)
+        check('current date → post_rookhub_puzzle aufgerufen', posted.get('called') is True)
+        check('current date → pool daily', posted.get('pool') == 'daily')
+        check('current date → alter Thread bekommt Reply', fake_old_msg.reply.called)
+
+        # 2) Datum != aktuelles Daily → kein Posting
+        posted.clear()
+        fake_old_msg.reply.reset_mock()
+        req = run_async(make_request({'date': '2026-06-05', 'puzzleId': 300}))
+        resp = run_async(handler(req))
+        check('different date → status 200', resp.status == 200)
+        check('different date → kein Posting', not posted.get('called'))
+
+        # 3) Kein aktuelles Daily → kein Posting
+        dr.current = lambda: None
+        posted.clear()
+        req = run_async(make_request({'date': '2026-06-06', 'puzzleId': 400}))
+        resp = run_async(handler(req))
+        check('no current daily → status 200', resp.status == 200)
+        check('no current daily → kein Posting', not posted.get('called'))
+
+        # 4) Falsche Signatur → 401
+        posted.clear()
+        req = run_async(make_request({'date': '2026-06-06', 'puzzleId': 200}, sig_override='bad'))
+        resp = run_async(handler(req))
+        check('invalid sig → status 401', resp.status == 401)
+
+        # 5) Fehlendes Pflichtfeld → 400
+        dr.current = lambda: {'date': '2026-06-06', 'channel_id': 1, 'message_id': 555, 'puzzle_id': 100}
+        req = run_async(make_request({'date': '2026-06-06'}))  # kein puzzleId
+        resp = run_async(handler(req))
+        check('missing puzzleId → status 400', resp.status == 400)
+
+    dr.current = orig_current
+    print()
+
+
 def test_daily_refresh_no_duplicate_board():
     """refresh() darf das Brettbild nicht doppelt rendern lassen.
 
