@@ -107,7 +107,13 @@ async def apply_solver_update(bot, cur: dict, results: dict) -> None:
     results: ``GET /api/book-puzzles/{id}/results``-Payload bzw. das gleiche
     DTO, das RookHub im Webhook mitschickt.
     """
+    import asyncio
     import discord
+    from core import reinforcement
+
+    # Neue Solver vor dem Embed-Update ermitteln (State-Check ist synchron).
+    puzzle_id = cur.get('puzzle_id')
+    new_solvers = reinforcement.new_puzzle_solvers(puzzle_id, results.get('solvers') or [])
 
     channel = bot.get_channel(cur['channel_id'])
     if channel is None:
@@ -140,6 +146,12 @@ async def apply_solver_update(bot, cur: dict, results: dict) -> None:
         await msg.edit(embed=embed)
     except Exception as e:
         log.warning('Daily-Post-Update fehlgeschlagen: %s', e)
+
+    # Reinforcement-DMs asynchron feuern (fire-and-forget).
+    for s in new_solvers:
+        asyncio.create_task(
+            reinforcement.notify_puzzle_solved(bot, s['discordId'], puzzle_id, s.get('timeSeconds', 0))
+        )
 
 
 async def refresh(bot) -> None:

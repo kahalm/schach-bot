@@ -173,6 +173,11 @@ def format_weekly_results(results: dict) -> str:
 async def apply_weekly_update(bot, weekly_id, results: dict) -> None:
     """Aktualisiert das Embed-Feld des gemerkten Wochenpost-Threads mit dem Fortschritt."""
     import discord
+    from core import reinforcement
+
+    # Neue Abschließer vor dem Embed-Update ermitteln.
+    new_completions = reinforcement.new_weekly_completions(weekly_id, results.get('players') or [])
+
     t = _thread_for(weekly_id)
     if not t:
         log.debug('Weekly-Update: kein gemerkter Thread fuer %s', weekly_id)
@@ -199,6 +204,12 @@ async def apply_weekly_update(bot, weekly_id, results: dict) -> None:
         await msg.edit(embed=embed)
     except Exception as e:
         log.warning('Weekly-Post-Update fehlgeschlagen: %s', e)
+
+    # Reinforcement-DMs asynchron feuern (fire-and-forget).
+    for p in new_completions:
+        asyncio.create_task(
+            reinforcement.notify_weekly_completed(bot, p['discordId'], weekly_id)
+        )
 
 
 async def run_weekly_announcements():

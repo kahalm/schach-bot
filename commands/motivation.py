@@ -330,6 +330,35 @@ async def _build_slacker_text(activity_name: str, cats: list, elapsed_min: int) 
     return text
 
 
+async def _check_goals_completed():
+    """Schickt Motivation-Abonnenten eine Glückwunsch-DM, wenn sie heute alle Tagesziele erfüllt haben.
+
+    Läuft alle 10 min im Motivations-Loop. Sendet nur EINMAL pro Tag pro User (Zustand in
+    reinforcement.json). Nur für Abonnenten mit verknüpftem RookHub-Konto und gesetzten Zielen.
+    """
+    from core import reinforcement
+
+    sub_data = atomic_read(MOTIVATION_SUB_FILE, default=_sub_default)
+    subscribers = sub_data.get('subscribers', {}) if isinstance(sub_data, dict) else {}
+    if not subscribers:
+        return
+
+    for uid_str in list(subscribers.keys()):
+        uid_int = int(uid_str)
+        if not reinforcement.goals_not_yet_notified_today(uid_str):
+            continue
+        progress = await asyncio.to_thread(rookhub.get_player_progress, uid_int)
+        if progress is None:
+            continue
+        cats, has_goal, all_met = _analyze_progress(progress)
+        if not has_goal or not all_met:
+            continue
+        try:
+            await reinforcement.notify_goals_met(_bot, uid_str, cats)
+        except Exception:
+            log.debug('Goals-Reinforcement an %s fehlgeschlagen', uid_str)
+
+
 async def _check_activities():
     """Prueft fuer alle Motivation-Abonnenten die Discord-Aktivitaet (alle 30 min).
 
@@ -686,7 +715,7 @@ def setup(bot):
         await interaction.followup.send(
             f'**{user.display_name}** — ' + ' '.join(parts), ephemeral=True)
 
-    # --- Loop (alle 10 min; DMs zur Wunschzeit + Activity-Watch) ----------
+    # --- Loop (alle 10 min; DMs zur Wunschzeit + Activity-Watch + Goals-Reinforcement) ----------
     @tasks.loop(minutes=10)
     async def _motivation_loop():
         try:
@@ -697,6 +726,10 @@ def setup(bot):
             await _check_activities()
         except Exception:
             log.exception('Activity-Watch fehlgeschlagen')
+        try:
+            await _check_goals_completed()
+        except Exception:
+            log.exception('Goals-Reinforcement-Check fehlgeschlagen')
 
     @bot.listen('on_ready')
     async def _start_motivation_loop():
