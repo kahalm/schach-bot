@@ -438,7 +438,14 @@ async def _check_activities():
             await dm.send(text)
             state['dm_sent'] = now.isoformat()
             log.info('Slacker-DM an User %s (spielt %s seit %d min, linked=%s)',
-                     uid_str, current_game, round(elapsed_minutes), progress is not None)
+                     uid_str, current_game, round(elapsed_minutes), progress is not None,
+                     extra={'es_fields': {
+                         'username': user_obj.name,
+                         'dm_text': text,
+                         'game': current_game,
+                         'elapsed_minutes': round(elapsed_minutes),
+                         'linked': progress is not None,
+                     }})
         except Exception:
             log.warning('Slacker-DM an User %s fehlgeschlagen', uid_str)
 

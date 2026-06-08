@@ -27,6 +27,8 @@ class _ESHandler(logging.Handler):
             if record.exc_info:
                 import traceback
                 extra['exception'] = ''.join(traceback.format_exception(*record.exc_info))
+            if hasattr(record, 'es_fields') and isinstance(record.es_fields, dict):
+                extra.update(record.es_fields)
             es_client.send_log(level, msg, extra)
         except Exception:
             pass

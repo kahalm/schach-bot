@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.60.1] - 2026-06-08
+### Changed
+- Slacker-DM-Log enthält jetzt strukturierte ES-Felder: `username`, `dm_text`, `game`, `elapsed_minutes`, `linked`
+- `_ESHandler` unterstützt `es_fields`-Extra-Dict für strukturierte Felder in beliebigen Log-Aufrufen
+
 ## [2.60.0] - 2026-06-07
 ### Added
 - Elasticsearch-Logging: Alle `INFO`/`WARNING`/`ERROR`-Log-Records werden zusätzlich zur Datei fire-and-forget nach ES gesendet (`ES_URL`-Env-Var, optional; leer = deaktiviert). Index-Format: `{ES_INDEX_PREFIX}-{YYYY.MM}`, Default-Prefix `schach-bot-logs`.
