@@ -64,18 +64,33 @@ def _index_name(prefix: str) -> str:
 
 
 def send_log(level: str, message: str, extra: dict | None = None):
-    """Log-Eintrag nach ES senden (fire-and-forget)."""
+    """Log-Eintrag im kanonischen ECS-Schema nach ES senden (fire-and-forget).
+
+    Felder gemaess log-watcher/schema/logging-schema.md (log.level, message,
+    service.name, log.logger, labels.*). Das Dokument laeuft zusaetzlich durch die
+    zentrale Ingest-Pipeline logs-schema-normalize (Pflichtfelder/Defaults).
+    """
     if not _ES_URL:
         return
     _ensure_worker()
+    extra = dict(extra or {})
+    logger = extra.pop('logger', None)
+    exception = extra.pop('exception', None)
+    log_obj = {'level': level}
+    if logger:
+        log_obj['logger'] = logger
     doc = {
         '@timestamp': datetime.now(timezone.utc).isoformat(timespec='milliseconds'),
-        'level': level,
+        'log': log_obj,
         'message': message,
-        'fields': {'Application': 'schach-bot', **(extra or {})},
+        'service': {'name': 'schach-bot'},
     }
+    if exception:
+        doc['error'] = {'stack_trace': exception}
+    if extra:
+        doc['labels'] = extra
     try:
-        url = f"{_ES_URL}/{_index_name(_INDEX_PREFIX)}/_doc"
+        url = f"{_ES_URL}/{_index_name(_INDEX_PREFIX)}/_doc?pipeline=logs-schema-normalize"
         _queue.put_nowait((url, doc))
     except queue.Full:
         pass
