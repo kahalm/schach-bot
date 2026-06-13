@@ -182,6 +182,45 @@ def get_player_progress(discord_id, timeout: int = _TIMEOUT) -> dict | None:
         return None
 
 
+def get_daily_leaderboard(month: str | None = None, timeout: int = _TIMEOUT) -> dict | None:
+    """Holt die Monats-Wertung des Tagespuzzles (`GET /api/book-puzzles/daily/leaderboard`).
+
+    ``month`` als ``yyyy-MM`` (Default serverseitig: laufender UTC-Monat). Rueckgabe:
+    ``{period, entries:[{name, discordId?, discordUsername?, points, solved, golds}]}`` (absteigend
+    nach Punkten) oder ``None`` (Fehler / API-URL fehlt).
+    """
+    if not ROOKHUB_API_URL:
+        log.warning('ROOKHUB_API_URL nicht gesetzt – kann keine Tagespuzzle-Wertung holen.')
+        return None
+    params = {'month': month} if month else None
+    try:
+        r = requests.get(_api('/api/book-puzzles/daily/leaderboard'), params=params, timeout=timeout)
+        r.raise_for_status()
+        return r.json()
+    except (requests.RequestException, ValueError) as e:
+        log.warning('RookHub get_daily_leaderboard(%s) fehlgeschlagen: %s', month, e)
+        return None
+
+
+def get_daily_hall_of_fame(top: int = 5, timeout: int = _TIMEOUT) -> dict | None:
+    """Holt die all-time Hall of Fame des Tagespuzzles (`GET /api/book-puzzles/daily/hall-of-fame`).
+
+    Rueckgabe: ``{mostSolved:[{name, discordId?, value}], mostGolds:[…], fastest:{name, timeSeconds, date}?}``
+    oder ``None`` (Fehler / API-URL fehlt). ``top`` begrenzt die Listenlaenge (serverseitig 1–25).
+    """
+    if not ROOKHUB_API_URL:
+        log.warning('ROOKHUB_API_URL nicht gesetzt – kann keine Tagespuzzle-Hall-of-Fame holen.')
+        return None
+    try:
+        r = requests.get(_api('/api/book-puzzles/daily/hall-of-fame'),
+                         params={'top': top}, timeout=timeout)
+        r.raise_for_status()
+        return r.json()
+    except (requests.RequestException, ValueError) as e:
+        log.warning('RookHub get_daily_hall_of_fame fehlgeschlagen: %s', e)
+        return None
+
+
 def get_weekly_posts(timeout: int = _TIMEOUT) -> list | None:
     """Liste der Wochenposts von RookHub (`GET /api/weekly-posts`).
 

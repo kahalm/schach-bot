@@ -85,6 +85,7 @@ WELCOME_MESSAGE = (
     '🔔 `/turnier_sub` — Bei neuen Turnieren gepingt werden\n'
     '🏇 `/schachrallye` — Schachrallye-Termine anzeigen\n'
     '💡 `/wanted` — Feature-Wünsche einreichen\n'
+    '🏆 `/bestenliste` — Tagespuzzle: Monats-Wertung + Hall of Fame\n'
     '📊 `/stats` — Deine Statistiken\n\n'
     'Mit `/help` siehst du alle Befehle im Detail.'
 )
@@ -130,7 +131,7 @@ tree = bot.tree
 # Module laden
 import puzzle
 import library
-from commands import reminder, resourcen, youtube, elo, release_notes, blind, test, wanted, schachrallye, weeklypost, chat, link, motivation
+from commands import reminder, resourcen, youtube, elo, release_notes, blind, test, wanted, schachrallye, weeklypost, chat, link, motivation, leaderboard
 
 puzzle.setup(bot)
 library.setup(bot)
@@ -147,6 +148,7 @@ weeklypost.setup(bot, wochenpost_channel_id=WOCHENPOST_CHANNEL_ID)
 chat.setup(bot)
 link.setup(bot)
 motivation.setup(bot)
+leaderboard.setup(bot, channel_id=CHANNEL_ID)
 
 
 _ready_done = False

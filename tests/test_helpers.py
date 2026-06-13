@@ -411,6 +411,7 @@ def setup_temp_config():
     _patch_file_constant('commands.reminder', 'REMINDER_FILE', tmpdir)
     _patch_file_constant('commands.schachrallye', 'TURNIER_FILE', tmpdir)
     _patch_file_constant('commands.weeklypost', 'WEEKLY_STATE_FILE', tmpdir)
+    _patch_file_constant('commands.leaderboard', 'STATE_FILE', tmpdir)
     _patch_file_constant('commands.motivation', 'MOTIVATION_SUB_FILE', tmpdir)
     _patch_file_constant('commands.chat', 'CHAT_FILE', tmpdir)
     _patch_file_constant('core.stats', 'STATS_FILE', tmpdir)
@@ -495,6 +496,7 @@ import commands.weeklypost as weeklypost_mod
 import commands.turnier_buttons as turnier_buttons_mod
 import commands.chat as chat_mod
 import commands.motivation as motivation_mod
+import commands.leaderboard as leaderboard_mod
 
 # bot.py importieren (ruft am Ende bot.run() auf, was jetzt ein no-op ist)
 import bot as bot_mod
@@ -505,11 +507,13 @@ import bot as bot_mod
 _cap_bot = _CapturingBot()
 for mod in (elo_mod, resourcen_mod, youtube_mod, wanted_mod,
             release_notes_mod, reminder_mod, schachrallye_mod, weeklypost_mod,
-            chat_mod, motivation_mod):
+            chat_mod, motivation_mod, leaderboard_mod):
     if mod is schachrallye_mod:
         mod.setup(_cap_bot, tournament_channel_id=0)
     elif mod is weeklypost_mod:
         mod.setup(_cap_bot, wochenpost_channel_id=0)
+    elif mod is leaderboard_mod:
+        mod.setup(_cap_bot, channel_id=0)
     else:
         mod.setup(_cap_bot)
 

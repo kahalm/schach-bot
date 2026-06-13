@@ -32,6 +32,10 @@ from test_cmd_events import (
     test_turnier_review, test_turnier_approve_modal,
 )
 from test_cmd_weeklypost import test_weekly_announcer, test_weekly_results_format
+from test_cmd_leaderboard import (
+    test_leaderboard_format, test_leaderboard_monthly_schedule,
+    test_leaderboard_command, test_leaderboard_monthly_post,
+)
 from test_cmd_motivation import (
     test_motivation_command, test_motivation_builder, test_motivation_random_spruch,
     test_parse_zeit, test_activity_watcher, test_slacker_text,
@@ -112,6 +116,10 @@ def main():
     test_posted_reset_per_pool()
     test_weekly_announcer()
     test_weekly_results_format()
+    test_leaderboard_format()
+    test_leaderboard_monthly_schedule()
+    test_leaderboard_command()
+    test_leaderboard_monthly_post()
     test_parse_zeit()
     test_motivation_command()
     test_motivation_builder()

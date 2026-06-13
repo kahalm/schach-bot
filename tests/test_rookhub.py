@@ -126,10 +126,12 @@ def test_lookup_and_url():
     check('puzzle_web_url None → None', rh.puzzle_web_url(None) is None)
 
 
-def test_url_falls_back_to_api():
+def test_url_no_fallback_to_api():
+    # Bewusst KEIN Fallback auf die API-/interne URL (sonst landen interne Docker-Adressen
+    # in Discord-Posts). Ohne ROOKHUB_WEB_URL → kein Link.
     rh.ROOKHUB_API_URL = 'http://rookhub:5001'
     rh.ROOKHUB_WEB_URL = ''
-    check('web_url fällt auf API-URL zurück', rh.puzzle_web_url(3) == 'http://rookhub:5001/puzzles/book/3')
+    check('web_url ohne WEB_URL → None', rh.puzzle_web_url(3) is None)
 
 
 def test_lookup_caches_hit():
@@ -242,14 +244,68 @@ def test_game_from_puzzle_startply_midline():
           list(game.mainline_moves())[0].uci() == 'f1b5')
 
 
+def test_get_daily_leaderboard_ok():
+    rh.ROOKHUB_API_URL = 'http://rookhub:5001'
+    captured = {}
+
+    def fake_get(url, params=None, timeout=None):
+        captured['url'] = url
+        captured['params'] = params
+        return _FakeResp(200, {'period': '2026-06', 'entries': [{'name': 'Anna', 'points': 28}]})
+
+    _patch_get(fake_get)
+    data = rh.get_daily_leaderboard('2026-06')
+    check('get_daily_leaderboard gibt dict', data is not None and data['period'] == '2026-06')
+    check('get_daily_leaderboard ruft /daily/leaderboard',
+          captured['url'].endswith('/api/book-puzzles/daily/leaderboard'))
+    check('get_daily_leaderboard month-param', captured['params'] == {'month': '2026-06'})
+
+
+def test_get_daily_leaderboard_no_month():
+    rh.ROOKHUB_API_URL = 'http://rookhub:5001'
+    captured = {}
+
+    def fake_get(url, params=None, timeout=None):
+        captured['params'] = params
+        return _FakeResp(200, {'period': '2026-06', 'entries': []})
+
+    _patch_get(fake_get)
+    rh.get_daily_leaderboard()
+    check('get_daily_leaderboard ohne Monat → params None', captured['params'] is None)
+
+
+def test_get_daily_leaderboard_no_url():
+    rh.ROOKHUB_API_URL = ''
+    check('get_daily_leaderboard ohne URL → None', rh.get_daily_leaderboard('2026-06') is None)
+
+
+def test_get_daily_hall_of_fame_ok():
+    rh.ROOKHUB_API_URL = 'http://rookhub:5001'
+    captured = {}
+
+    def fake_get(url, params=None, timeout=None):
+        captured['url'] = url
+        captured['params'] = params
+        return _FakeResp(200, {'mostSolved': [], 'mostGolds': [], 'fastest': None})
+
+    _patch_get(fake_get)
+    data = rh.get_daily_hall_of_fame(top=3)
+    check('get_daily_hall_of_fame gibt dict', data is not None and 'mostSolved' in data)
+    check('get_daily_hall_of_fame ruft /daily/hall-of-fame',
+          captured['url'].endswith('/api/book-puzzles/daily/hall-of-fame'))
+    check('get_daily_hall_of_fame top-param', captured['params'] == {'top': 3})
+
+
 def main():
     for t in (test_get_puzzle_ok, test_get_puzzle_404, test_get_puzzle_no_url,
               test_send_heartbeat_ok, test_send_heartbeat_no_url, test_send_heartbeat_falls_back_to_web,
-              test_lookup_and_url, test_url_falls_back_to_api,
+              test_lookup_and_url, test_url_no_fallback_to_api,
               test_lookup_caches_hit, test_lookup_caches_404,
               test_lookup_200_without_id_not_cached,
               test_game_from_puzzle_illegal_raises, test_game_from_puzzle,
-              test_game_from_puzzle_startply_minus1, test_game_from_puzzle_startply_midline):
+              test_game_from_puzzle_startply_minus1, test_game_from_puzzle_startply_midline,
+              test_get_daily_leaderboard_ok, test_get_daily_leaderboard_no_month,
+              test_get_daily_leaderboard_no_url, test_get_daily_hall_of_fame_ok):
         print(f'== {t.__name__} ==')
         t()
     print()

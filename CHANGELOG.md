@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.61.0] - 2026-06-13
+### Added
+- `/bestenliste [monat]` — Tagespuzzle-Bestenliste auf Discord: Monats-Wertung (Punkte je im Erstversuch gelöstem Tagespuzzle + Tages-Rang-Bonus 🥇+5/🥈+3/🥉+1) + all-time Hall of Fame (meiste Dailies gelöst, meiste Gold-Tage, schnellste Lösung). Daten von RookHub (`/api/book-puzzles/daily/leaderboard` + `/hall-of-fame`).
+- Monatlicher Auto-Post: Am 1. jedes Monats wird die Endabrechnung des Vormonats automatisch in den Puzzle-Channel gepostet (einmalig, dedupliziert via `config/leaderboard_state.json`; leere Monate werden übersprungen).
+- `puzzle/daily_leaderboard.py` (reine, eigenständig testbare Formatier-/Termin-Logik) + `rookhub.get_daily_leaderboard`/`get_daily_hall_of_fame`.
+
 ## [2.60.1] - 2026-06-08
 ### Changed
 - Slacker-DM-Log enthält jetzt strukturierte ES-Felder: `username`, `dm_text`, `game`, `elapsed_minutes`, `linked`
