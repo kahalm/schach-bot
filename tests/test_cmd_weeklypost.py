@@ -69,6 +69,47 @@ def test_weekly_announcer():
     print()
 
 
+def test_weekly_announcement_prefills_progress():
+    """Beim Ankündigen wird das Fortschritts-Feld sofort aus den RookHub-Results befüllt — auch wenn
+    die Versuche schon VOR der Ankündigung aufgezeichnet wurden (Admin-Vorschau / Bot-Downtime), wo
+    der Webhook ins Leere ging (noch kein Thread)."""
+    print('[weekly announcement prefills progress]')
+    tmpdir = setup_temp_config()
+    ch = FakeChannel(channel_id=88888)
+    orig_results = wp.rookhub.get_weekly_results
+    try:
+        wp.rookhub.get_weekly_results = lambda wid, timeout=15: {
+            'total': 3, 'completedCount': 1,
+            'players': [
+                {'name': 'kahalm', 'discordId': '728', 'discordUsername': 'kahalm',
+                 'solvedCount': 3, 'playedCount': 3, 'totalSeconds': 90, 'completed': True},
+            ],
+        }
+        post = {'id': 5, 'title': 'Mate P2', 'scheduledAt': '2026-06-19T18:00:00'}
+        run_async(wp._post_announcement(ch, post))
+
+        check('Thread erstellt', len(ch.threads) == 1)
+        msg = ch.threads[0].sent[0]
+        embed = msg.kwargs.get('embed')
+        field = next((f for f in embed.fields if f.get('name') == wp._WEEKLY_FIELD), None)
+        check('Fortschritts-Feld vorhanden', field is not None)
+        check('Löser im Feld', field is not None and '<@728>' in field['value'])
+        # Thread/Message gemerkt → spätere Webhook-Updates greifen.
+        check('Thread gemerkt', wp._thread_for(5) is not None)
+
+        # Ohne Results-Daten (noch niemand) → kein Feld, aber Ankündigung trotzdem.
+        ch2 = FakeChannel(channel_id=88888)
+        wp.rookhub.get_weekly_results = lambda wid, timeout=15: {'total': 3, 'completedCount': 0, 'players': []}
+        run_async(wp._post_announcement(ch2, {'id': 6, 'title': 'Leer', 'scheduledAt': '2026-06-19T18:00:00'}))
+        embed2 = ch2.threads[0].sent[0].kwargs.get('embed')
+        has_field = any(f.get('name') == wp._WEEKLY_FIELD for f in embed2.fields)
+        check('kein Feld ohne Löser', not has_field)
+    finally:
+        wp.rookhub.get_weekly_results = orig_results
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_weekly_results_format():
     """format_weekly_results: wer erledigt + gelöst/total + Gesamtzeit je User (rein)."""
     print('[weekly results format]')

@@ -99,6 +99,13 @@ async def _post_announcement(channel, post: dict):
     thread = await channel.create_thread(name=_thread_name(post), type=discord.ChannelType.public_thread)
     embed = discord.Embed(title=title, color=EMBED_COLOR)
     embed.description = '\U0001f4ec Neuer Wochenpost zum Durchspielen auf RookHub'
+    # Fortschritt sofort befüllen, falls schon Versuche existieren (z.B. Admin-Vorschau vor dem Termin,
+    # Bot-Downtime): der Webhook feuert nur beim ERSTEN Versuch je Puzzle und ginge sonst ins Leere, weil
+    # zum Zeitpunkt des Versuchs noch kein Ankündigungs-Thread existierte. Pull beim Ankündigen schließt
+    # die Lücke und ist selbstheilend.
+    results = await asyncio.to_thread(rookhub.get_weekly_results, post.get('id'))
+    if results and (results.get('players') or []):
+        embed.add_field(name=_WEEKLY_FIELD, value=format_weekly_results(results), inline=False)
     # URL als content → Discord unfurlt sie; im Embed-Text wäre keine Vorschau möglich.
     msg = await thread.send(content=url or None, embed=embed)
     # Embed-Message merken → später per Webhook mit dem Fortschritt aktualisieren.

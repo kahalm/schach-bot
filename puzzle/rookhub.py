@@ -153,6 +153,25 @@ def get_daily_results(puzzle_id, since: str | None = None, timeout: int = _TIMEO
         return None
 
 
+def get_weekly_results(weekly_id, timeout: int = _TIMEOUT) -> dict | None:
+    """Holt die aggregierten Wochenpost-Ergebnisse von RookHub (`GET /api/weekly-posts/{id}/results`).
+
+    Rückgabe: dict ``{total, completedCount, players:[{name, discordId?, discordUsername?,
+    playedCount, solvedCount, totalSeconds, completed}]}`` oder ``None`` (Fehler / API-URL fehlt).
+    Wird beim Ankündigen genutzt, um das Fortschritts-Feld sofort zu befüllen — auch wenn Versuche
+    schon VOR der Ankündigung (z.B. Admin-Vorschau) aufgezeichnet wurden und damals kein Thread existierte.
+    """
+    if not ROOKHUB_API_URL or weekly_id is None:
+        return None
+    try:
+        r = requests.get(_api(f'/api/weekly-posts/{weekly_id}/results'), timeout=timeout)
+        r.raise_for_status()
+        return r.json()
+    except requests.RequestException as e:
+        log.debug('get_weekly_results(%s) fehlgeschlagen: %s', weekly_id, e)
+        return None
+
+
 def get_player_progress(discord_id, timeout: int = _TIMEOUT) -> dict | None:
     """Holt den Trainings-/Puzzle-Fortschritt eines mit RookHub verknuepften Spielers.
 

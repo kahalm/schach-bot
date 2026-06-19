@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.61.1] - 2026-06-19
+### Fixed
+- Wochenpost-Ankündigung befüllt das Fortschritts-Feld jetzt sofort beim Posten aus den RookHub-Ergebnissen (`GET /api/weekly-posts/{id}/results`). Vorher blieb das Embed dauerhaft ohne Löser, wenn ein Post schon VOR der Ankündigung durchgespielt wurde (z.B. Admin-Vorschau vor dem Termin oder Bot-Downtime): RookHub feuert den Fortschritts-Webhook nur beim ERSTEN Versuch je Puzzle, und der ging ins Leere, solange noch kein Ankündigungs-Thread existierte — erneutes Durchspielen ist idempotent und löst keinen neuen Webhook aus. Der Pull beim Ankündigen schließt die Lücke (selbstheilend).
+- `rookhub.get_weekly_results(weekly_id)` ergänzt.
+
 ## [2.61.0] - 2026-06-13
 ### Added
 - `/bestenliste [monat]` — Tagespuzzle-Bestenliste auf Discord: Monats-Wertung (Punkte je im Erstversuch gelöstem Tagespuzzle + Tages-Rang-Bonus 🥇+5/🥈+3/🥉+1) + all-time Hall of Fame (meiste Dailies gelöst, meiste Gold-Tage, schnellste Lösung). Daten von RookHub (`/api/book-puzzles/daily/leaderboard` + `/hall-of-fame`).
