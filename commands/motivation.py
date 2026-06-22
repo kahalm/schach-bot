@@ -135,6 +135,54 @@ def _analyze_progress(progress: dict):
     return cats, has_goal, all_met
 
 
+def _fmt_points(p) -> str:
+    """Punkte huebsch: 2.5 -> "2,5", 3.0 -> "3"."""
+    try:
+        f = float(p)
+    except (TypeError, ValueError):
+        return str(p)
+    if f == int(f):
+        return str(int(f))
+    return f'{f:.1f}'.replace('.', ',')
+
+
+def _days_phrase(days) -> str:
+    """Tage bis zum Turnier als natuerliche Phrase."""
+    if days is None:
+        return 'demnaechst'
+    if days <= 0:
+        return 'heute'
+    if days == 1:
+        return 'morgen'
+    return f'in {days} Tagen'
+
+
+def _tournament_facts(progress: dict) -> list:
+    """Fakten-Zeilen zu anstehenden/laufenden/beendeten Turnieren (fuer Prompt + Fallback)."""
+    lines = []
+    for t in (progress.get('tournaments') or []):
+        if not isinstance(t, dict):
+            continue
+        name = t.get('name') or 'Turnier'
+        status = t.get('status')
+        loc = t.get('location')
+        loc_txt = f' in {loc}' if loc else ''
+
+        pts = t.get('resultPoints')
+        games = t.get('resultGames') or 0
+        result_txt = ''
+        if pts is not None and games > 0:
+            result_txt = f' ({_fmt_points(pts)} aus {games} Partien)'
+
+        if status == 'upcoming':
+            lines.append(f'- Anstehendes Turnier "{name}"{loc_txt}: {_days_phrase(t.get("daysUntil"))}.')
+        elif status == 'ongoing':
+            lines.append(f'- Turnier "{name}"{loc_txt} laeuft heute{result_txt}.')
+        else:  # finished
+            lines.append(f'- Turnier "{name}"{loc_txt} ist gerade gelaufen{result_txt}.')
+    return lines
+
+
 def _facts_summary(progress: dict, cats, has_goal: bool) -> str:
     """Kompakte Faktenliste fuer den Claude-Prompt / das Fallback-Template."""
     name = progress.get('displayName') or progress.get('username') or 'Spieler'
@@ -165,6 +213,8 @@ def _facts_summary(progress: dict, cats, has_goal: bool) -> str:
             lines.append(f'Wochenpost "{title}": {wp.get("playedCount", 0)}/{total} gespielt (noch nicht fertig)')
         else:
             lines.append(f'Wochenpost "{title}": noch nicht angefangen')
+
+    lines.extend(_tournament_facts(progress))
 
     return '\n'.join(lines)
 
@@ -237,6 +287,23 @@ def _fallback_text(cats, has_goal: bool, all_met: bool) -> str:
     return f'{spruch}\n\n{body}' if spruch else body
 
 
+def _fallback_tournament_note(progress: dict) -> str:
+    """Kurze Turnier-Zeile fuer den Fallback-Text (ohne Claude) — nimmt das zeitnaechste Turnier."""
+    for t in (progress.get('tournaments') or []):
+        if not isinstance(t, dict):
+            continue
+        name = t.get('name') or 'Turnier'
+        status = t.get('status')
+        if status == 'upcoming':
+            return f'\U0001f3c6 Dein Turnier "{name}" steht an ({_days_phrase(t.get("daysUntil"))}) — viel Erfolg!'
+        pts = t.get('resultPoints')
+        games = t.get('resultGames') or 0
+        if pts is not None and games > 0:
+            return f'\U0001f3c6 Turnier "{name}": {_fmt_points(pts)} aus {games} Partien — stark!'
+        return f'\U0001f3c6 Dein Turnier "{name}" ist gelaufen — ich hoffe, es lief gut!'
+    return ''
+
+
 async def _build_motivation_text(uid: int, progress: dict) -> str:
     """Baut den Motivations-DM-Text fuer einen VERKNUEPFTEN Spieler (mit Stats)."""
     cats, has_goal, all_met = _analyze_progress(progress)
@@ -250,9 +317,18 @@ async def _build_motivation_text(uid: int, progress: dict) -> str:
            if all_met else
            'Es sind noch Ziele offen — motiviere passend zum Rueckstand.')
     )
+    if progress.get('tournaments'):
+        prompt += ('\n\nZusaetzlich hat der Spieler Turnier-Aktivitaet (siehe Fakten). Geh kurz und '
+                   'natuerlich darauf ein: bei einem anstehenden Turnier die Daumen druecken, bei einem '
+                   'gerade beendeten das Ergebnis aufgreifen (gutes Ergebnis feiern, sonst aufbauen). '
+                   'Nicht aufzaehlen — locker einflechten.')
     text = await _via_claude(system, prompt)
     if not text:
         text = _fallback_text(cats, has_goal, all_met)
+        # Ohne Claude die Turnier-Info nicht verlieren — kurze Zeile anhaengen.
+        note = _fallback_tournament_note(progress)
+        if note:
+            text += f'\n{note}'
 
     # CTA-Link nur wenn noch etwas zu tun ist — beim reinen Lob kein "mach weiter"-Link.
     if not all_met:

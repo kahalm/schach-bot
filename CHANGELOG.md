@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.62.0] - 2026-06-22
+### Added
+- Der Motivations-DM bezieht jetzt die Turniere des Spielers ein (aus RookHub via `GET /api/bot/player-progress`, neuer `tournaments`-Block). Vor einem anstehenden Turnier drückt der Bot die Daumen (mit Termin/Ort/„in X Tagen"), bei einem gerade beendeten greift er das Ergebnis auf (erreichte Punkte aus X Partien) und feiert bzw. baut auf.
+  - Neue Helfer `_tournament_facts`/`_fmt_points`/`_days_phrase` speisen Claude-Prompt und Fallback-Text; ohne Claude wird die zeitnächste Turnier-Info als kurze Zeile angehängt (`_fallback_tournament_note`), geht also nicht verloren.
+  - RookHub-Gegenstück: v0.170.0 (abonnierte Turniere werden rund um den Termin automatisch nachge-crawlt, damit Paarungen/Ergebnisse überhaupt vorliegen).
+
 ## [2.61.2] - 2026-06-21
 ### Fixed
 - Motivations-DM hört auf, unzustellbare Empfänger endlos zu bombardieren. Bisher führte JEDER Fehler beim DM-Versand (auch dauerhaft gesperrte DMs) zu einem Retry alle 60 Minuten — für immer, jeden Tag, was die Logs flutete (in Prod stündlich „… fehlgeschlagen — Retry in 60 min." für denselben User). Jetzt:

@@ -42,7 +42,7 @@ from test_cmd_leaderboard import (
 from test_cmd_motivation import (
     test_motivation_command, test_motivation_builder, test_motivation_random_spruch,
     test_parse_zeit, test_activity_watcher, test_slacker_text,
-    test_motivation_dm_retry,
+    test_motivation_dm_retry, test_motivation_tournaments,
 )
 from test_cmd_library import (
     test_bibliothek, test_tag, test_autor, test_reindex, test_reindex_requires_admin,
@@ -128,6 +128,7 @@ def main():
     test_parse_zeit()
     test_motivation_command()
     test_motivation_builder()
+    test_motivation_tournaments()
     test_motivation_random_spruch()
     test_activity_watcher()
     test_slacker_text()

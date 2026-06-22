@@ -219,6 +219,40 @@ def test_motivation_builder():
     print()
 
 
+def test_motivation_tournaments():
+    """Turnier-Block: _fmt_points/_days_phrase/_tournament_facts + Einbindung in _build_motivation_text."""
+    print('[motivation tournaments]')
+    tmpdir = setup_temp_config()
+    try:
+        check('fmt 2.5 -> 2,5', mot._fmt_points(2.5) == '2,5')
+        check('fmt 3.0 -> 3', mot._fmt_points(3.0) == '3')
+        check('days 0 -> heute', mot._days_phrase(0) == 'heute')
+        check('days 1 -> morgen', mot._days_phrase(1) == 'morgen')
+        check('days 4 -> in 4 Tagen', mot._days_phrase(4) == 'in 4 Tagen')
+
+        prog = _progress(puzzle_min=10, puzzle_done_min=2)
+        prog['tournaments'] = [
+            {'name': 'Stadt-Open', 'status': 'upcoming', 'daysUntil': 3, 'location': 'Wien'},
+            {'name': 'Vereinsmeisterschaft', 'status': 'finished', 'daysUntil': -1,
+             'resultPoints': 4.5, 'resultGames': 7},
+        ]
+        cats, has_goal, _ = mot._analyze_progress(prog)
+        facts = mot._facts_summary(prog, cats, has_goal)
+        check('facts → anstehendes Turnier', 'Stadt-Open' in facts and 'in 3 Tagen' in facts)
+        check('facts → Ergebnis 4,5 aus 7', '4,5 aus 7 Partien' in facts)
+
+        # Builder ohne Claude → Fallback zieht die zeitnaechste Turnier-Notiz mit rein.
+        text = run_async(mot._build_motivation_text(7, prog))
+        check('builder fallback → Turnier erwaehnt', 'Stadt-Open' in text)
+
+        # Keine Turniere → kein Turnier-Rauschen im Fallback.
+        plain = run_async(mot._build_motivation_text(7, _progress(puzzle_min=10, puzzle_done_min=2)))
+        check('keine Turniere → keine Turnier-Zeile', 'Turnier' not in plain)
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_motivation_random_spruch():
     """random_spruch (aus core.sprueche, vom Motivations-Builder genutzt) liefert formatierte Sprueche."""
     print('[motivation spruch]')
