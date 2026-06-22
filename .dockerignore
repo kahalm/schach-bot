@@ -8,4 +8,5 @@ venv/
 *.log
 tests/
 !tests/trim_snapshots.json
+!tests/test_rendering.py
 screenshot/

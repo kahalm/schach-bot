@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.62.1] - 2026-06-22
+### Fixed
+- Tagespuzzle (und alle gerenderten Bretter) kam ohne Brettbild in Discord an. Ursache: `requirements.txt` pinnte das renderPM-Backend nicht; ein frischer Image-Build zog eine reportlab-Variante ohne gebündelten C-Rasterizer, sodass `renderPM.drawToFile` mit `cannot import desired renderPM backend rlPyCairo` scheiterte. `safe_render_board` verschluckte den Fehler still → Embed wurde ohne Brett gepostet.
+  - `rlPyCairo>=0.3.0` zu `requirements.txt` hinzugefügt (baut gegen das bereits im Dockerfile installierte `libcairo2-dev`).
+  - `safe_render_board` loggt den Render-Fehler jetzt via `log.exception`, statt ihn spurlos zu verschlucken.
+  - Regressionstest `tests/test_rendering.py` rendert echte Stellungen (kein Mock) und schlägt fehl, wenn das renderPM-Backend fehlt.
+
 ## [2.62.0] - 2026-06-22
 ### Added
 - Der Motivations-DM bezieht jetzt die Turniere des Spielers ein (aus RookHub via `GET /api/bot/player-progress`, neuer `tournaments`-Block). Vor einem anstehenden Turnier drückt der Bot die Daumen (mit Termin/Ort/„in X Tagen"), bei einem gerade beendeten greift er das Ergebnis auf (erreichte Punkte aus X Partien) und feiert bzw. baut auf.

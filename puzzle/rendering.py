@@ -204,4 +204,8 @@ async def safe_render_board(game) -> tuple[object, io.BytesIO | None]:
         img = await asyncio.to_thread(_render_board, board)
         return turn, img
     except Exception:
+        # NICHT still verschlucken: ein fehlendes renderPM-Backend o.ä. ließ das
+        # Brett sonst spurlos verschwinden (Tagespuzzle „ohne Brett") – mit
+        # log.exception ist die Ursache im Log sofort sichtbar.
+        log.exception('Board-Rendering fehlgeschlagen – poste ohne Brett')
         return None, None

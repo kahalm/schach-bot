@@ -4,6 +4,11 @@ python-chess>=1.10.0
 pillow>=10.0.0
 svglib>=1.5.0
 reportlab>=4.0.0
+# renderPM-Backend für svglib→PNG. Moderne reportlab-Versionen bündeln keinen
+# C-Rasterizer mehr und brauchen rlPyCairo (baut gegen libcairo2-dev aus dem
+# Dockerfile). Fehlt es, wirft renderPM "cannot import desired renderPM backend
+# rlPyCairo" → Brett-Rendering scheitert (Tagespuzzle ohne Brett).
+rlPyCairo>=0.3.0
 python-dotenv>=1.0.0
 tzdata>=2024.1
 anthropic>=0.40.0

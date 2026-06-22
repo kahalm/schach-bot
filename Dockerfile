@@ -15,6 +15,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Build-Smoke-Test: rendert ein echtes Brett. Fehlt das renderPM-Backend
+# (rlPyCairo), schlaegt der Build hier fehl statt spaeter still "ohne Brett".
+RUN python tests/test_rendering.py
+
 RUN useradd -m botuser && chown -R botuser:botuser /app
 USER botuser
 
