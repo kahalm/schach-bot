@@ -82,7 +82,9 @@ def format_solver_line(results: dict, max_names: int = MAX_NAMES) -> str:
         did = s.get('discordId')
         name = f'<@{did}>' if did else (s.get('name') or '—')
         t = _fmt_time(s.get('timeSeconds', 0))
-        shown.append(f'{name} ({t})' if t else name)
+        # Mit Tipps gelöst (HintsUsed > 0 im wertungsrelevanten Erstversuch) → Glühbirne in Klammern.
+        hint = ' (💡)' if s.get('hintsUsed', 0) > 0 else ''
+        shown.append((f'{name} ({t})' if t else name) + hint)
     body = ''
     if shown:
         more = named - len(shown)

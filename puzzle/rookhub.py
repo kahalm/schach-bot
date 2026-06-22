@@ -136,8 +136,9 @@ def lookup_puzzle_id(line_id: str, timeout: int = _LOOKUP_TIMEOUT) -> int | None
 def get_daily_results(puzzle_id, since: str | None = None, timeout: int = _TIMEOUT) -> dict | None:
     """Holt die Solver-Ergebnisse eines Buch-Puzzles (Tagespuzzle) von RookHub.
 
-    Rückgabe: dict ``{solvedCount, attemptCount, solvers:[{name, discordId?, discordUsername?}]}``
-    oder ``None`` (Fehler / API-URL fehlt).
+    Rückgabe: dict ``{solvedCount, attemptCount, solvers:[{name, discordId?, discordUsername?,
+    timeSeconds, hintsUsed}]}`` oder ``None`` (Fehler / API-URL fehlt). ``hintsUsed`` (0–3) =
+    höchste Tipp-Stufe im Erstversuch; > 0 ⇒ mit Tipps gelöst (Glühbirne in der Solver-Zeile).
     """
     if not ROOKHUB_API_URL or not puzzle_id:
         return None

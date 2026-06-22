@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.63.0] - 2026-06-22
+### Added
+- Tagespuzzle-Löserliste zeigt jetzt ein 💡 (in Klammern) hinter Spielern, die mit Tipps gelöst haben. Quelle: neues Feld `hintsUsed` je Löser in `GET /api/book-puzzles/{id}/results` (höchste Tipp-Stufe im wertungsrelevanten Erstversuch). `format_solver_line` hängt `(💡)` an, wenn `hintsUsed > 0`.
+
 ## [2.62.1] - 2026-06-22
 ### Fixed
 - Tagespuzzle (und alle gerenderten Bretter) kam ohne Brettbild in Discord an. Ursache: `requirements.txt` pinnte das renderPM-Backend nicht; ein frischer Image-Build zog eine reportlab-Variante ohne gebündelten C-Rasterizer, sodass `renderPM.drawToFile` mit `cannot import desired renderPM backend rlPyCairo` scheiterte. `safe_render_board` verschluckte den Fehler still → Embed wurde ohne Brett gepostet.
