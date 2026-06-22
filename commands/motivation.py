@@ -42,6 +42,11 @@ _VIENNA = ZoneInfo('Europe/Vienna')
 _DEFAULT_HOUR = 18
 _DEFAULT_MINUTE = 0
 
+# Retry-/Erreichbarkeits-Grenzen, damit ein unzustellbarer User nicht endlos
+# stuendlich angepingt wird (und die Logs flutet).
+_MAX_TRANSIENT_RETRIES = 3   # 60-min-Retries bei voruebergehenden Fehlern, dann erst morgen wieder
+_MAX_UNREACHABLE_DAYS = 5    # Tage in Folge unzustellbar (DMs gesperrt) → Abo automatisch beenden
+
 _bot = None
 
 
@@ -491,6 +496,8 @@ async def _run_motivation_dms():
     sub_data = atomic_read(MOTIVATION_SUB_FILE, default=_sub_default)
     subscribers = sub_data.get('subscribers', {}) if isinstance(sub_data, dict) else {}
 
+    to_remove = []
+
     for uid_str, info in list(subscribers.items()):
         raw_next = info.get('next')
         if not raw_next:
@@ -501,32 +508,70 @@ async def _run_motivation_dms():
         hour = info.get('hour', _DEFAULT_HOUR)
         minute = info.get('minute', _DEFAULT_MINUTE)
 
-        sent = False
+        # 'sent' | 'unreachable' (DMs gesperrt/Account weg) | 'transient' (voruebergehend)
+        outcome = 'sent'
         try:
             await _send_motivation_to(int(uid_str))
             log.info('Motivations-DM an User %s gesendet.', uid_str)
-            sent = True
+        except (discord.Forbidden, discord.NotFound):
+            outcome = 'unreachable'
         except Exception:
-            log.warning('Motivations-DM an User %s fehlgeschlagen — Retry in 60 min.', uid_str)
+            outcome = 'transient'
 
-        if sent:
-            next_dt = (now_vienna + timedelta(days=1)).replace(
-                hour=hour, minute=minute, second=0, microsecond=0)
-        else:
-            # Retry in 60 min statt still überspringen
-            next_dt = (now + timedelta(hours=1)).astimezone(_VIENNA)
+        # Standard-Folgetermin: morgen zur Wunschzeit.
+        next_day = (now_vienna + timedelta(days=1)).replace(
+            hour=hour, minute=minute, second=0, microsecond=0)
+        new_retries = 0
+        new_unreachable = 0
+
+        if outcome == 'sent':
+            next_dt = next_day
+        elif outcome == 'unreachable':
+            # User kann keine DM empfangen (gesperrt) → NICHT stuendlich haemmern,
+            # erst morgen erneut; nach _MAX_UNREACHABLE_DAYS Tagen Abo automatisch beenden.
+            new_unreachable = info.get('unreachable', 0) + 1
+            if new_unreachable >= _MAX_UNREACHABLE_DAYS:
+                log.info('Motivations-DM: User %s seit %d Tagen nicht erreichbar (DMs gesperrt?) '
+                         '— Abo automatisch beendet.', uid_str, new_unreachable)
+                to_remove.append(uid_str)
+                continue
+            log.warning('Motivations-DM an User %s nicht zustellbar (Tag %d/%d) '
+                        '— naechster Versuch morgen.', uid_str, new_unreachable, _MAX_UNREACHABLE_DAYS)
+            next_dt = next_day
+        else:  # transient
+            new_unreachable = info.get('unreachable', 0)  # voruebergehender Fehler aendert das nicht
+            new_retries = info.get('retries', 0) + 1
+            if new_retries >= _MAX_TRANSIENT_RETRIES:
+                log.warning('Motivations-DM an User %s nach %d Versuchen aufgegeben '
+                            '— naechster Versuch morgen.', uid_str, new_retries)
+                next_dt = next_day
+                new_retries = 0
+            else:
+                log.warning('Motivations-DM an User %s fehlgeschlagen (Versuch %d/%d) '
+                            '— Retry in 60 min.', uid_str, new_retries, _MAX_TRANSIENT_RETRIES)
+                next_dt = (now + timedelta(hours=1)).astimezone(_VIENNA)
 
         next_iso = next_dt.astimezone(timezone.utc).isoformat()
 
-        def _advance_one(data, _uid=uid_str, _iso=next_iso):
+        def _advance_one(data, _uid=uid_str, _iso=next_iso, _r=new_retries, _u=new_unreachable):
             if not isinstance(data, dict):
                 data = _sub_default()
             subs = data.setdefault('subscribers', {})
             if _uid in subs:
                 subs[_uid]['next'] = _iso
+                subs[_uid]['retries'] = _r
+                subs[_uid]['unreachable'] = _u
             return data
 
         await asyncio.to_thread(atomic_update, MOTIVATION_SUB_FILE, _advance_one, _sub_default)
+
+    for uid_str in to_remove:
+        def _drop(data, _uid=uid_str):
+            if isinstance(data, dict):
+                data.get('subscribers', {}).pop(_uid, None)
+            return data
+
+        await asyncio.to_thread(atomic_update, MOTIVATION_SUB_FILE, _drop, _sub_default)
 
 
 # ---------------------------------------------------------------------------

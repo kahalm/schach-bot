@@ -92,6 +92,7 @@ _discord.Color = MagicMock()
 _discord.Color.blue = MagicMock(return_value=0x3498db)
 _discord.File = MagicMock
 _discord.Forbidden = type('Forbidden', (Exception,), {})
+_discord.NotFound = type('NotFound', (Exception,), {})
 _discord.Member = type('Member', (), {})
 _discord.User = type('User', (), {})
 _discord.DMChannel = type('DMChannel', (), {'send': MagicMock()})

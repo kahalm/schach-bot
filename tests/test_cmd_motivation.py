@@ -450,6 +450,83 @@ def test_activity_watcher():
     print()
 
 
+def test_motivation_dm_retry():
+    """_run_motivation_dms: Retry-/Erreichbarkeits-Logik (kein endloser Stunden-Retry)."""
+    print('[motivation dm-retry]')
+    import unittest.mock as mock
+    from core.json_store import atomic_write
+    tmpdir = setup_temp_config()
+    orig_send = mot._send_motivation_to
+    orig_bot = mot._bot
+    try:
+        mot._bot = mock.MagicMock()
+        uid = '777'
+        now = datetime.now(timezone.utc)
+
+        def _set_sub(**extra):
+            info = {'hour': 18, 'minute': 0, 'next': '2000-01-01T00:00:00+00:00'}
+            info.update(extra)
+            atomic_write(mot.MOTIVATION_SUB_FILE, {'subscribers': {uid: info}})
+
+        def _get_info():
+            d = atomic_read(mot.MOTIVATION_SUB_FILE, default=dict)
+            return d.get('subscribers', {}).get(uid)
+
+        class _FakeResp:
+            status = 403
+            reason = 'Forbidden'
+
+        # A) Erfolg → naechster Termin morgen, Zaehler zurueckgesetzt
+        mot._send_motivation_to = mock.AsyncMock(return_value=True)
+        _set_sub(retries=2, unreachable=1)
+        run_async(mot._run_motivation_dms())
+        info = _get_info()
+        check('Erfolg → next ~morgen (>12h)',
+              mot._parse_utc(info['next']) - now > timedelta(hours=12))
+        check('Erfolg → retries=0', info.get('retries', 0) == 0)
+        check('Erfolg → unreachable=0', info.get('unreachable', 0) == 0)
+
+        # B) transienter Fehler → Retry in ~60min, retries hochgezaehlt
+        async def _boom(uid_int, user_obj=None):
+            raise RuntimeError('boom')
+        mot._send_motivation_to = _boom
+        _set_sub()
+        run_async(mot._run_motivation_dms())
+        info = _get_info()
+        delta = mot._parse_utc(info['next']) - now
+        check('transient → next ~+60min (<2h)', timedelta(minutes=30) < delta < timedelta(hours=2))
+        check('transient → retries=1', info.get('retries') == 1)
+
+        # C) transient am Limit → erst morgen wieder, retries zurueckgesetzt
+        _set_sub(retries=mot._MAX_TRANSIENT_RETRIES - 1)
+        run_async(mot._run_motivation_dms())
+        info = _get_info()
+        check('transient Cap → next ~morgen (>12h)',
+              mot._parse_utc(info['next']) - now > timedelta(hours=12))
+        check('transient Cap → retries zurueckgesetzt', info.get('retries') == 0)
+
+        # D) Forbidden (DMs gesperrt) → KEIN 60-min-Retry, sondern morgen; unreachable hoch
+        async def _forbidden(uid_int, user_obj=None):
+            raise mot.discord.Forbidden(_FakeResp(), 'blocked')
+        mot._send_motivation_to = _forbidden
+        _set_sub()
+        run_async(mot._run_motivation_dms())
+        info = _get_info()
+        check('Forbidden → next ~morgen (kein Stunden-Retry)',
+              mot._parse_utc(info['next']) - now > timedelta(hours=12))
+        check('Forbidden → unreachable=1', info.get('unreachable') == 1)
+
+        # E) Forbidden am Erreichbarkeits-Limit → Abo wird automatisch entfernt
+        _set_sub(unreachable=mot._MAX_UNREACHABLE_DAYS - 1)
+        run_async(mot._run_motivation_dms())
+        check('Forbidden am Limit → Abo automatisch beendet', _get_info() is None)
+    finally:
+        mot._send_motivation_to = orig_send
+        mot._bot = orig_bot
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_slacker_text():
     """_build_slacker_text/_build_slacker_unlinked_text (Fallback, kein Claude)."""
     print('[slacker text]')
