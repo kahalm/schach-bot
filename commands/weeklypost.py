@@ -168,7 +168,8 @@ def format_weekly_results(results: dict) -> str:
         did = p.get('discordId')
         name = f'<@{did}>' if did else (p.get('name') or '—')
         mark = '✅ ' if p.get('completed') else ''   # ✅ bei erledigt
-        lines.append(f"{mark}{name} — {p.get('solvedCount', 0)}/{total} · {_fmt_secs(p.get('totalSeconds', 0))}")
+        hint = ' (💡)' if p.get('hintsUsed', 0) > 0 else ''   # 💡 wenn (bei mind. 1 Puzzle) mit Tipps gelöst
+        lines.append(f"{mark}{name} — {p.get('solvedCount', 0)}/{total} · {_fmt_secs(p.get('totalSeconds', 0))}{hint}")
     more = len(players) - len(lines)
     body = '\n'.join(lines)
     if more > 0:

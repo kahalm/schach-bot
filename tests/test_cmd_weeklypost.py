@@ -119,8 +119,8 @@ def test_weekly_results_format():
     res = {
         'total': 5, 'completedCount': 1,
         'players': [
-            {'name': 'Alice', 'discordId': 'd1', 'solvedCount': 4, 'playedCount': 5, 'totalSeconds': 90, 'completed': True},
-            {'name': 'Bob', 'discordId': None, 'solvedCount': 2, 'playedCount': 3, 'totalSeconds': 605, 'completed': False},
+            {'name': 'Alice', 'discordId': 'd1', 'solvedCount': 4, 'playedCount': 5, 'totalSeconds': 90, 'completed': True, 'hintsUsed': 2},
+            {'name': 'Bob', 'discordId': None, 'solvedCount': 2, 'playedCount': 3, 'totalSeconds': 605, 'completed': False, 'hintsUsed': 0},
         ],
     }
     out = wp.format_weekly_results(res)
@@ -130,4 +130,9 @@ def test_weekly_results_format():
     check('gesamtzeit formatiert (m:ss)', '1:30' in out and '10:05' in out)
     check('erledigt-marker ✅', '✅' in out)
     check('completed-count im Header', '1 erledigt' in out)
+    # 💡 nur bei Spielern, die mit Tipps gelöst haben (hintsUsed > 0).
+    alice_line = [l for l in out.splitlines() if '<@d1>' in l][0]
+    bob_line = [l for l in out.splitlines() if 'Bob' in l][0]
+    check('💡 bei Alice (mit Tipps)', '💡' in alice_line)
+    check('kein 💡 bei Bob (ohne Tipps)', '💡' not in bob_line)
     print()

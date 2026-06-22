@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.64.0] - 2026-06-22
+### Added
+- Wochenpost-Bestenliste zeigt jetzt ein 💡 hinter Spielern, die bei mindestens einem Puzzle der Woche einen Tipp genutzt haben. Quelle: neues Feld `hintsUsed` je Spieler im `weekly-progress`-Webhook-Payload (Maximum über alle Puzzles des Posts). `format_weekly_results` hängt `(💡)` an, wenn `hintsUsed > 0`.
+
 ## [2.63.0] - 2026-06-22
 ### Added
 - Tagespuzzle-Löserliste zeigt jetzt ein 💡 (in Klammern) hinter Spielern, die mit Tipps gelöst haben. Quelle: neues Feld `hintsUsed` je Löser in `GET /api/book-puzzles/{id}/results` (höchste Tipp-Stufe im wertungsrelevanten Erstversuch). `format_solver_line` hängt `(💡)` an, wenn `hintsUsed > 0`.
