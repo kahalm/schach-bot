@@ -305,9 +305,10 @@ def test_test_cmd():
         _orig_progress = mot_mod.rookhub.get_player_progress
         mot_mod.rookhub.get_player_progress = lambda uid: {
             'username': 'tester', 'displayName': 'Tester',
-            'today': {'goal': {'puzzleMinutes': 10, 'bookMinutes': 0, 'playGames': 0},
-                      'puzzles': {'targetMinutes': 10, 'doneSeconds': 120, 'met': False},
-                      'book': {'targetMinutes': 0, 'doneSeconds': 0, 'met': False},
+            'today': {'goal': {'dailyMinutes': 10, 'playGames': 0},
+                      'daily': {'targetMinutes': 10, 'doneSeconds': 120, 'met': False},
+                      'bySource': {'randomPuzzleSeconds': 120, 'courseBookSeconds': 0, 'chessableSeconds': 0},
+                      'byTheme': {'openingSeconds': 0, 'middlegameSeconds': 0, 'endgameSeconds': 0, 'tacticsSeconds': 120, 'otherSeconds': 0},
                       'play': {'targetGames': 0, 'doneGames': 0, 'met': False},
                       'status': 'partial', 'weekDaysMet': 0, 'weeklyDaysTarget': 0},
             'puzzles': {'puzzleElo': 1500, 'currentStreak': 0, 'solved': 5,

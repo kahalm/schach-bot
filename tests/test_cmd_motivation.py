@@ -12,18 +12,25 @@ import commands.motivation as mot
 
 def _progress(puzzle_min=0, puzzle_done_min=0, book_min=0, book_done_min=0,
               play_games_target=0, play_games_done=0, elo=1500, streak=0):
-    """Baut ein BotPlayerProgressDto-aehnliches dict (camelCase wie die API)."""
-    def cat(target, done_min):
-        return {'targetMinutes': target, 'doneSeconds': done_min * 60,
-                'met': target > 0 and done_min >= target}
+    """Baut ein BotPlayerProgressDto-aehnliches dict (camelCase wie die API).
+
+    Es gibt nur noch EIN Tageszeit-Ziel (alle Quellen zusammen): die Test-Hebel
+    ``puzzle_*``/``book_*`` werden hier in dieses gemeinsame ``daily``-Ziel summiert.
+    """
+    daily_target = puzzle_min + book_min
+    daily_done_min = puzzle_done_min + book_done_min
     return {
         'username': 'tester', 'displayName': 'Tester',
         'today': {
-            'goal': {'puzzleMinutes': puzzle_min, 'bookMinutes': book_min,
+            'goal': {'dailyMinutes': daily_target,
                      'playGames': play_games_target, 'weeklyDaysTarget': 0,
                      'source': 'personal'},
-            'puzzles': cat(puzzle_min, puzzle_done_min),
-            'book': cat(book_min, book_done_min),
+            'daily': {'targetMinutes': daily_target, 'doneSeconds': daily_done_min * 60,
+                      'met': daily_target > 0 and daily_done_min >= daily_target},
+            'bySource': {'randomPuzzleSeconds': puzzle_done_min * 60,
+                         'courseBookSeconds': book_done_min * 60, 'chessableSeconds': 0},
+            'byTheme': {'openingSeconds': 0, 'middlegameSeconds': 0, 'endgameSeconds': 0,
+                        'tacticsSeconds': (puzzle_done_min + book_done_min) * 60, 'otherSeconds': 0},
             'play': {'targetGames': play_games_target, 'doneGames': play_games_done,
                      'met': play_games_target > 0 and play_games_done >= play_games_target},
             'status': 'partial', 'weekDaysMet': 0, 'weeklyDaysTarget': 0,
@@ -205,7 +212,7 @@ def test_motivation_builder():
         text = run_async(mot._build_motivation_text(
             42, _progress(puzzle_min=10, puzzle_done_min=2,
                           play_games_target=3, play_games_done=1)))
-        check('Nudge → Puzzle-Rueckstand', 'Puzzle' in text)
+        check('Nudge → Trainings-Rueckstand', 'Training' in text)
         check('Nudge → Spielen-Rueckstand', 'Spielen' in text)
 
         # c) NICHT verknuepft → allgemeine Motivation + Registrier-/Verknuepfungs-CTA

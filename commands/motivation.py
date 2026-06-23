@@ -115,17 +115,14 @@ def _analyze_progress(progress: dict):
     """
     today = progress.get('today') or {}
     goal = today.get('goal') or {}
-    puzzles = today.get('puzzles') or {}
-    book = today.get('book') or {}
+    daily = today.get('daily') or {}
     play = today.get('play') or {}
 
     cats = []
-    if goal.get('puzzleMinutes', 0) > 0:
-        cats.append(('Puzzle', puzzles.get('doneSeconds', 0) // 60,
-                     goal['puzzleMinutes'], bool(puzzles.get('met')), 'min'))
-    if goal.get('bookMinutes', 0) > 0:
-        cats.append(('Training', book.get('doneSeconds', 0) // 60,
-                     goal['bookMinutes'], bool(book.get('met')), 'min'))
+    # Ein gemeinsames Tageszeit-Ziel (alle Quellen: Puzzle/Kurs/Chessable zaehlen zusammen).
+    if goal.get('dailyMinutes', 0) > 0:
+        cats.append(('Training', daily.get('doneSeconds', 0) // 60,
+                     goal['dailyMinutes'], bool(daily.get('met')), 'min'))
     if goal.get('playGames', 0) > 0:
         cats.append(('Spielen', play.get('doneGames', 0),
                      goal['playGames'], bool(play.get('met')), 'Partien diese Woche'))

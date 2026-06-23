@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.65.0] - 2026-06-23
+### Changed
+- Motivations-DM an das neue RookHub-Trainingsziel-Modell angepasst: statt getrennter Puzzle-/Buch-Tagesziele gibt es jetzt **ein gemeinsames Tageszeit-Ziel** (`today.daily` / `goal.dailyMinutes`). Der DM nennt es als Kategorie „Training"; das wöchentliche Spielen-Ziel bleibt unverändert. (Erfordert RookHub ≥ 0.178.0.)
+
 ## [2.64.0] - 2026-06-22
 ### Added
 - Wochenpost-Bestenliste zeigt jetzt ein 💡 hinter Spielern, die bei mindestens einem Puzzle der Woche einen Tipp genutzt haben. Quelle: neues Feld `hintsUsed` je Spieler im `weekly-progress`-Webhook-Payload (Maximum über alle Puzzles des Posts). `format_weekly_results` hängt `(💡)` an, wenn `hintsUsed > 0`.
