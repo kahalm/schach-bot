@@ -660,6 +660,32 @@ def test_webhook_verify_signature():
     check('empty signature → False', _verify_signature(secret, body, '') is False)
     check('different secret → False', _verify_signature('other', body, good) is False)
     check('different body → False', _verify_signature(secret, b'{"x":1}', good) is False)
+
+    # --- Timestamp-/Replay-Schutz (opt-in, rueckwaertskompatibel) ---
+    import time as _time
+    now = 1_700_000_000
+    ts = now  # frisch
+    ts_sig = _hmac.new(secret.encode(), f'{ts}.'.encode() + body, _hashlib.sha256).hexdigest()
+    check('mit Timestamp: gueltige Sig+frischer TS → True',
+          _verify_signature(secret, body, ts_sig, timestamp_header=str(ts), now=now) is True)
+    # Alter Body-only-Signatur darf NICHT mehr passen, sobald ein TS mitkommt
+    check('mit Timestamp: alte body-only Sig → False',
+          _verify_signature(secret, body, good, timestamp_header=str(ts), now=now) is False)
+    # Abgelaufener Timestamp (Replay nach >300s) → abgelehnt, auch mit gueltiger Sig
+    old_ts = now - 400
+    old_sig = _hmac.new(secret.encode(), f'{old_ts}.'.encode() + body, _hashlib.sha256).hexdigest()
+    check('mit Timestamp: abgelaufen (>300s) → False',
+          _verify_signature(secret, body, old_sig, timestamp_header=str(old_ts), now=now) is False)
+    # Zukunfts-Timestamp knapp im Fenster → ok
+    fut_ts = now + 200
+    fut_sig = _hmac.new(secret.encode(), f'{fut_ts}.'.encode() + body, _hashlib.sha256).hexdigest()
+    check('mit Timestamp: Zukunft im Fenster → True',
+          _verify_signature(secret, body, fut_sig, timestamp_header=str(fut_ts), now=now) is True)
+    check('mit Timestamp: kaputter TS-Header → False',
+          _verify_signature(secret, body, ts_sig, timestamp_header='abc', now=now) is False)
+    # Leerer Timestamp-Header → wie kein Header (Fallback auf body-only)
+    check('leerer Timestamp-Header → Fallback body-only',
+          _verify_signature(secret, body, good, timestamp_header='', now=now) is True)
     print()
 
 
@@ -836,6 +862,23 @@ def test_daily_regenerate_webhook():
         req = run_async(make_request({'date': '2026-06-06'}))  # kein puzzleId
         resp = run_async(handler(req))
         check('missing puzzleId → status 400', resp.status == 400)
+
+        # 6) Idempotenz: aktuelles Daily zeigt bereits die regenerierte puzzleId
+        #    → kein erneutes Posting (Schutz vor wiederholtem Webhook-Feuern).
+        dr.current = lambda: {'date': '2026-06-06', 'channel_id': 1, 'message_id': 555, 'puzzle_id': 200}
+        posted.clear()
+        fake_old_msg.reply.reset_mock()
+        req = run_async(make_request({'date': '2026-06-06', 'puzzleId': 200}))
+        resp = run_async(handler(req))
+        check('schon aktuelle puzzleId → status 200', resp.status == 200)
+        check('schon aktuelle puzzleId → kein erneutes Posting', not posted.get('called'))
+        check('schon aktuelle puzzleId → kein Ersetzt-Hinweis', not fake_old_msg.reply.called)
+
+        # 7) bool als puzzleId darf NICHT als int durchgehen → 400
+        dr.current = lambda: {'date': '2026-06-06', 'channel_id': 1, 'message_id': 555, 'puzzle_id': 100}
+        req = run_async(make_request({'date': '2026-06-06', 'puzzleId': True}))
+        resp = run_async(handler(req))
+        check('bool puzzleId → status 400', resp.status == 400)
 
     dr.current = orig_current
     print()

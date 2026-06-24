@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.70.0] - 2026-06-24
+### Added
+- **Webhook Replay-/Timestamp-Schutz**: Schickt RookHub einen `X-Webhook-Timestamp`-Header (Unix-Sekunden) mit, fließt er in die HMAC ein (`HMAC("<ts>.<body>")`) und muss innerhalb ±300 s liegen — ein abgefangener Request kann so nach Ablauf des Fensters nicht erneut eingespielt werden. **Rückwärtskompatibel**: Fehlt der Header (RookHub-Gegenstelle `SchachBotWebhookService` noch nicht nachgezogen), greift weiterhin der alte Pfad (HMAC nur über den Body) — nichts bricht. ⚠️ **Die RookHub-Seite muss separat nachgezogen werden** (Timestamp signieren + Header senden), erst dann ist der Replay-Schutz scharf.
+- **Webhook `daily-regenerate` idempotent**: Zeigt das aktuell gemerkte Tagespuzzle bereits die regenerierte `puzzleId`, ist der Webhook ein no-op (`200 already current`) — wiederholtes Feuern (Retry/Doppel-Klick) postet kein zweites Daily mehr und löst keine Doppel-Reinforcement-DMs aus. `puzzleId` wird jetzt validiert statt nur geloggt.
+### Changed
+- Webhook-Server kappt Request-Bodies serverseitig (`client_max_size` = 256 KiB → 413 statt unbegrenztem `.read()`); `puzzleId`/`weeklyPostId`-Prüfung akzeptiert nur noch echte `int` (kein `bool` mehr, das als int-Subklasse durchrutschte).
+
 ## [2.69.0] - 2026-06-24
 ### Changed
 - **Slash-Commands gezielt pro Guild**: In zusätzlichen Guilds (2. Server für gespiegelte Daily-Posts) bietet der Bot jetzt nur noch das Tagespuzzle (Auto-Post) **und `/puzzle`** an — alle übrigen Commands gibt es nur in der Haupt-Guild (`GUILD_ID`). Umsetzung: Haupt-Guild wird guild-scoped mit allen Commands synchronisiert (sofort sichtbar), global bleiben nur die `PUBLIC_COMMANDS` (`/puzzle`); `/puzzle` wird aus der Guild-Kopie entfernt, damit es in der Haupt-Guild nicht doppelt erscheint. Ohne gesetztes `GUILD_ID` bleibt es beim globalen Sync aller Commands (Alt-Verhalten).

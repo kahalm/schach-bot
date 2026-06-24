@@ -28,24 +28,78 @@ import hashlib
 import hmac
 import json
 import logging
+import time
 from typing import Any
 
 from aiohttp import web
 
 log = logging.getLogger('schach-bot')
 
+# Replay-/Timestamp-Schutz: wird ein ``X-Webhook-Timestamp``-Header mitgeschickt,
+# fliesst er in die HMAC ein UND muss innerhalb dieses Fensters (Sekunden) liegen.
+# Fehlt der Header (rookhub-Gegenstelle noch nicht nachgezogen), greift der alte
+# Pfad (HMAC nur ueber den Body) — rueckwaertskompatibel, s. _verify_signature.
+_TIMESTAMP_HEADER = 'X-Webhook-Timestamp'
+_TIMESTAMP_TOLERANCE = 300  # ±5 min
+# Maximale akzeptierte Body-Groesse fuer Webhook-POSTs (Schutz vor Speicher-DoS).
+_MAX_BODY_SIZE = 256 * 1024  # 256 KiB
 
-def _verify_signature(secret: str, body: bytes, signature_header: str | None) -> bool:
-    """Prueft den ``X-Webhook-Signature``-Header gegen HMAC-SHA256 ueber body."""
+
+def _verify_signature(secret: str, body: bytes, signature_header: str | None,
+                      timestamp_header: str | None = None, now: float | None = None) -> bool:
+    """Prueft den ``X-Webhook-Signature``-Header gegen HMAC-SHA256.
+
+    Replay-Schutz (opt-in, rueckwaertskompatibel): Wird ``timestamp_header``
+    (Wert des ``X-Webhook-Timestamp``-Headers, Unix-Sekunden) mitgegeben, MUSS
+    er innerhalb ±``_TIMESTAMP_TOLERANCE`` liegen und die HMAC wird ueber
+    ``"<ts>.<body>"`` gebildet (so kann ein abgefangener Request nach Ablauf des
+    Fensters nicht erneut eingespielt werden). Fehlt der Header, faellt die
+    Verifikation auf den alten Pfad (HMAC nur ueber ``body``) zurueck — damit
+    bricht nichts, solange die rookhub-Seite (``SchachBotWebhookService``) den
+    Timestamp noch nicht mitschickt. **rookhub muss separat nachgezogen werden.**
+    """
     if not signature_header:
         return False
     if signature_header.startswith('sha256='):
         signature_header = signature_header[len('sha256='):]
-    expected = hmac.new(secret.encode('utf-8'), body, hashlib.sha256).hexdigest()
+
+    if timestamp_header is not None and str(timestamp_header).strip() != '':
+        # Timestamp vorhanden → Fenster pruefen + in die HMAC einbeziehen.
+        try:
+            ts = int(str(timestamp_header).strip())
+        except (ValueError, TypeError):
+            log.warning('Webhook: ungueltiger Timestamp-Header %r', timestamp_header)
+            return False
+        if now is None:
+            now = time.time()
+        if abs(now - ts) > _TIMESTAMP_TOLERANCE:
+            log.warning('Webhook: Timestamp ausserhalb Fenster (ts=%s now=%s diff=%.0fs)',
+                        ts, int(now), abs(now - ts))
+            return False
+        signed = str(ts).encode('utf-8') + b'.' + body
+    else:
+        # Kein Timestamp-Header → alter Pfad (rueckwaertskompatibel).
+        signed = body
+
+    expected = hmac.new(secret.encode('utf-8'), signed, hashlib.sha256).hexdigest()
     try:
         return hmac.compare_digest(expected, signature_header)
     except Exception:
         return False
+
+
+def _verify_request(secret: str, raw: bytes, request: web.Request) -> bool:
+    """Bequemer Wrapper: zieht Signatur- + Timestamp-Header aus dem Request."""
+    return _verify_signature(
+        secret, raw,
+        request.headers.get('X-Webhook-Signature'),
+        request.headers.get(_TIMESTAMP_HEADER),
+    )
+
+
+def _is_int(value: Any) -> bool:
+    """True nur fuer echte ints — ``bool`` (Subklasse von int) wird abgelehnt."""
+    return type(value) is int
 
 
 def _make_handler(bot, secret: str):
@@ -54,9 +108,8 @@ def _make_handler(bot, secret: str):
 
     async def handle(request: web.Request) -> web.Response:
         raw = await request.read()
-        sig = request.headers.get('X-Webhook-Signature')
-        if not _verify_signature(secret, raw, sig):
-            log.warning('Webhook: HMAC-Signatur ungueltig (sig=%r len=%d)', sig, len(raw))
+        if not _verify_request(secret, raw, request):
+            log.warning('Webhook: HMAC-Signatur ungueltig (len=%d)', len(raw))
             return web.Response(status=401, text='invalid signature')
 
         try:
@@ -66,7 +119,7 @@ def _make_handler(bot, secret: str):
             return web.Response(status=400, text='invalid json')
 
         puzzle_id = payload.get('puzzleId')
-        if not isinstance(puzzle_id, int):
+        if not _is_int(puzzle_id):
             return web.Response(status=400, text='missing puzzleId')
 
         cur = daily_results.current()
@@ -113,8 +166,7 @@ def _make_daily_regenerate_handler(bot, secret: str, daily_channels):
 
     async def handle(request: web.Request) -> web.Response:
         raw = await request.read()
-        sig = request.headers.get('X-Webhook-Signature')
-        if not _verify_signature(secret, raw, sig):
+        if not _verify_request(secret, raw, request):
             log.warning('DailyRegenerate-Webhook: HMAC-Signatur ungültig')
             return web.Response(status=401, text='invalid signature')
         try:
@@ -125,12 +177,21 @@ def _make_daily_regenerate_handler(bot, secret: str, daily_channels):
 
         date_str = payload.get('date')
         new_puzzle_id = payload.get('puzzleId')
-        if not date_str or not isinstance(new_puzzle_id, int):
+        if not date_str or not _is_int(new_puzzle_id):
             return web.Response(status=400, text='missing date or puzzleId')
 
         log.info('DailyRegenerate-Webhook: date=%s newPuzzleId=%s', date_str, new_puzzle_id)
 
         cur = daily_results.current()
+        # Idempotenz: feuert RookHub den Regenerate mehrfach (Retry/Doppel-Klick),
+        # darf NICHT wiederholt ein neues Daily gepostet werden. Steht das aktuell
+        # gemerkte Puzzle bereits auf ``new_puzzle_id``, ist die Regeneration schon
+        # verarbeitet → no-op (sonst entstuenden Duplikat-Posts/Reinforcement-DMs).
+        if cur and cur.get('date') == date_str and cur.get('puzzle_id') == new_puzzle_id:
+            log.info('DailyRegenerate: puzzle %s bereits aktuell (date=%s) – idempotenter no-op.',
+                     new_puzzle_id, date_str)
+            return web.Response(status=200, text='already current')
+
         if cur and cur.get('date') == date_str:
             # Alten Post in JEDEM gemerkten Channel als ersetzt markieren
             # (_posts_of normalisiert auch migriertes Einzel-Format).
@@ -169,8 +230,7 @@ def _make_weekly_handler(bot, secret: str):
 
     async def handle(request: web.Request) -> web.Response:
         raw = await request.read()
-        sig = request.headers.get('X-Webhook-Signature')
-        if not _verify_signature(secret, raw, sig):
+        if not _verify_request(secret, raw, request):
             log.warning('Weekly-Webhook: HMAC-Signatur ungueltig')
             return web.Response(status=401, text='invalid signature')
         try:
@@ -180,7 +240,7 @@ def _make_weekly_handler(bot, secret: str):
             return web.Response(status=400, text='invalid json')
 
         wid = payload.get('weeklyPostId')
-        if not isinstance(wid, int):
+        if not _is_int(wid):
             return web.Response(status=400, text='missing weeklyPostId')
 
         results = payload.get('results') if isinstance(payload.get('results'), dict) else payload
@@ -199,7 +259,9 @@ async def start(bot, host: str, port: int, secret: str, daily_channels=None) -> 
         log.info('Webhook-Server deaktiviert (WEBHOOK_SECRET nicht gesetzt).')
         return None
 
-    app = web.Application()
+    # client_max_size kappt zu grosse Bodies serverseitig (413 statt unbegrenztem
+    # Speicher-Verbrauch beim .read()) — der Webhook erwartet nur kleine JSON-Payloads.
+    app = web.Application(client_max_size=_MAX_BODY_SIZE)
     app.router.add_post('/webhook/puzzle-attempt', _make_handler(bot, secret))
     app.router.add_post('/webhook/weekly-progress', _make_weekly_handler(bot, secret))
     app.router.add_post('/webhook/daily-regenerate', _make_daily_regenerate_handler(bot, secret, daily_channels))
