@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.69.0] - 2026-06-24
+### Changed
+- **Slash-Commands gezielt pro Guild**: In zusätzlichen Guilds (2. Server für gespiegelte Daily-Posts) bietet der Bot jetzt nur noch das Tagespuzzle (Auto-Post) **und `/puzzle`** an — alle übrigen Commands gibt es nur in der Haupt-Guild (`GUILD_ID`). Umsetzung: Haupt-Guild wird guild-scoped mit allen Commands synchronisiert (sofort sichtbar), global bleiben nur die `PUBLIC_COMMANDS` (`/puzzle`); `/puzzle` wird aus der Guild-Kopie entfernt, damit es in der Haupt-Guild nicht doppelt erscheint. Ohne gesetztes `GUILD_ID` bleibt es beim globalen Sync aller Commands (Alt-Verhalten).
+
 ## [2.68.0] - 2026-06-24
 ### Added
 - **Sprache pro Daily-Channel (de/en)**: Jeder gespiegelte Channel kann seine eigene Sprache haben. In `DAILY_EXTRA_CHANNEL_IDS` je Eintrag `ID` **oder** `ID:sprache` (z. B. `123456:en`); `DAILY_DEFAULT_LANG` (Default `de`) gilt für `CHANNEL_ID` und Einträge ohne Sprache. Lokalisiert werden Tagespuzzle-Embed (Am Zug / Solver-Feld / Lösung), die Solver-Zeile (gelöst/anonym/Versuche/weitere), der „Auf RookHub lösen"-Link, der Thread-Name und der Ersetzt-Hinweis des Regenerate-Webhooks. Die Sprache wird pro Post gespeichert, sodass spätere Solver-Updates das richtige (lokalisierte) Feld treffen — auch bei gemischten de/en-Channels. Neues Mini-i18n-Modul `core/i18n.py` (nur Daily-Strings; Default bleibt Deutsch).

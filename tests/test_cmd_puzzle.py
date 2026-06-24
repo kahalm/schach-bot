@@ -950,6 +950,68 @@ def test_apply_solver_update_fans_out():
     print()
 
 
+def test_sync_commands_public_vs_guild():
+    """_sync_commands: bei gesetztem GUILD_ID bekommt die Haupt-Guild ALLE Commands,
+    global bleibt nur PUBLIC_COMMANDS (/puzzle) → Zusatz-Guilds haben nur /puzzle (+ Daily).
+    /puzzle wird aus der Guild-Kopie entfernt (kein Duplikat in der Haupt-Guild)."""
+    print('[_sync_commands public vs guild]')
+    import bot as bot_mod
+
+    class FakeCmd:
+        def __init__(self, name): self.name = name
+
+    class FakeTree:
+        def __init__(self, names):
+            self.global_cmds = {n: FakeCmd(n) for n in names}
+            self.guild_cmds = {}
+            self.synced = []  # ('global'|gid, sorted names)
+
+        def copy_global_to(self, guild):
+            self.guild_cmds[guild.id] = dict(self.global_cmds)
+
+        def remove_command(self, name, guild=None):
+            if guild is None:
+                self.global_cmds.pop(name, None)
+            else:
+                self.guild_cmds.get(guild.id, {}).pop(name, None)
+
+        def get_commands(self, guild=None):
+            return list(self.global_cmds.values())
+
+        async def sync(self, guild=None):
+            if guild is None:
+                self.synced.append(('global', sorted(self.global_cmds)))
+            else:
+                self.synced.append((guild.id, sorted(self.guild_cmds.get(guild.id, {}))))
+
+    orig_tree, orig_gid = bot_mod.tree, bot_mod.GUILD_ID
+    try:
+        # GUILD_ID gesetzt → Split
+        ft = FakeTree(['puzzle', 'kurs', 'daily', 'stats'])
+        bot_mod.tree = ft
+        bot_mod.GUILD_ID = 4242
+        run_async(bot_mod._sync_commands())
+        # discord.Object kann im Test gestubbt sein → Guild-ID nicht hart vergleichen,
+        # sondern „alles ausser global" als Guild-Sync werten.
+        guild_sync = [s for gid, s in ft.synced if gid != 'global']
+        global_sync = [s for gid, s in ft.synced if gid == 'global']
+        check('Guild-Sync erfolgt', len(guild_sync) == 1)
+        check('Haupt-Guild = alle Nicht-Public', guild_sync and guild_sync[0] == ['daily', 'kurs', 'stats'])
+        check('kein puzzle-Duplikat in Haupt-Guild', guild_sync and 'puzzle' not in guild_sync[0])
+        check('Global nur /puzzle', global_sync and global_sync[0] == ['puzzle'])
+
+        # Ohne GUILD_ID → globaler Sync aller Commands (Alt-Verhalten)
+        ft2 = FakeTree(['puzzle', 'kurs', 'daily'])
+        bot_mod.tree = ft2
+        bot_mod.GUILD_ID = 0
+        run_async(bot_mod._sync_commands())
+        check('ohne GUILD_ID: nur globaler Sync', [g for g, _ in ft2.synced] == ['global'])
+        check('ohne GUILD_ID: alle global', ft2.synced[0][1] == ['daily', 'kurs', 'puzzle'])
+    finally:
+        bot_mod.tree, bot_mod.GUILD_ID = orig_tree, orig_gid
+    print()
+
+
 def test_daily_language_de_en():
     """Pro-Channel-Sprache: build_daily_embed + format_solver_line liefern de/en;
     apply_solver_update findet/aktualisiert das (lokalisierte) Solver-Feld je Post-Sprache."""
