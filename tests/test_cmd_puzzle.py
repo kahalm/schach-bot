@@ -797,7 +797,7 @@ def test_daily_regenerate_webhook():
 
     with patch('puzzle.posting.post_rookhub_puzzle', fake_post_rookhub_puzzle):
         handler = webhook_server._make_daily_regenerate_handler(
-            bot=fake_bot, secret=secret, channel_ids=[999])
+            bot=fake_bot, secret=secret, daily_channels=[(999, 'de')])
 
         # 1) Datum == aktuelles Daily → neues Puzzle posten, alter Thread bekommt Hinweis
         dr.current = lambda: {'date': '2026-06-06', 'channel_id': 1, 'message_id': 555, 'puzzle_id': 100}
@@ -882,7 +882,7 @@ def test_daily_remember_multichannel():
                      {'date': dr._today(), 'channel_id': 5, 'message_id': 6, 'puzzle_id': 7})
         cur = dr.current()
         check('Alt-Format migriert zu posts',
-              cur['posts'] == [{'channel_id': 5, 'message_id': 6}])
+              cur['posts'] == [{'channel_id': 5, 'message_id': 6, 'lang': 'de'}])
     finally:
         dr.DAILY_FILE = orig_file
         teardown_temp_config(tmpdir)
@@ -944,6 +944,84 @@ def test_apply_solver_update_fans_out():
         check('beide Channels editiert', sorted(edited) == [111, 222])
         check('new_puzzle_solvers nur einmal (kein Pro-Channel-Dup)', calls['new'] == 1)
         check('genau eine Reinforcement-DM-Task', len(created) == 1)
+    finally:
+        reinforcement.new_puzzle_solvers = orig_new
+        asyncio.create_task = orig_ct
+    print()
+
+
+def test_daily_language_de_en():
+    """Pro-Channel-Sprache: build_daily_embed + format_solver_line liefern de/en;
+    apply_solver_update findet/aktualisiert das (lokalisierte) Solver-Feld je Post-Sprache."""
+    print('[daily language de/en]')
+    import chess
+    from puzzle.embed import build_daily_embed
+    from puzzle import daily_results as dr
+
+    # 1) Embed-Felder lokalisiert (Test-Embed speichert Felder als dicts)
+    en = build_daily_embed(turn=chess.WHITE, solution_san='1. Qh7#', lang='en')
+    names_en = [f.get('name', '') for f in en.fields]
+    values_en = [str(f.get('value', '')) for f in en.fields]
+    check('EN: To-move-Feld', 'To move' in names_en)
+    check('EN: White to move', any('White to move' in v for v in values_en))
+    check('EN: Daily-puzzle-Slot', any('Daily puzzle' in n for n in names_en))
+    check('EN: Solution-Feld', any('Solution' in n for n in names_en))
+    de = build_daily_embed(turn=chess.BLACK, solution_san='1. Qh7#', lang='de')
+    names_de = [f.get('name', '') for f in de.fields]
+    values_de = [str(f.get('value', '')) for f in de.fields]
+    check('DE bleibt deutsch', any('Tagespuzzle' in n for n in names_de)
+          and any('Schwarz am Zug' in v for v in values_de))
+
+    # 2) Solver-Zeile lokalisiert
+    res = {'solvedCount': 2, 'attemptCount': 5,
+           'solvers': [{'name': 'A'}, {'name': 'B'}]}
+    line_en = dr.format_solver_line(res, lang='en')
+    check('EN: "Solved (2)"', 'Solved (2)' in line_en)
+    check('EN: "attempted"', 'attempted' in line_en)
+    line_de = dr.format_solver_line(res, lang='de')
+    check('DE: "Gelöst (2)"', 'Gelöst (2)' in line_de)
+
+    # 3) apply_solver_update editiert je Post in dessen Sprache (gemischt de/en)
+    import asyncio
+    from unittest.mock import MagicMock, AsyncMock
+    from core import reinforcement
+
+    captured = {}
+
+    class FakeEmbed:
+        def __init__(self): self.fields = []
+        def add_field(self, name, value, inline=False): self.fields.append({'name': name, 'value': value})
+        def set_field_at(self, i, name, value, inline=False): self.fields[i] = {'name': name, 'value': value}
+        def set_image(self, url=None): pass
+
+    def make_channel(cid):
+        ch = MagicMock()
+        m = MagicMock()
+        m.embeds = [FakeEmbed()]
+        async def _edit(embed=None): captured[cid] = list(embed.fields)
+        m.edit = _edit
+        ch.fetch_message = AsyncMock(return_value=m)
+        return ch
+
+    channels = {111: make_channel(111), 222: make_channel(222)}
+    fake_bot = MagicMock()
+    fake_bot.get_channel = MagicMock(side_effect=lambda cid: channels.get(cid))
+
+    orig_new = reinforcement.new_puzzle_solvers
+    orig_ct = asyncio.create_task
+    reinforcement.new_puzzle_solvers = lambda pid, solvers: []
+    asyncio.create_task = lambda coro, *a, **k: (coro.close(), MagicMock())[1]
+    try:
+        cur = {'puzzle_id': 7,
+               'posts': [{'channel_id': 111, 'message_id': 1, 'lang': 'de'},
+                         {'channel_id': 222, 'message_id': 2, 'lang': 'en'}]}
+        run_async(dr.apply_solver_update(fake_bot, cur, res))
+        de_field = captured[111][0]['name']
+        en_field = captured[222][0]['name']
+        check('Post 111 (de): deutsches Solver-Feld', 'Tagespuzzle' in de_field)
+        check('Post 111 (de): deutsche Zeile', 'Gelöst' in captured[111][0]['value'])
+        check('Post 222 (en): englisches Solver-Feld', 'Daily puzzle' in en_field)
+        check('Post 222 (en): englische Zeile', 'Solved' in captured[222][0]['value'])
     finally:
         reinforcement.new_puzzle_solvers = orig_new
         asyncio.create_task = orig_ct

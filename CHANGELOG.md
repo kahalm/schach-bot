@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.68.0] - 2026-06-24
+### Added
+- **Sprache pro Daily-Channel (de/en)**: Jeder gespiegelte Channel kann seine eigene Sprache haben. In `DAILY_EXTRA_CHANNEL_IDS` je Eintrag `ID` **oder** `ID:sprache` (z. B. `123456:en`); `DAILY_DEFAULT_LANG` (Default `de`) gilt für `CHANNEL_ID` und Einträge ohne Sprache. Lokalisiert werden Tagespuzzle-Embed (Am Zug / Solver-Feld / Lösung), die Solver-Zeile (gelöst/anonym/Versuche/weitere), der „Auf RookHub lösen"-Link, der Thread-Name und der Ersetzt-Hinweis des Regenerate-Webhooks. Die Sprache wird pro Post gespeichert, sodass spätere Solver-Updates das richtige (lokalisierte) Feld treffen — auch bei gemischten de/en-Channels. Neues Mini-i18n-Modul `core/i18n.py` (nur Daily-Strings; Default bleibt Deutsch).
+
 ## [2.67.0] - 2026-06-24
 ### Added
 - **Tagespuzzle in mehrere Channels/Guilds spiegeln**: Über `DAILY_EXTRA_CHANNEL_IDS` (komma-separierte Channel-IDs, dürfen in einer anderen Discord-Guild liegen) postet der Bot dasselbe Tagespuzzle zusätzlich in jeden weiteren Channel. RookHubs `daily`-Pool ist pro Tag deterministisch → identisches Puzzle überall, ein gemeinsames Solver-Tracking. Voraussetzung: der Bot ist Mitglied der 2. Guild mit Send-Messages-/Embed-Links-/Attach-Files-/Create-Public-Threads-Rechten.

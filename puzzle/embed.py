@@ -3,30 +3,34 @@
 import chess
 import discord
 
-# Wird auch von daily_results.refresh() referenziert (gleicher String dort als SOLVER_FIELD).
-# Wenn dieser Name geaendert wird, muss daily_results.SOLVER_FIELD mitgezogen werden.
-DAILY_SOLVER_FIELD = '🏆 Tagespuzzle'
+from core import i18n
+
+# Deutscher Default-Name des Solver-Felds (Rueckwaerts-Kompat-Konstante; der tatsaechlich
+# verwendete Feldname ist sprachabhaengig, siehe i18n 'daily.solver_field'). Wird auch von
+# daily_results als SOLVER_FIELD gespiegelt.
+DAILY_SOLVER_FIELD = i18n.t('daily.solver_field', 'de')
 
 
 def build_daily_embed(turn: chess.Color,
                       solution_san: str = '',
-                      color: int = 0x7fa650) -> discord.Embed:
-    """Minimaler Embed fuers Tagespuzzle.
+                      color: int = 0x7fa650,
+                      lang: str = 'de') -> discord.Embed:
+    """Minimaler Embed fuers Tagespuzzle (Sprache ``lang``, de/en).
 
     Reihenfolge (von oben nach unten, wie Discord rendert):
       [Brett-Bild]  – wird vom Aufrufer ueber ``set_image`` angehaengt
       Am Zug        – Field
-      🏆 Tagespuzzle – Placeholder; ``daily_results.refresh`` setzt die Solver-Zeile
+      🏆 Tagespuzzle – Placeholder; ``daily_results`` setzt die Solver-Zeile
       💡 Lösung     – Spoiler mit der SAN-Lösung
 
     Kein Titel, keine Kapitel/Linie/Schwierigkeit, kein Footer, kein RookHub-Link.
     """
     embed = discord.Embed(color=color)
-    turn_str = '⬜ Weiß am Zug' if turn == chess.WHITE else '⬛ Schwarz am Zug'
-    embed.add_field(name='Am Zug', value=turn_str, inline=False)
-    embed.add_field(name=DAILY_SOLVER_FIELD, value='Noch niemand gelöst', inline=False)
+    turn_str = i18n.t('daily.turn_white', lang) if turn == chess.WHITE else i18n.t('daily.turn_black', lang)
+    embed.add_field(name=i18n.t('daily.turn_field', lang), value=turn_str, inline=False)
+    embed.add_field(name=i18n.t('daily.solver_field', lang), value=i18n.t('daily.none_solved', lang), inline=False)
     if solution_san:
-        embed.add_field(name='💡 Lösung', value=f'||`{solution_san}`||', inline=False)
+        embed.add_field(name=i18n.t('daily.solution_field', lang), value=f'||`{solution_san}`||', inline=False)
     return embed
 
 

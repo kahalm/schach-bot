@@ -13,6 +13,7 @@ import discord
 
 from core import stats
 from core import discord_link
+from core import i18n
 from puzzle.buttons import fresh_view as _fresh_button_view
 from puzzle.embed import build_daily_embed, build_puzzle_embed
 import puzzle.rookhub as rookhub
@@ -339,7 +340,8 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0,
 
 async def post_rookhub_puzzle(channel, pool: str = 'daily',
                               user_id: int | None = None, exclude=None,
-                              book_id=None, with_board: bool = False) -> int | None:
+                              book_id=None, with_board: bool = False,
+                              lang: str = 'de') -> int | None:
     """Holt ein Puzzle aus dem RookHub-Pool (``daily`` | ``random`` | ``blind``) bzw. aus
     ``book_id`` und postet es. Auswahl, Lösen und Fortschritt liegen bei RookHub; der Link
     wird aus der Puzzle-ID gebaut (immer auflösbar – kein lineId-Reverse-Lookup).
@@ -350,6 +352,7 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
     ``exclude`` = Liste bereits geposteter IDs. ``book_id`` = RookHub-Buch-ID (überschreibt Pool).
     Gibt die Puzzle-ID zurück (oder ``None`` bei Fehler/keinem Puzzle).
     """
+    lang = i18n.norm(lang)  # Sprache des Daily-Posts (de/en) — pro Channel wählbar
     dto = await asyncio.to_thread(rookhub.get_puzzle, pool, exclude, book_id)
     if not dto:
         await _send_optional(channel, f'⚠️ Kein {pool}-Puzzle in RookHub verfügbar.',
@@ -368,8 +371,8 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
     if is_dm or isinstance(channel, discord.Thread):
         target = channel
     else:
-        label = {'daily': 'Tagespuzzle', 'random': 'Zufallspuzzle',
-                 'blind': 'Blindpuzzle'}.get(pool, 'Puzzle')
+        label = (i18n.t('daily.label', lang) if pool == 'daily'
+                 else {'random': 'Zufallspuzzle', 'blind': 'Blindpuzzle'}.get(pool, 'Puzzle'))
         today = _date.today().strftime('%d.%m.%Y')
         thread_name = f'{label} – {today}'[:_DISCORD_THREAD_NAME_MAX]
         try:
@@ -392,7 +395,7 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
                 # rendert das Brett. Sonst kombiniert Discord beim spaeteren refresh()
                 # die CDN-URL im Embed mit dem losen Anhang und zeigt das Brett doppelt.
                 solution_san = _solution_pgn(game)
-                embed = build_daily_embed(turn=turn, solution_san=solution_san)
+                embed = build_daily_embed(turn=turn, solution_san=solution_san, lang=lang)
                 if img:
                     file = discord.File(img, filename='board.png')
                     msg = await _resilient_send(target, file=file, embed=embed)
@@ -417,7 +420,7 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
             if rendered and pool == 'daily' and web_url:
                 await _send_optional(
                     target,
-                    content=f'🧩 [Auf RookHub lösen]({web_url})',
+                    content=f'🧩 [{i18n.t("daily.solve_on_rookhub", lang)}]({web_url})',
                     suppress_embeds=True,
                     label=f'Daily-Link {line_id}')
         except Exception as e:
@@ -430,7 +433,8 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
         if diff:
             stars = ('★' * rating + '☆' * (10 - rating)) if rating else ''
             suffix = f' · {diff}  {stars}'.rstrip() if stars else f' · {diff}'
-        text = (f'🧩 [Rätsel auf RookHub lösen]({web_url}){suffix}' if web_url
+        link_label = i18n.t('daily.solve_on_rookhub', lang) if pool == 'daily' else 'Rätsel auf RookHub lösen'
+        text = (f'🧩 [{link_label}]({web_url}){suffix}' if web_url
                 else f'🧩 Rätsel `{line_id}`{suffix}')
         msg = await _resilient_send(target, content=text)
 
@@ -439,7 +443,7 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
         if pool == 'daily':
             try:
                 from puzzle import daily_results
-                daily_results.remember(getattr(target, 'id', None), msg.id, pid)
+                daily_results.remember(getattr(target, 'id', None), msg.id, pid, lang)
             except Exception as e:
                 log.warning('Daily-Tracking konnte nicht gespeichert werden: %s', e)
             log.info('Tagespuzzle gepostet (id=%s, line=%s).', pid, line_id,

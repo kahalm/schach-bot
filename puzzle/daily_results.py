@@ -14,15 +14,17 @@ import logging
 import os
 from datetime import datetime, timezone
 
+from core import i18n
 from core.json_store import atomic_read, atomic_write
 from core.paths import CONFIG_DIR
 
 log = logging.getLogger('schach-bot')
 
 DAILY_FILE = os.path.join(CONFIG_DIR, 'daily_post.json')
-# Wird auch von puzzle.embed.build_daily_embed verwendet (dort als
-# DAILY_SOLVER_FIELD). Wenn der Name hier geaendert wird, dort mitziehen.
-SOLVER_FIELD = '🏆 Tagespuzzle'
+# Deutscher Default-Name des Solver-Felds (Rueckwaerts-Kompat). Der tatsaechlich
+# verwendete Feldname ist sprachabhaengig — siehe i18n 'daily.solver_field' bzw.
+# puzzle.embed.DAILY_SOLVER_FIELD.
+SOLVER_FIELD = i18n.t('daily.solver_field', 'de')
 MAX_NAMES = 15
 
 
@@ -38,15 +40,16 @@ def _posts_of(data: dict) -> list[dict]:
     """
     posts = data.get('posts')
     if isinstance(posts, list) and posts:
-        return [{'channel_id': int(p['channel_id']), 'message_id': int(p['message_id'])}
+        return [{'channel_id': int(p['channel_id']), 'message_id': int(p['message_id']),
+                 'lang': i18n.norm(p.get('lang'))}
                 for p in posts if p.get('channel_id') and p.get('message_id')]
     cid, mid = data.get('channel_id'), data.get('message_id')
     if cid and mid:
-        return [{'channel_id': int(cid), 'message_id': int(mid)}]
+        return [{'channel_id': int(cid), 'message_id': int(mid), 'lang': i18n.norm(data.get('lang'))}]
     return []
 
 
-def remember(channel_id, message_id, puzzle_id) -> None:
+def remember(channel_id, message_id, puzzle_id, lang: str = 'de') -> None:
     """Merkt einen Daily-Post fuer die spaetere Ergebnis-Aktualisierung.
 
     Mehrkanal-faehig: wird fuer *dasselbe* Tagespuzzle nacheinander pro Channel
@@ -63,6 +66,7 @@ def remember(channel_id, message_id, puzzle_id) -> None:
     if not channel_id or not message_id or not puzzle_id:
         return
     channel_id, message_id = int(channel_id), int(message_id)
+    lang = i18n.norm(lang)
     today = _today()
     data = atomic_read(DAILY_FILE, default=dict) or {}
     same = data.get('date') == today and data.get('puzzle_id') == puzzle_id
@@ -70,9 +74,10 @@ def remember(channel_id, message_id, puzzle_id) -> None:
     for p in posts:  # Upsert in-place (Primaer bleibt stabil)
         if p['channel_id'] == channel_id:
             p['message_id'] = message_id
+            p['lang'] = lang
             break
     else:
-        posts.append({'channel_id': channel_id, 'message_id': message_id})
+        posts.append({'channel_id': channel_id, 'message_id': message_id, 'lang': lang})
     primary = posts[0]
     atomic_write(DAILY_FILE, {
         'date': today,
@@ -117,32 +122,32 @@ def _fmt_time(seconds: int) -> str:
     return f'{seconds // 60}:{seconds % 60:02d}'
 
 
-def format_solver_line(results: dict, max_names: int = MAX_NAMES) -> str:
-    """Baut die Solver-Zeile fürs Embed-Feld (rein, testbar). Eingeloggte Löser namentlich,
-    anonyme Löser nur als Anzahl („+N anonym"). Gesamtzahl = eingeloggt + anonym."""
+def format_solver_line(results: dict, max_names: int = MAX_NAMES, lang: str = 'de') -> str:
+    """Baut die Solver-Zeile fürs Embed-Feld (rein, testbar) in Sprache ``lang`` (de/en).
+    Eingeloggte Löser namentlich, anonyme Löser nur als Anzahl. Gesamt = eingeloggt + anonym."""
     solvers = results.get('solvers') or []
     named = results.get('solvedCount', len(solvers))
     anon = results.get('anonymousSolvedCount', 0)
     attempts = results.get('attemptCount', 0)
     total = named + anon
     if total <= 0:
-        return f'Noch niemand gelöst · 🧩 {attempts} dran versucht'
+        return i18n.t('daily.none_solved_attempts', lang, n=attempts)
     shown = []
     for s in solvers[:max_names]:
         did = s.get('discordId')
         name = f'<@{did}>' if did else (s.get('name') or '—')
-        t = _fmt_time(s.get('timeSeconds', 0))
+        tm = _fmt_time(s.get('timeSeconds', 0))
         # Mit Tipps gelöst (HintsUsed > 0 im wertungsrelevanten Erstversuch) → Glühbirne in Klammern.
         hint = ' (💡)' if s.get('hintsUsed', 0) > 0 else ''
-        shown.append((f'{name} ({t})' if t else name) + hint)
+        shown.append((f'{name} ({tm})' if tm else name) + hint)
     body = ''
     if shown:
         more = named - len(shown)
-        body = ', '.join(shown) + (f' +{more} weitere' if more > 0 else '')
+        body = ', '.join(shown) + (f' {i18n.t("daily.more", lang, n=more)}' if more > 0 else '')
     if anon > 0:
-        body = (body + ' · ' if body else '') + f'{anon} anonym'
-    suffix = f' · 🧩 {attempts} dran versucht' if attempts > total else ''
-    return f'✅ Gelöst ({total}): {body}{suffix}'
+        body = (body + ' · ' if body else '') + i18n.t('daily.anon', lang, n=anon)
+    suffix = i18n.t('daily.attempts_suffix', lang, n=attempts) if attempts > total else ''
+    return i18n.t('daily.solved', lang, n=total, body=body) + suffix
 
 
 def _field_name(f):
@@ -150,11 +155,13 @@ def _field_name(f):
     return f.get('name') if isinstance(f, dict) else getattr(f, 'name', None)
 
 
-async def _edit_post_embed(bot, channel_id: int, message_id: int, line: str) -> None:
-    """Editiert das Solver-Feld EINES gemerkten Daily-Posts. Fehler bleiben pro
-    Channel isoliert (eine offline/unerreichbare Guild blockiert die andere nicht)."""
+async def _edit_post_embed(bot, channel_id: int, message_id: int, line: str, lang: str = 'de') -> None:
+    """Editiert das Solver-Feld EINES gemerkten Daily-Posts (in dessen Sprache ``lang``).
+    Fehler bleiben pro Channel isoliert (eine offline/unerreichbare Guild blockiert die
+    andere nicht)."""
     import discord
 
+    solver_field = i18n.t('daily.solver_field', lang)
     channel = bot.get_channel(channel_id)
     if channel is None:
         try:
@@ -168,11 +175,11 @@ async def _edit_post_embed(bot, channel_id: int, message_id: int, line: str) -> 
         return
     try:
         embed = msg.embeds[0] if msg.embeds else discord.Embed()
-        idx = next((i for i, f in enumerate(embed.fields) if _field_name(f) == SOLVER_FIELD), None)
+        idx = next((i for i, f in enumerate(embed.fields) if _field_name(f) == solver_field), None)
         if idx is None:
-            embed.add_field(name=SOLVER_FIELD, value=line, inline=False)
+            embed.add_field(name=solver_field, value=line, inline=False)
         else:
-            embed.set_field_at(idx, name=SOLVER_FIELD, value=line, inline=False)
+            embed.set_field_at(idx, name=solver_field, value=line, inline=False)
         # Anhang in Ruhe lassen (das Brett ist der einzige File-Anhang, NICHT
         # im Embed). embed.image leeren, damit Alt-Posts (vor v2.48.0) kein
         # zusaetzliches Bild rendern.
@@ -207,9 +214,11 @@ async def apply_solver_update(bot, cur: dict, results: dict) -> None:
     puzzle_id = cur.get('puzzle_id')
     new_solvers = reinforcement.new_puzzle_solvers(puzzle_id, results.get('solvers') or [])
 
-    line = format_solver_line(results)
+    # Solver-Zeile pro Post in dessen Sprache rendern (Channels koennen de/en mischen).
     for post in _posts_of(cur):
-        await _edit_post_embed(bot, post['channel_id'], post['message_id'], line)
+        lang = post.get('lang', i18n.DEFAULT_LANG)
+        line = format_solver_line(results, lang=lang)
+        await _edit_post_embed(bot, post['channel_id'], post['message_id'], line, lang)
 
     # Reinforcement-DMs asynchron feuern (fire-and-forget) — genau einmal pro Loeser.
     for s in new_solvers:

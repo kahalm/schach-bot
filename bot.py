@@ -20,6 +20,7 @@ from datetime import datetime, time, timezone
 
 from core import stats, dm_log
 from core import discord_link
+from core import i18n as _i18n
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 from core.permissions import is_privileged, set_guild_id, display_name_cached
@@ -36,17 +37,29 @@ try:
 except ValueError:
     raise SystemExit(f"CHANNEL_ID ungültig: {os.getenv('CHANNEL_ID')!r} — muss eine Zahl sein")
 # Zusaetzliche Daily-Channels (auch in anderen Guilds) — das Tagespuzzle wird in jeden
-# gepostet (gespiegelt), Solver-Tracking laeuft fuer alle. Komma-separierte Channel-IDs.
+# gepostet (gespiegelt), Solver-Tracking laeuft fuer alle. Komma-separiert; je Eintrag
+# entweder ``ID`` oder ``ID:sprache`` (de/en). Sprache pro Channel waehlbar — Default
+# DAILY_DEFAULT_LANG (sonst de). CHANNEL_ID nutzt den Default.
+DAILY_DEFAULT_LANG = _i18n.norm(os.getenv('DAILY_DEFAULT_LANG', 'de'))
 DAILY_CHANNEL_IDS: list[int] = [CHANNEL_ID] if CHANNEL_ID else []
+DAILY_CHANNEL_LANG: dict[int, str] = {CHANNEL_ID: DAILY_DEFAULT_LANG} if CHANNEL_ID else {}
 for _part in os.getenv('DAILY_EXTRA_CHANNEL_IDS', '').replace(' ', '').split(','):
     if not _part:
         continue
+    _id, _, _lang = _part.partition(':')
     try:
-        _cid = int(_part)
+        _cid = int(_id)
     except ValueError:
-        raise SystemExit(f"DAILY_EXTRA_CHANNEL_IDS enthält ungültige ID: {_part!r} — nur Zahlen, komma-getrennt")
-    if _cid and _cid not in DAILY_CHANNEL_IDS:
+        raise SystemExit(f"DAILY_EXTRA_CHANNEL_IDS enthält ungültige ID: {_id!r} — Format: ID oder ID:sprache (de/en), komma-getrennt")
+    if not _cid:
+        continue
+    if _cid not in DAILY_CHANNEL_IDS:
         DAILY_CHANNEL_IDS.append(_cid)
+    DAILY_CHANNEL_LANG[_cid] = _i18n.norm(_lang) if _lang else DAILY_DEFAULT_LANG
+
+
+def _daily_lang(cid: int) -> str:
+    return DAILY_CHANNEL_LANG.get(cid, DAILY_DEFAULT_LANG)
 try:
     TOURNAMENT_CHANNEL_ID = int(os.getenv('TOURNAMENT_CHANNEL_ID') or os.getenv('RALLYE_CHANNEL_ID', '0'))
 except ValueError:
@@ -218,7 +231,8 @@ async def on_ready():
     try:
         from core import webhook_server
         bot._webhook_runner = await webhook_server.start(
-            bot, WEBHOOK_BIND_HOST, WEBHOOK_PORT, WEBHOOK_SECRET, channel_ids=DAILY_CHANNEL_IDS)
+            bot, WEBHOOK_BIND_HOST, WEBHOOK_PORT, WEBHOOK_SECRET,
+            daily_channels=[(c, _daily_lang(c)) for c in DAILY_CHANNEL_IDS])
     except Exception as e:
         log.exception('Webhook-Server konnte nicht starten: %s', e)
     # Verpasste Solver-Updates direkt nach Start einmal nachholen (Bot war evtl.
@@ -737,7 +751,7 @@ async def _post_daily_to_all() -> list[tuple[int, bool]]:
             results.append((cid, False))
             continue
         try:
-            pid = await puzzle.post_rookhub_puzzle(channel, 'daily', with_board=True)
+            pid = await puzzle.post_rookhub_puzzle(channel, 'daily', with_board=True, lang=_daily_lang(cid))
             results.append((cid, pid is not None))
         except Exception:
             log.exception('Daily-Post in Channel %s fehlgeschlagen', cid,
