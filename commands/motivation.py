@@ -518,6 +518,7 @@ async def _check_activities():
             log.info('Slacker-DM an User %s (spielt %s seit %d min, linked=%s)',
                      uid_str, current_game, round(elapsed_minutes), progress is not None,
                      extra={'es_fields': {
+                         'tags': ['motivation'],
                          'username': user_obj.name,
                          'dm_text': text,
                          'game': current_game,
@@ -585,7 +586,8 @@ async def _run_motivation_dms():
         outcome = 'sent'
         try:
             await _send_motivation_to(int(uid_str))
-            log.info('Motivations-DM an User %s gesendet.', uid_str)
+            log.info('Motivations-DM an User %s gesendet.', uid_str,
+                     extra={'es_fields': {'tags': ['motivation']}})
         except (discord.Forbidden, discord.NotFound):
             outcome = 'unreachable'
         except Exception:

@@ -147,7 +147,8 @@ async def apply_solver_update(bot, cur: dict, results: dict) -> None:
                 pass
         await msg.edit(embed=embed)
     except Exception as e:
-        log.warning('Daily-Post-Update fehlgeschlagen: %s', e)
+        log.warning('Daily-Post-Update fehlgeschlagen: %s', e,
+                    extra={'es_fields': {'tags': ['daily', 'puzzle']}})
 
     # Reinforcement-DMs asynchron feuern (fire-and-forget).
     for s in new_solvers:

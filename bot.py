@@ -710,7 +710,8 @@ async def puzzle_task():
     try:
         await puzzle.post_rookhub_puzzle(channel, 'daily', with_board=True)
     except Exception as e:
-        log.exception('puzzle_task fehlgeschlagen')
+        log.exception('puzzle_task fehlgeschlagen',
+                      extra={'es_fields': {'tags': ['daily', 'puzzle']}})
     # Reaction-Log rotieren
     try:
         from core.event_log import rotate_log

@@ -816,6 +816,64 @@ def test_suppress_empty_fen():
     print()
 
 
+def test_es_tags():
+    """core/es_client.send_log setzt doc['tags'] aus dem tags-Schluessel (ECS keyword[])."""
+    print('[ES-Tags]')
+    from core import es_client
+
+    # send_log ist no-op ohne ES_URL → fuer den Test direkt eine URL erzwingen und
+    # die Queue abgreifen, statt echtes HTTP. Wir greifen das gebaute doc aus _queue ab.
+    orig_url = es_client._ES_URL
+    es_client._ES_URL = 'http://test.invalid:9200'
+    # Worker NICHT starten lassen → put landet in der Queue, wir lesen es selbst.
+    es_client._worker_started = True
+    try:
+        # drain
+        while not es_client._queue.empty():
+            es_client._queue.get_nowait()
+
+        def _last_doc():
+            url, doc = es_client._queue.get_nowait()
+            return doc
+
+        # 1) Liste von tags landet als native ECS-Liste in doc['tags'], NICHT unter labels.
+        es_client.send_log('Information', 'msg', {'tags': ['daily', 'puzzle'], 'foo': 'bar'})
+        doc = _last_doc()
+        check('tags-Liste → doc[tags]', doc.get('tags') == ['daily', 'puzzle'])
+        check('tags nicht in labels', 'tags' not in doc.get('labels', {}))
+        check('andere extras bleiben labels', doc.get('labels', {}).get('foo') == 'bar')
+
+        # 2) Einzelner String → 1-Element-Liste.
+        es_client.send_log('Information', 'm', {'tags': 'weekly'})
+        check('tags-String normalisiert', _last_doc().get('tags') == ['weekly'])
+
+        # 3) Dedupe + leere Eintraege fallen raus.
+        es_client.send_log('Information', 'm', {'tags': ['a', 'a', '', '  ', 'b']})
+        check('tags dedupe/leer', _last_doc().get('tags') == ['a', 'b'])
+
+        # 4) Kein tags-Key → backward-compatible (kein tags-Feld im doc).
+        es_client.send_log('Information', 'm', {'foo': 'x'})
+        check('ohne tags kein tags-Feld', 'tags' not in _last_doc())
+
+        # 5) End-to-end via _ESHandler.emit: es_fields → extra → send_log popt tags.
+        import logging
+        from core.log_setup import _ESHandler
+        handler = _ESHandler()
+        handler.setFormatter(logging.Formatter('%(message)s'))
+        rec = logging.LogRecord('schach-bot', logging.INFO, __file__, 1,
+                                'daily posted', None, None)
+        rec.es_fields = {'tags': ['daily', 'puzzle']}
+        handler.emit(rec)
+        check('es_fields-Pfad setzt doc[tags]', _last_doc().get('tags') == ['daily', 'puzzle'])
+    finally:
+        es_client._ES_URL = orig_url
+        es_client._worker_started = False
+        while not es_client._queue.empty():
+            es_client._queue.get_nowait()
+
+    print()
+
+
 
     """Tests dass Admin-Commands von Nicht-Admins abgelehnt werden."""
     print('[Admin-Enforcement]')

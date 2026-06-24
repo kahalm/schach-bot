@@ -261,9 +261,11 @@ async def run_weekly_announcements():
         try:
             await _post_announcement(channel, p)
             _mark_posted(p.get('id'))
-            log.info('Wochenpost #%s angekündigt.', p.get('id'))
+            log.info('Wochenpost #%s angekündigt.', p.get('id'),
+                     extra={'es_fields': {'tags': ['weekly']}})
         except Exception:
-            log.exception('Wochenpost-Ankündigung #%s fehlgeschlagen', p.get('id'))
+            log.exception('Wochenpost-Ankündigung #%s fehlgeschlagen', p.get('id'),
+                          extra={'es_fields': {'tags': ['weekly']}})
 
 
 def setup(bot, wochenpost_channel_id: int = 0):

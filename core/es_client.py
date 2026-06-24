@@ -63,6 +63,28 @@ def _index_name(prefix: str) -> str:
     return f"{prefix}-{datetime.now(timezone.utc).strftime('%Y.%m')}"
 
 
+def _normalize_tags(raw) -> list[str]:
+    """Normalisiert einen tags-Wert auf eine deduplizierte Liste nicht-leerer Strings.
+
+    Akzeptiert einen einzelnen String (→ 1-Element-Liste) oder eine Liste/Tuple.
+    Leere/whitespace-only Eintraege fallen raus; Reihenfolge bleibt erhalten.
+    """
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        raw = [raw]
+    elif not isinstance(raw, (list, tuple, set)):
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for t in raw:
+        s = str(t).strip()
+        if s and s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
+
+
 def send_log(level: str, message: str, extra: dict | None = None):
     """Log-Eintrag im kanonischen ECS-Schema nach ES senden (fire-and-forget).
 
@@ -76,6 +98,7 @@ def send_log(level: str, message: str, extra: dict | None = None):
     extra = dict(extra or {})
     logger = extra.pop('logger', None)
     exception = extra.pop('exception', None)
+    tags = _normalize_tags(extra.pop('tags', None))
     log_obj = {'level': level}
     if logger:
         log_obj['logger'] = logger
@@ -85,6 +108,8 @@ def send_log(level: str, message: str, extra: dict | None = None):
         'message': message,
         'service': {'name': 'schach-bot'},
     }
+    if tags:
+        doc['tags'] = tags  # native ECS keyword[]-Feld (siehe logging-schema.md)
     if exception:
         doc['error'] = {'stack_trace': exception}
     if extra:

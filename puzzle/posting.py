@@ -421,7 +421,8 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
                     suppress_embeds=True,
                     label=f'Daily-Link {line_id}')
         except Exception as e:
-            log.exception('RookHub-Brett-Render fehlgeschlagen (%s) – nur Link: %s', line_id, e)
+            log.exception('RookHub-Brett-Render fehlgeschlagen (%s) – nur Link: %s', line_id, e,
+                          extra={'es_fields': {'tags': ['daily', 'puzzle']}} if pool == 'daily' else None)
 
     # Link-only (Default bzw. Fallback, falls Rendern scheitert)
     if not rendered:
@@ -441,6 +442,8 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
                 daily_results.remember(getattr(target, 'id', None), msg.id, pid)
             except Exception as e:
                 log.warning('Daily-Tracking konnte nicht gespeichert werden: %s', e)
+            log.info('Tagespuzzle gepostet (id=%s, line=%s).', pid, line_id,
+                     extra={'es_fields': {'tags': ['daily', 'puzzle']}})
     if user_id:
         stats.inc(user_id, 'puzzles', 1)
     return pid

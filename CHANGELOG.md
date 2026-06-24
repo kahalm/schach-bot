@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.66.0] - 2026-06-24
+### Added
+- ECS-Logs können jetzt das native `tags`-Keyword-Array tragen (gemäß zentralem `logging-schema.md`). `es_client.send_log` zieht einen `tags`-Schlüssel aus `extra` (Liste oder Einzel-String), normalisiert ihn (dedupliziert, leere Einträge raus) und setzt `doc['tags']` — getrennt von `labels.*`. Ohne `tags`-Schlüssel bleibt das Verhalten unverändert (rückwärtskompatibel). Der Pfad funktioniert end-to-end über `log.info(..., extra={'es_fields': {'tags': [...]}})` (`_ESHandler.emit` → `extra` → `send_log`).
+- Domänen-Tags an den wertvollen Log-Stellen gesetzt: Tagespuzzle-Posting → `['daily','puzzle']` (Erfolg + Render-/Task-Fehler + Solver-Update-Fehler), Wochenpost-Ankündigung → `['weekly']` (Erfolg + Fehler), Motivations-DM → `['motivation']` (täglicher Versand + Slacker-DM). Heartbeats werden bewusst NICHT selbst getaggt (setzt die zentrale Ingest-Pipeline anhand „Heartbeat:" / „heartbeat_bot").
+
 ## [2.65.0] - 2026-06-23
 ### Changed
 - Motivations-DM an das neue RookHub-Trainingsziel-Modell angepasst: statt getrennter Puzzle-/Buch-Tagesziele gibt es jetzt **ein gemeinsames Tageszeit-Ziel** (`today.daily` / `goal.dailyMinutes`). Der DM nennt es als Kategorie „Training"; das wöchentliche Spielen-Ziel bleibt unverändert. (Erfordert RookHub ≥ 0.178.0.)
