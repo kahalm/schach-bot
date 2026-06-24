@@ -160,16 +160,22 @@ _GOALS_SYSTEM = (
 )
 
 
+_CLAUDE_TIMEOUT = 30.0  # s — Reinforcement laeuft im Loop; haengender Call darf nicht blockieren
+
+
 async def _via_claude(system: str, prompt: str) -> str | None:
     try:
         from commands.chat import _client, _MODEL
         if _client is None:
             return None
-        resp = await _client.messages.create(
-            model=_MODEL,
-            max_tokens=200,
-            system=system,
-            messages=[{'role': 'user', 'content': prompt}],
+        resp = await asyncio.wait_for(
+            _client.messages.create(
+                model=_MODEL,
+                max_tokens=200,
+                system=system,
+                messages=[{'role': 'user', 'content': prompt}],
+            ),
+            timeout=_CLAUDE_TIMEOUT,
         )
         parts = [b.text for b in resp.content if getattr(b, 'type', None) == 'text']
         return ''.join(parts).strip() or None

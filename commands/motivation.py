@@ -246,21 +246,33 @@ _SLACKER_SYSTEM = (
 )
 
 
+_CLAUDE_TIMEOUT = 30.0  # s — der Motivations-Loop darf nicht an einem haengenden Claude-Call kleben
+
+
 async def _via_claude(system: str, prompt: str) -> str | None:
-    """Formuliert Text per Claude (one-shot, kein Chat-Verlauf). None bei fehlendem Client/Fehler."""
+    """Formuliert Text per Claude (one-shot, kein Chat-Verlauf). None bei fehlendem Client/Fehler.
+
+    Mit Timeout abgesichert: ein haengender API-Call darf den 10-min-Motivations-Loop
+    nicht blockieren (wuerde sonst alle Folge-DMs aufhalten)."""
     from commands.chat import _client, _MODEL
     if _client is None:
         return None
     try:
-        resp = await _client.messages.create(
-            model=_MODEL,
-            max_tokens=300,
-            system=system,
-            messages=[{'role': 'user', 'content': prompt}],
+        resp = await asyncio.wait_for(
+            _client.messages.create(
+                model=_MODEL,
+                max_tokens=300,
+                system=system,
+                messages=[{'role': 'user', 'content': prompt}],
+            ),
+            timeout=_CLAUDE_TIMEOUT,
         )
         parts = [b.text for b in resp.content if getattr(b, 'type', None) == 'text']
         text = ''.join(parts).strip()
         return text or None
+    except asyncio.TimeoutError:
+        log.warning('Motivations-Claude-Aufruf Timeout (>%.0fs) → Fallback', _CLAUDE_TIMEOUT)
+        return None
     except Exception:
         log.warning('Motivations-Claude-Aufruf fehlgeschlagen')
         return None

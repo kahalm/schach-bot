@@ -141,6 +141,56 @@ def test_chat_routing():
         teardown_temp_config(tmpdir)
 
 
+def test_rate_hits_bounded():
+    """_rate_hits waechst nicht unbegrenzt — abgelaufene/leere Eintraege werden geprunt."""
+    print('[rate_hits bounded]')
+    orig_max = chat_mod._RATE_LIMIT_MAXSIZE
+    try:
+        chat_mod._rate_hits.clear()
+        chat_mod._RATE_LIMIT_MAXSIZE = 10
+        # Viele User mit altem Timestamp eintragen (alle abgelaufen).
+        for uid in range(50):
+            chat_mod._check_rate_limit(uid, now=1000.0)
+        # Ein neuer Aufruf weit spaeter → Prune raeumt die abgelaufenen weg.
+        chat_mod._check_rate_limit(99999, now=1000.0 + chat_mod._RATE_LIMIT_WINDOW + 5)
+        check('Rate-Limit-Dict bleibt beschraenkt',
+              len(chat_mod._rate_hits) <= chat_mod._RATE_LIMIT_MAXSIZE)
+    finally:
+        chat_mod._RATE_LIMIT_MAXSIZE = orig_max
+        chat_mod._rate_hits.clear()
+
+
+def test_daily_token_cap():
+    """Tages-Token-Cap: zaehlt verbrauchte Tokens pro UTC-Tag, blockt ueber Limit, rollt taeglich."""
+    print('[daily_token_cap]')
+    tmpdir = setup_temp_config()
+    orig_cap = chat_mod._DAILY_TOKEN_CAP
+    try:
+        atomic_write(chat_mod.CHAT_FILE, {})
+        chat_mod._DAILY_TOKEN_CAP = 1000
+
+        check('frisch → unter Cap', chat_mod._daily_tokens_left(7) is True)
+        chat_mod._record_token_usage(7, 600)
+        check('nach 600 → noch unter Cap', chat_mod._daily_tokens_left(7) is True)
+        chat_mod._record_token_usage(7, 600)
+        check('nach 1200 → ueber Cap', chat_mod._daily_tokens_left(7) is False)
+        # Anderer User unberuehrt
+        check('anderer User → unter Cap', chat_mod._daily_tokens_left(8) is True)
+
+        # Tageswechsel simulieren: gespeicherten date-Eintrag auf gestern setzen.
+        data = atomic_read(chat_mod.CHAT_FILE, dict)
+        data['usage']['7']['date'] = '2000-01-01'
+        atomic_write(chat_mod.CHAT_FILE, data)
+        check('nach Tageswechsel → Kontingent frisch', chat_mod._daily_tokens_left(7) is True)
+
+        # Cap=0 → deaktiviert
+        chat_mod._DAILY_TOKEN_CAP = 0
+        check('Cap=0 → immer erlaubt', chat_mod._daily_tokens_left(7) is True)
+    finally:
+        chat_mod._DAILY_TOKEN_CAP = orig_cap
+        teardown_temp_config(tmpdir)
+
+
 def test_chat_history_prune():
     """Tests dass History auf _MAX_HISTORY begrenzt wird."""
     print('[chat_history_prune]')

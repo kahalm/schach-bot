@@ -465,6 +465,17 @@ def test_tool_analyze_move():
         r = _analyze_move_sync('e5', 99, fen_override=override_fen)
     check('FEN-Override ohne Puzzle → error', 'error' in r)
 
+    # 7c. FEN-Override mit FREMDER Stellung (mehr Material als das Puzzle) → abgelehnt.
+    # Puzzle mit reduziertem Material; Override = volle Grundstellung (mehr Figuren).
+    ctx_endgame = dict(ctx_puzzle,
+                       fen='8/8/8/4k3/8/4K3/4P3/8 w - - 0 50', solution='Kd4')
+    full_board = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+    with patch('puzzle.state.get_puzzle_context', return_value=ctx_endgame):
+        r = _analyze_move_sync('e4', 42, fen_override=full_board)
+    check('FEN-Override fremde Stellung (mehr Material) → error', 'error' in r)
+    check('FEN-Override fremde Stellung → Folgestellung-Meldung',
+          'Folgestellung' in r.get('error', ''))
+
     # 8. Korrekter Zug ohne Gegenzug (Loesung hat nur 1 Zug)
     ctx_single = dict(ctx_puzzle, solution='e4')
     with patch('puzzle.state.get_puzzle_context', return_value=ctx_single):

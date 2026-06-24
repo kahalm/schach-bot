@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.72.0] - 2026-06-24
+### Added
+- **KI-Chat Tages-Token-Cap**: Nicht-whitelisted DM-User dürfen pro UTC-Tag nur `CHAT_DAILY_TOKEN_CAP` Tokens (Default 60000, `0` = aus) für den Claude-Chat verbrauchen — schützt vor Claude-Kosten durch Fremd-DMs. Verbrauch (input+output) wird pro Antwort in `chat.json` (`usage`) gebucht, rollt täglich und wird auf Alt-Tage bereinigt; bei Überschreitung kommt ein freundlicher Hinweis statt einer Antwort. Whitelisted User bleiben unbegrenzt.
+### Changed
+- **`analyze_move` `fen`-Override eingeschränkt**: Ein übergebener FEN-Override muss jetzt eine plausible **Folgestellung** des aktiven Puzzles sein (Material je Figurentyp+Farbe ≤ Puzzle-Start, Zugzahl ≥ Puzzle-Start) — verhindert, dass der Bot als allgemeiner Engine-Analyse-Dienst für beliebige Stellungen missbraucht wird (`_is_followup_position`).
+- **Rate-Limit-Dict beschränkt**: `_rate_hits` wird beim Erreichen von `_RATE_LIMIT_MAXSIZE` (5000) um abgelaufene/leere Einträge geprunt (FIFO als Fallback) — wächst nicht mehr unbegrenzt mit jeder je angeschriebenen DM-User-ID.
+- **Motivations-/Reinforcement-Loop mit Claude-Timeout**: Die one-shot-`_via_claude`-Aufrufe in `commands/motivation.py` und `core/reinforcement.py` sind mit `asyncio.wait_for(..., 30s)` abgesichert → ein hängender API-Call blockiert den 10-min-Loop nicht mehr (Fallback auf den vorformulierten Text).
+
 ## [2.71.0] - 2026-06-24
 ### Changed
 - **Reinforcement-DMs gedrosselt + GC-sicher**: Daily-Solve- und Weekly-Webhooks konnten bei einer Löser-Welle pro Löser sofort ein `asyncio.create_task()` erzeugen (Discord-429-Risiko, parallele Claude-Aufrufe, und der GC konnte einen unreferenzierten Task mittendrin einsammeln). Neuer Helfer `core.reinforcement.spawn_dm()` hält jeden Task in einem Set (Referenz bis Abschluss) und drosselt die gleichzeitig laufenden DMs über ein `asyncio.Semaphore` (`_MAX_CONCURRENT_DMS` = 3). `puzzle/daily_results.py` und `commands/weeklypost.py` nutzen ihn statt direktem `create_task`.

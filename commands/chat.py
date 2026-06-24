@@ -6,6 +6,7 @@ import logging
 import os
 import time
 from collections import defaultdict, deque
+from datetime import datetime, timezone
 
 import discord
 from discord.ext import commands
@@ -79,7 +80,26 @@ _RATE_LIMIT_MSG = (
     'Kleiner Moment — du schreibst gerade sehr schnell. '
     'Versuch es in einer Minute nochmal. 🐢'
 )
+# Maximale Anzahl getrackter User im Rate-Limit-Dict. Ohne Deckel wuchse das
+# defaultdict mit jeder je angeschriebenen DM-User-ID unbegrenzt. Beim Erreichen
+# werden abgelaufene (leere) Eintraege geprunt; bringt das nichts, faellt der
+# aelteste Eintrag raus (FIFO ueber Insertion-Order).
+_RATE_LIMIT_MAXSIZE = 5000
 _rate_hits: dict[int, deque] = defaultdict(deque)
+
+# --- Tages-Token-Cap pro DM-User (gegen Claude-Kosten) ---
+# Nicht-whitelisted User duerfen pro UTC-Tag nur eine begrenzte Zahl Tokens
+# verbrauchen. Whitelisted User sind ausgenommen. Zustand in chat.json unter
+# ``usage`` ({uid: {"date": "YYYY-MM-DD", "tokens": int}}). 0 = Cap aus.
+_DAILY_TOKEN_CAP = int(os.getenv('CHAT_DAILY_TOKEN_CAP', '60000') or 0)
+_CAP_REACHED_MSG = (
+    'Du hast dein KI-Tageslimit erreicht. Morgen geht es weiter — '
+    'oder frag einen Admin um einen Whitelist-Platz. 🌙'
+)
+
+
+def _utc_day() -> str:
+    return datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
 
 def _is_whitelisted(user_id: int) -> bool:
@@ -88,15 +108,31 @@ def _is_whitelisted(user_id: int) -> bool:
     return user_id in data.get('whitelist', [])
 
 
+def _prune_rate_hits(now: float) -> None:
+    """Haelt ``_rate_hits`` beschraenkt: leere/abgelaufene Eintraege raus, dann FIFO-Cap."""
+    if len(_rate_hits) <= _RATE_LIMIT_MAXSIZE:
+        return
+    stale = [uid for uid, h in _rate_hits.items()
+             if not h or now - h[-1] > _RATE_LIMIT_WINDOW]
+    for uid in stale:
+        _rate_hits.pop(uid, None)
+    # Falls weiterhin ueber dem Deckel: aelteste Eintraege (Insertion-Order) verwerfen.
+    while len(_rate_hits) > _RATE_LIMIT_MAXSIZE:
+        oldest = next(iter(_rate_hits))
+        _rate_hits.pop(oldest, None)
+
+
 def _check_rate_limit(user_id: int, now=None) -> bool:
     """True, wenn der (nicht-whitelisted) User jetzt senden darf.
 
     Sliding-Window: max ``_RATE_LIMIT_MAX`` Nachrichten pro
     ``_RATE_LIMIT_WINDOW`` Sekunden. Bei Erlaubnis wird der Zeitpunkt
     protokolliert; ueber Limit -> False (kein Eintrag, Fenster gleitet weiter).
+    Das Dict wird gegen unbegrenztes Wachstum beschraenkt (s. _prune_rate_hits).
     """
     if now is None:
         now = time.monotonic()
+    _prune_rate_hits(now)
     hits = _rate_hits[user_id]
     while hits and now - hits[0] > _RATE_LIMIT_WINDOW:
         hits.popleft()
@@ -104,6 +140,40 @@ def _check_rate_limit(user_id: int, now=None) -> bool:
         return False
     hits.append(now)
     return True
+
+
+def _daily_tokens_left(user_id: int) -> bool:
+    """True, wenn der User heute noch unter dem Tages-Token-Cap liegt (oder Cap aus)."""
+    if _DAILY_TOKEN_CAP <= 0:
+        return True
+    data = atomic_read(CHAT_FILE, dict)
+    rec = (data.get('usage') or {}).get(str(user_id))
+    if not isinstance(rec, dict) or rec.get('date') != _utc_day():
+        return True  # neuer Tag / kein Eintrag → Kontingent frisch
+    return int(rec.get('tokens', 0)) < _DAILY_TOKEN_CAP
+
+
+def _record_token_usage(user_id: int, tokens: int) -> None:
+    """Addiert verbrauchte Tokens auf das Tageskonto des Users (UTC-Tag, rollt taeglich)."""
+    if _DAILY_TOKEN_CAP <= 0 or tokens <= 0:
+        return
+    today = _utc_day()
+    uid_key = str(user_id)
+
+    def _u(data):
+        usage = data.setdefault('usage', {})
+        rec = usage.get(uid_key)
+        if not isinstance(rec, dict) or rec.get('date') != today:
+            rec = {'date': today, 'tokens': 0}
+        rec['tokens'] = int(rec.get('tokens', 0)) + int(tokens)
+        usage[uid_key] = rec
+        # Alt-Eintraege anderer Tage entfernen (haelt usage klein).
+        for k in [k for k, v in usage.items()
+                  if isinstance(v, dict) and v.get('date') != today]:
+            usage.pop(k, None)
+        return data
+
+    atomic_update(CHAT_FILE, _u, default=dict)
 
 
 def _is_tool_content(msg: dict) -> bool:
@@ -294,6 +364,14 @@ async def _chat_response(user_id: int, text: str, channel=None, persist: bool = 
 
             response = await _client.messages.create(**api_kwargs)
 
+            # Tages-Token-Verbrauch buchen (input+output), damit der Cap greift.
+            usage = getattr(response, 'usage', None)
+            if usage is not None:
+                used = (getattr(usage, 'input_tokens', 0) or 0) + \
+                       (getattr(usage, 'output_tokens', 0) or 0)
+                if used:
+                    await asyncio.to_thread(_record_token_usage, user_id, used)
+
             if persist:
                 await asyncio.to_thread(
                     _save_response_blocks, user_id, response.content)
@@ -378,6 +456,15 @@ def setup(bot: commands.Bot):
             except Exception:
                 pass
             return
+        # Tages-Token-Cap (nur Nicht-whitelisted): schuetzt vor Claude-Kosten.
+        if not whitelisted:
+            within = await asyncio.to_thread(_daily_tokens_left, message.author.id)
+            if not within:
+                try:
+                    await message.channel.send(_CAP_REACHED_MSG)
+                except Exception:
+                    pass
+                return
 
         async with message.channel.typing():
             response = await _chat_response(

@@ -509,6 +509,41 @@ def _parse_first_solution_move(fen: str, solution: str):
     return None
 
 
+def _is_followup_position(puzzle_fen: str | None, override_fen: str) -> bool:
+    """Plausibilitaetscheck: Stammt ``override_fen`` aus der Puzzle-Stellung ab?
+
+    Erlaubt nur Stellungen, die echte Folgestellungen sein KOENNEN — kein
+    vollwertiger Beweis (keine Pfadsuche), aber ein billiger Filter gegen frei
+    uebergebene Fremd-Stellungen: je Figurentyp+Farbe darf die Override-Stellung
+    nicht MEHR Figuren haben als die Puzzle-Stellung (Material nimmt im Spiel nur
+    ab — abgesehen von Umwandlung, die durch das Gesamt-Material-Limit gedeckt
+    ist), und die Zugzahl darf nicht VOR dem Puzzle-Start liegen.
+    """
+    import chess
+    if not puzzle_fen:
+        return False
+    try:
+        base = chess.Board(puzzle_fen)
+        cand = chess.Board(override_fen)
+    except ValueError:
+        return False
+
+    # Material je (Farbe, Typ) darf nicht zunehmen.
+    for color in (chess.WHITE, chess.BLACK):
+        for ptype in (chess.PAWN, chess.KNIGHT, chess.BISHOP,
+                      chess.ROOK, chess.QUEEN, chess.KING):
+            if (len(cand.pieces(ptype, color))
+                    > len(base.pieces(ptype, color))):
+                return False
+    # Gesamt-Figurenzahl darf nicht steigen (faengt Umwandlungs-Tricks ab).
+    if chess.popcount(cand.occupied) > chess.popcount(base.occupied):
+        return False
+    # Zugzahl darf nicht vor dem Puzzle-Start liegen.
+    if cand.fullmove_number < base.fullmove_number:
+        return False
+    return True
+
+
 def _analyze_move_sync(move_str: str, user_id: int, fen_override: str | None = None) -> dict:
     """Sync-Kernlogik: Zug parsen, gegen Loesung pruefen, Cloud-Eval holen."""
     import chess
@@ -522,6 +557,15 @@ def _analyze_move_sync(move_str: str, user_id: int, fen_override: str | None = N
         return {'error': 'Kein aktives Puzzle vorhanden.'}
 
     if fen_override:
+        # fen_override soll NUR eine Folge-Stellung des aktiven Puzzles sein
+        # (Folgezug-Analyse), keine frei waehlbare Stellung — sonst liesse sich
+        # der Bot als allgemeiner Engine-Analyse-Dienst missbrauchen (Cloud-Eval
+        # fuer beliebige Eroeffnungs-/Partie-Stellungen). Wir erzwingen, dass die
+        # uebergebene Stellung plausibel aus der Puzzle-Stellung HERVORGEHT:
+        # gleiche/weniger Figuren je Typ+Farbe (Material kann nur ab-, nie zunehmen)
+        # und Zugzahl >= Puzzle-Start.
+        if not _is_followup_position(ctx.get('fen'), fen_override):
+            return {'error': 'fen-Override muss eine Folgestellung des aktiven Puzzles sein.'}
         fen = fen_override
         solution = None
     else:
