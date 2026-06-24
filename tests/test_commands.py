@@ -20,6 +20,7 @@ from test_cmd_puzzle import (
     test_posted_reset_per_pool, test_build_puzzle_embed, test_build_daily_embed,
     test_post_rookhub_puzzle_board_vs_link, test_post_rookhub_puzzle_daily_uses_minimal_embed,
     test_daily_refresh_no_duplicate_board,
+    test_daily_remember_multichannel, test_apply_solver_update_fans_out,
     test_webhook_verify_signature, test_webhook_handler_dispatches_to_apply_solver_update,
     test_daily_regenerate_webhook,
 )
@@ -139,6 +140,8 @@ def main():
     test_post_rookhub_puzzle_board_vs_link()
     test_post_rookhub_puzzle_daily_uses_minimal_embed()
     test_daily_refresh_no_duplicate_board()
+    test_daily_remember_multichannel()
+    test_apply_solver_update_fans_out()
     test_webhook_verify_signature()
     test_webhook_handler_dispatches_to_apply_solver_update()
     test_daily_regenerate_webhook()

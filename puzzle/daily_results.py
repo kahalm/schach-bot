@@ -30,31 +30,81 @@ def _today() -> str:
     return datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
 
+def _posts_of(data: dict) -> list[dict]:
+    """Normalisiert auf eine Liste ``[{channel_id, message_id}, …]``.
+
+    Migriert dabei das alte Einzel-Post-Format (top-level ``channel_id``/
+    ``message_id`` ohne ``posts``) transparent — keine Datei-Migration noetig.
+    """
+    posts = data.get('posts')
+    if isinstance(posts, list) and posts:
+        return [{'channel_id': int(p['channel_id']), 'message_id': int(p['message_id'])}
+                for p in posts if p.get('channel_id') and p.get('message_id')]
+    cid, mid = data.get('channel_id'), data.get('message_id')
+    if cid and mid:
+        return [{'channel_id': int(cid), 'message_id': int(mid)}]
+    return []
+
+
 def remember(channel_id, message_id, puzzle_id) -> None:
-    """Speichert den heutigen Daily-Post für die spätere Ergebnis-Aktualisierung."""
+    """Merkt einen Daily-Post fuer die spaetere Ergebnis-Aktualisierung.
+
+    Mehrkanal-faehig: wird fuer *dasselbe* Tagespuzzle nacheinander pro Channel
+    aufgerufen (Haupt-Guild + gespiegelte 2. Guild), sammeln sich die Posts unter
+    EINEM Puzzle in der ``posts``-Liste. Ein neues Puzzle (andere ``puzzle_id``)
+    oder ein neuer Tag setzt die Liste zurueck. Idempotent pro Channel: ein
+    Re-Post desselben Channels ersetzt nur dessen ``message_id`` (Reihenfolge/
+    Primaer-Post bleiben stabil).
+
+    Der erste Post (i. d. R. der Haupt-Channel) wird zusaetzlich top-level
+    gespiegelt (``channel_id``/``message_id``) — Rueckwaerts-Kompat fuer aelteren
+    Code, der den Einzel-Post liest.
+    """
     if not channel_id or not message_id or not puzzle_id:
         return
+    channel_id, message_id = int(channel_id), int(message_id)
+    today = _today()
+    data = atomic_read(DAILY_FILE, default=dict) or {}
+    same = data.get('date') == today and data.get('puzzle_id') == puzzle_id
+    posts = _posts_of(data) if same else []
+    for p in posts:  # Upsert in-place (Primaer bleibt stabil)
+        if p['channel_id'] == channel_id:
+            p['message_id'] = message_id
+            break
+    else:
+        posts.append({'channel_id': channel_id, 'message_id': message_id})
+    primary = posts[0]
     atomic_write(DAILY_FILE, {
-        'date': _today(),
-        'channel_id': int(channel_id),
-        'message_id': int(message_id),
+        'date': today,
         'puzzle_id': puzzle_id,
-        'since': datetime.now(timezone.utc).isoformat(),
+        # `since` bleibt der Zeitpunkt des ersten Posts dieses Puzzles (korrektes
+        # Poll-Fenster fuer get_daily_results), nicht der jeder Spiegelung.
+        'since': data.get('since') if same else datetime.now(timezone.utc).isoformat(),
+        'posts': posts,
+        'channel_id': primary['channel_id'],
+        'message_id': primary['message_id'],
     })
 
 
 def current() -> dict | None:
-    """Aktueller (zuletzt gemerkter) Daily-Post.
+    """Aktueller (zuletzt gemerkter) Daily-Post inkl. aller gespiegelten Channels.
 
-    Es gibt jeweils genau einen aktuellen Daily-Post: ``remember()`` ueberschreibt
-    die Datei beim Posten des naechsten Daily-Puzzles. Deshalb kein striktes
-    Datums-Check mehr — sonst friert das Embed zwischen UTC-Mitternacht und dem
-    naechsten /daily-Lauf ein (User, die in dem Zeitfenster loesen, wuerden im
-    Embed nicht erscheinen).
+    Es gibt jeweils genau ein aktuelles Tagespuzzle; ``remember()`` ueberschreibt
+    die Datei beim Posten des naechsten. Deshalb kein striktes Datums-Check —
+    sonst friert das Embed zwischen UTC-Mitternacht und dem naechsten /daily-Lauf
+    ein. Das Ergebnis enthaelt immer eine normalisierte ``posts``-Liste (auch fuer
+    migriertes Alt-Format).
     """
     data = atomic_read(DAILY_FILE, default=dict)
-    if not data or not data.get('channel_id') or not data.get('message_id'):
+    if not data:
         return None
+    posts = _posts_of(data)
+    if not posts:
+        return None
+    data = dict(data)
+    data['posts'] = posts
+    data.setdefault('channel_id', posts[0]['channel_id'])
+    data.setdefault('message_id', posts[0]['message_id'])
     return data
 
 
@@ -100,36 +150,22 @@ def _field_name(f):
     return f.get('name') if isinstance(f, dict) else getattr(f, 'name', None)
 
 
-async def apply_solver_update(bot, cur: dict, results: dict) -> None:
-    """Wendet einen Solver-Stand auf den gemerkten Daily-Post an (Embed editieren).
-    Wird sowohl vom 5-Min-Polling (refresh) als auch vom RookHub-Webhook
-    (webhook_server) aufgerufen.
-
-    cur: Daten aus :func:`current` (channel_id, message_id, puzzle_id).
-    results: ``GET /api/book-puzzles/{id}/results``-Payload bzw. das gleiche
-    DTO, das RookHub im Webhook mitschickt.
-    """
-    import asyncio
+async def _edit_post_embed(bot, channel_id: int, message_id: int, line: str) -> None:
+    """Editiert das Solver-Feld EINES gemerkten Daily-Posts. Fehler bleiben pro
+    Channel isoliert (eine offline/unerreichbare Guild blockiert die andere nicht)."""
     import discord
-    from core import reinforcement
 
-    # Neue Solver vor dem Embed-Update ermitteln (State-Check ist synchron).
-    puzzle_id = cur.get('puzzle_id')
-    new_solvers = reinforcement.new_puzzle_solvers(puzzle_id, results.get('solvers') or [])
-
-    channel = bot.get_channel(cur['channel_id'])
+    channel = bot.get_channel(channel_id)
     if channel is None:
         try:
-            channel = await bot.fetch_channel(cur['channel_id'])
+            channel = await bot.fetch_channel(channel_id)
         except Exception:
             return
     try:
-        msg = await channel.fetch_message(cur['message_id'])
+        msg = await channel.fetch_message(message_id)
     except Exception as e:
-        log.debug('Daily-Message %s nicht gefunden: %s', cur.get('message_id'), e)
+        log.debug('Daily-Message %s nicht gefunden: %s', message_id, e)
         return
-
-    line = format_solver_line(results)
     try:
         embed = msg.embeds[0] if msg.embeds else discord.Embed()
         idx = next((i for i, f in enumerate(embed.fields) if _field_name(f) == SOLVER_FIELD), None)
@@ -147,10 +183,35 @@ async def apply_solver_update(bot, cur: dict, results: dict) -> None:
                 pass
         await msg.edit(embed=embed)
     except Exception as e:
-        log.warning('Daily-Post-Update fehlgeschlagen: %s', e,
+        log.warning('Daily-Post-Update fehlgeschlagen (Channel %s): %s', channel_id, e,
                     extra={'es_fields': {'tags': ['daily', 'puzzle']}})
 
-    # Reinforcement-DMs asynchron feuern (fire-and-forget).
+
+async def apply_solver_update(bot, cur: dict, results: dict) -> None:
+    """Wendet einen Solver-Stand auf ALLE gemerkten Daily-Posts an (Embed editieren).
+    Wird sowohl vom Polling (refresh) als auch vom RookHub-Webhook (webhook_server)
+    aufgerufen.
+
+    cur: Daten aus :func:`current` (``puzzle_id`` + ``posts``-Liste, ggf. migriertes
+    Einzel-Format). results: ``GET /api/book-puzzles/{id}/results``-Payload bzw. das
+    gleiche DTO, das RookHub im Webhook mitschickt.
+
+    Die Solver-Daten sind global (pro Puzzle), also fuer alle gespiegelten Channels
+    identisch. Neue Solver werden EINMAL ermittelt → Reinforcement-DMs feuern genau
+    einmal pro Loeser, unabhaengig von der Channel-Anzahl.
+    """
+    import asyncio
+    from core import reinforcement
+
+    # Neue Solver vor dem Embed-Update ermitteln (State-Check ist synchron).
+    puzzle_id = cur.get('puzzle_id')
+    new_solvers = reinforcement.new_puzzle_solvers(puzzle_id, results.get('solvers') or [])
+
+    line = format_solver_line(results)
+    for post in _posts_of(cur):
+        await _edit_post_embed(bot, post['channel_id'], post['message_id'], line)
+
+    # Reinforcement-DMs asynchron feuern (fire-and-forget) — genau einmal pro Loeser.
     for s in new_solvers:
         asyncio.create_task(
             reinforcement.notify_puzzle_solved(bot, s['discordId'], puzzle_id, s.get('timeSeconds', 0))

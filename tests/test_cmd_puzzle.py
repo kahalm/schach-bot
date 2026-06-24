@@ -797,7 +797,7 @@ def test_daily_regenerate_webhook():
 
     with patch('puzzle.posting.post_rookhub_puzzle', fake_post_rookhub_puzzle):
         handler = webhook_server._make_daily_regenerate_handler(
-            bot=fake_bot, secret=secret, channel_id=999)
+            bot=fake_bot, secret=secret, channel_ids=[999])
 
         # 1) Datum == aktuelles Daily → neues Puzzle posten, alter Thread bekommt Hinweis
         dr.current = lambda: {'date': '2026-06-06', 'channel_id': 1, 'message_id': 555, 'puzzle_id': 100}
@@ -838,6 +838,115 @@ def test_daily_regenerate_webhook():
         check('missing puzzleId → status 400', resp.status == 400)
 
     dr.current = orig_current
+    print()
+
+
+def test_daily_remember_multichannel():
+    """remember() sammelt Posts mehrerer Channels unter EINEM Puzzle (Mehrkanal-Spiegelung
+    in andere Guild), ist idempotent pro Channel und migriert das Alt-Format beim Lesen."""
+    print('[daily_results.remember multichannel]')
+    from puzzle import daily_results as dr
+    from core.json_store import atomic_write
+
+    tmpdir = setup_temp_config()
+    orig_file = dr.DAILY_FILE
+    dr.DAILY_FILE = os.path.join(tmpdir, 'daily_post.json')
+    try:
+        # Zwei Channels (z. B. Haupt-Guild + 2. Guild), gleiches Tagespuzzle
+        dr.remember(111, 1001, 42)
+        dr.remember(222, 2002, 42)
+        cur = dr.current()
+        check('2 Posts gemerkt', len(cur['posts']) == 2)
+        check('Channel 111 + 222 vorhanden',
+              {p['channel_id'] for p in cur['posts']} == {111, 222})
+        check('Primaer = erster Channel (top-level gespiegelt)',
+              cur['channel_id'] == 111 and cur['message_id'] == 1001)
+        check('puzzle_id gesetzt', cur['puzzle_id'] == 42)
+
+        # Re-Post Channel 111 → ersetzt nur dessen message_id; Primaer/Anzahl stabil
+        dr.remember(111, 1009, 42)
+        cur = dr.current()
+        check('Re-Post: weiterhin 2 Posts', len(cur['posts']) == 2)
+        check('Re-Post: message_id von 111 aktualisiert',
+              next(p['message_id'] for p in cur['posts'] if p['channel_id'] == 111) == 1009)
+        check('Re-Post: Primaer bleibt 111', cur['channel_id'] == 111)
+
+        # Neues Puzzle → Liste wird zurueckgesetzt
+        dr.remember(111, 3003, 99)
+        cur = dr.current()
+        check('Neues Puzzle: Liste zurueckgesetzt',
+              len(cur['posts']) == 1 and cur['puzzle_id'] == 99)
+
+        # Alt-Format (nur channel_id/message_id, kein posts) wird beim Lesen migriert
+        atomic_write(dr.DAILY_FILE,
+                     {'date': dr._today(), 'channel_id': 5, 'message_id': 6, 'puzzle_id': 7})
+        cur = dr.current()
+        check('Alt-Format migriert zu posts',
+              cur['posts'] == [{'channel_id': 5, 'message_id': 6}])
+    finally:
+        dr.DAILY_FILE = orig_file
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_apply_solver_update_fans_out():
+    """apply_solver_update editiert ALLE gemerkten Posts (beide Guilds), ermittelt neue
+    Solver aber nur EINMAL → Reinforcement-DMs feuern genau einmal pro Loeser, nicht pro Channel."""
+    print('[daily_results.apply_solver_update fan-out]')
+    import asyncio
+    from unittest.mock import MagicMock, AsyncMock
+    from puzzle import daily_results as dr
+    from core import reinforcement
+
+    edited = []
+
+    class FakeEmbed:
+        def __init__(self): self.fields = []
+        def add_field(self, name, value, inline=False): self.fields.append({'name': name})
+        def set_field_at(self, i, name, value, inline=False): self.fields[i] = {'name': name}
+        def set_image(self, url=None): pass
+
+    def make_channel(cid):
+        ch = MagicMock()
+        m = MagicMock()
+        m.embeds = [FakeEmbed()]
+        m.edit = AsyncMock(side_effect=lambda **kw: edited.append(cid))
+        ch.fetch_message = AsyncMock(return_value=m)
+        return ch
+
+    channels = {111: make_channel(111), 222: make_channel(222)}
+    fake_bot = MagicMock()
+    fake_bot.get_channel = MagicMock(side_effect=lambda cid: channels.get(cid))
+
+    calls = {'new': 0}
+    created = []
+    orig_new = reinforcement.new_puzzle_solvers
+    orig_ct = asyncio.create_task
+
+    def counting_new(pid, solvers):
+        calls['new'] += 1
+        return [{'discordId': 12345}]
+
+    def fake_ct(coro, *a, **k):
+        created.append(coro)
+        coro.close()  # 'coroutine never awaited'-Warnung vermeiden
+        return MagicMock()
+
+    reinforcement.new_puzzle_solvers = counting_new
+    asyncio.create_task = fake_ct
+    try:
+        cur = {'puzzle_id': 42,
+               'posts': [{'channel_id': 111, 'message_id': 1},
+                         {'channel_id': 222, 'message_id': 2}]}
+        results = {'solvers': [{'discordId': 12345, 'timeSeconds': 30}],
+                   'solvedCount': 1, 'attemptCount': 1}
+        run_async(dr.apply_solver_update(fake_bot, cur, results))
+        check('beide Channels editiert', sorted(edited) == [111, 222])
+        check('new_puzzle_solvers nur einmal (kein Pro-Channel-Dup)', calls['new'] == 1)
+        check('genau eine Reinforcement-DM-Task', len(created) == 1)
+    finally:
+        reinforcement.new_puzzle_solvers = orig_new
+        asyncio.create_task = orig_ct
     print()
 
 

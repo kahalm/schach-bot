@@ -35,6 +35,18 @@ try:
     CHANNEL_ID = int(os.getenv('CHANNEL_ID', '0'))
 except ValueError:
     raise SystemExit(f"CHANNEL_ID ungültig: {os.getenv('CHANNEL_ID')!r} — muss eine Zahl sein")
+# Zusaetzliche Daily-Channels (auch in anderen Guilds) — das Tagespuzzle wird in jeden
+# gepostet (gespiegelt), Solver-Tracking laeuft fuer alle. Komma-separierte Channel-IDs.
+DAILY_CHANNEL_IDS: list[int] = [CHANNEL_ID] if CHANNEL_ID else []
+for _part in os.getenv('DAILY_EXTRA_CHANNEL_IDS', '').replace(' ', '').split(','):
+    if not _part:
+        continue
+    try:
+        _cid = int(_part)
+    except ValueError:
+        raise SystemExit(f"DAILY_EXTRA_CHANNEL_IDS enthält ungültige ID: {_part!r} — nur Zahlen, komma-getrennt")
+    if _cid and _cid not in DAILY_CHANNEL_IDS:
+        DAILY_CHANNEL_IDS.append(_cid)
 try:
     TOURNAMENT_CHANNEL_ID = int(os.getenv('TOURNAMENT_CHANNEL_ID') or os.getenv('RALLYE_CHANNEL_ID', '0'))
 except ValueError:
@@ -206,7 +218,7 @@ async def on_ready():
     try:
         from core import webhook_server
         bot._webhook_runner = await webhook_server.start(
-            bot, WEBHOOK_BIND_HOST, WEBHOOK_PORT, WEBHOOK_SECRET, channel_id=CHANNEL_ID)
+            bot, WEBHOOK_BIND_HOST, WEBHOOK_PORT, WEBHOOK_SECRET, channel_ids=DAILY_CHANNEL_IDS)
     except Exception as e:
         log.exception('Webhook-Server konnte nicht starten: %s', e)
     # Verpasste Solver-Updates direkt nach Start einmal nachholen (Bot war evtl.
@@ -664,14 +676,18 @@ async def cmd_log(interaction: discord.Interaction, zeilen: int = 50):
 async def cmd_daily(interaction: discord.Interaction):
     if not await _require_admin(interaction):
         return
-    channel = bot.get_channel(CHANNEL_ID)
-    if not channel:
-        await interaction.response.send_message('Puzzle-Channel nicht gefunden.', ephemeral=True)
+    if not DAILY_CHANNEL_IDS:
+        await interaction.response.send_message('Kein Daily-Channel konfiguriert.', ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
     try:
-        await puzzle.post_rookhub_puzzle(channel, 'daily', with_board=True)
-        await interaction.followup.send(f'Daily Puzzle in <#{CHANNEL_ID}> gepostet.', ephemeral=True)
+        results = await _post_daily_to_all()
+        ok = [f'<#{c}>' for c, good in results if good]
+        bad = [f'<#{c}>' for c, good in results if not good]
+        msg = f'Daily Puzzle gepostet in: {", ".join(ok)}.' if ok else 'Daily Puzzle konnte nirgends gepostet werden.'
+        if bad:
+            msg += f'\n⚠️ Fehlgeschlagen: {", ".join(bad)}.'
+        await interaction.followup.send(msg, ephemeral=True)
     except Exception as e:
         log.exception('Fehler bei /daily')
         await interaction.followup.send('Fehler beim Posten des Daily Puzzles.', ephemeral=True)
@@ -701,15 +717,43 @@ async def _health_loop():
             log.debug('RookHub-Heartbeat fehlgeschlagen: %s', e)
 
 
+async def _post_daily_to_all() -> list[tuple[int, bool]]:
+    """Postet das Tagespuzzle in alle konfigurierten Daily-Channels (auch in anderen
+    Guilds) und gibt ``(channel_id, erfolg)`` je Channel zurueck.
+
+    Dasselbe Puzzle ueberall: RookHubs ``daily``-Pool ist pro Tag deterministisch, also
+    liefert jeder Aufruf dieselbe Puzzle-ID. Das Solver-Tracking sammelt die Posts via
+    ``daily_results.remember()`` (Upsert pro Channel unter einem Puzzle)."""
+    results: list[tuple[int, bool]] = []
+    for cid in DAILY_CHANNEL_IDS:
+        channel = bot.get_channel(cid)
+        if channel is None:
+            try:
+                channel = await bot.fetch_channel(cid)
+            except Exception:
+                channel = None
+        if channel is None:
+            log.warning('Daily-Channel %s nicht gefunden.', cid)
+            results.append((cid, False))
+            continue
+        try:
+            pid = await puzzle.post_rookhub_puzzle(channel, 'daily', with_board=True)
+            results.append((cid, pid is not None))
+        except Exception:
+            log.exception('Daily-Post in Channel %s fehlgeschlagen', cid,
+                          extra={'es_fields': {'tags': ['daily', 'puzzle']}})
+            results.append((cid, False))
+    return results
+
+
 @tasks.loop(time=time(hour=PUZZLE_HOUR, minute=PUZZLE_MINUTE))
 async def puzzle_task():
-    channel = bot.get_channel(CHANNEL_ID)
-    if not channel:
-        log.warning('Channel %s nicht gefunden.', CHANNEL_ID)
+    if not DAILY_CHANNEL_IDS:
+        log.warning('Kein Daily-Channel konfiguriert (CHANNEL_ID/DAILY_EXTRA_CHANNEL_IDS).')
         return
     try:
-        await puzzle.post_rookhub_puzzle(channel, 'daily', with_board=True)
-    except Exception as e:
+        await _post_daily_to_all()
+    except Exception:
         log.exception('puzzle_task fehlgeschlagen',
                       extra={'es_fields': {'tags': ['daily', 'puzzle']}})
     # Reaction-Log rotieren

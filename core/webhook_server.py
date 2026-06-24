@@ -88,9 +88,19 @@ def _make_handler(bot, secret: str):
     return handle
 
 
-def _make_daily_regenerate_handler(bot, secret: str, channel_id: int):
-    """Handler für ``POST /webhook/daily-regenerate`` — postet das neu generierte Tagespuzzle."""
+def _make_daily_regenerate_handler(bot, secret: str, channel_ids):
+    """Handler für ``POST /webhook/daily-regenerate`` — postet das neu generierte Tagespuzzle.
+
+    ``channel_ids``: Liste aller Daily-Channels (Haupt-Guild + gespiegelte 2. Guild).
+    Der alte Post wird in JEDEM gemerkten Channel als ersetzt markiert; das neue
+    Daily wird in ALLE konfigurierten Channels gepostet (gleiches Puzzle, da RookHubs
+    ``daily`` pro Tag deterministisch ist)."""
     from puzzle import daily_results
+
+    # Einzelwert tolerieren (Rueckwaerts-Kompat) → Liste.
+    if isinstance(channel_ids, int):
+        channel_ids = [channel_ids] if channel_ids else []
+    channel_ids = [int(c) for c in (channel_ids or []) if c]
 
     async def handle(request: web.Request) -> web.Response:
         raw = await request.read()
@@ -113,25 +123,28 @@ def _make_daily_regenerate_handler(bot, secret: str, channel_id: int):
 
         cur = daily_results.current()
         if cur and cur.get('date') == date_str:
-            # Alten Thread mit Hinweis versehen
-            old_ch_id = cur.get('channel_id')
-            old_msg_id = cur.get('message_id')
-            if old_ch_id and old_msg_id:
+            # Alten Post in JEDEM gemerkten Channel als ersetzt markieren
+            # (_posts_of normalisiert auch migriertes Einzel-Format).
+            for post in daily_results._posts_of(cur):
                 try:
-                    old_ch = bot.get_channel(old_ch_id) or await bot.fetch_channel(old_ch_id)
-                    old_msg = await old_ch.fetch_message(old_msg_id)
+                    old_ch = bot.get_channel(post['channel_id']) or await bot.fetch_channel(post['channel_id'])
+                    old_msg = await old_ch.fetch_message(post['message_id'])
                     await old_msg.reply('⚠️ Dieses Puzzle wurde durch ein neues ersetzt.')
                 except Exception as e:
-                    log.warning('DailyRegenerate: Alter Thread nicht erreichbar: %s', e)
+                    log.warning('DailyRegenerate: Alter Post (Channel %s) nicht erreichbar: %s',
+                                post.get('channel_id'), e)
 
-            # Neues Daily in den Channel posten (holt frisches Puzzle von RookHub)
-            try:
-                from puzzle import posting
-                channel = bot.get_channel(channel_id) or await bot.fetch_channel(channel_id)
-                await posting.post_rookhub_puzzle(channel, 'daily', with_board=True)
-                log.info('DailyRegenerate: Neues Daily gepostet (date=%s)', date_str)
-            except Exception as e:
-                log.exception('DailyRegenerate: Neues Daily konnte nicht gepostet werden: %s', e)
+            # Neues Daily in ALLE Channels posten (holt frisches Puzzle von RookHub;
+            # remember() sammelt die Posts unter dem neuen Puzzle).
+            from puzzle import posting
+            for cid in channel_ids:
+                try:
+                    channel = bot.get_channel(cid) or await bot.fetch_channel(cid)
+                    await posting.post_rookhub_puzzle(channel, 'daily', with_board=True)
+                except Exception as e:
+                    log.exception('DailyRegenerate: Neues Daily (Channel %s) fehlgeschlagen: %s', cid, e)
+            log.info('DailyRegenerate: Neues Daily in %d Channel(s) gepostet (date=%s)',
+                     len(channel_ids), date_str)
         else:
             log.debug('DailyRegenerate: date=%s nicht aktuell (current=%s) – kein Discord-Update.',
                       date_str, cur.get('date') if cur else None)
@@ -168,7 +181,7 @@ def _make_weekly_handler(bot, secret: str):
     return handle
 
 
-async def start(bot, host: str, port: int, secret: str, channel_id: int = 0) -> web.AppRunner | None:
+async def start(bot, host: str, port: int, secret: str, channel_ids=None) -> web.AppRunner | None:
     """Startet den aiohttp-Webhook-Server. Gibt den ``AppRunner`` zurueck (zum spaeteren Stop).
 
     Wird ``secret`` leer uebergeben, ist der Webhook deaktiviert → ``None``-Return.
@@ -180,7 +193,7 @@ async def start(bot, host: str, port: int, secret: str, channel_id: int = 0) -> 
     app = web.Application()
     app.router.add_post('/webhook/puzzle-attempt', _make_handler(bot, secret))
     app.router.add_post('/webhook/weekly-progress', _make_weekly_handler(bot, secret))
-    app.router.add_post('/webhook/daily-regenerate', _make_daily_regenerate_handler(bot, secret, channel_id))
+    app.router.add_post('/webhook/daily-regenerate', _make_daily_regenerate_handler(bot, secret, channel_ids))
     # Health-Endpoint fuer Compose-Healthcheck.
     app.router.add_get('/webhook/health', lambda r: web.Response(status=200, text='ok'))
 

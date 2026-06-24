@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.67.0] - 2026-06-24
+### Added
+- **Tagespuzzle in mehrere Channels/Guilds spiegeln**: Über `DAILY_EXTRA_CHANNEL_IDS` (komma-separierte Channel-IDs, dürfen in einer anderen Discord-Guild liegen) postet der Bot dasselbe Tagespuzzle zusätzlich in jeden weiteren Channel. RookHubs `daily`-Pool ist pro Tag deterministisch → identisches Puzzle überall, ein gemeinsames Solver-Tracking. Voraussetzung: der Bot ist Mitglied der 2. Guild mit Send-Messages-/Embed-Links-/Attach-Files-/Create-Public-Threads-Rechten.
+### Changed
+- `daily_results.remember()` ist jetzt mehrkanalfähig: Posts mehrerer Channels sammeln sich unter EINEM Puzzle (`posts`-Liste), idempotent pro Channel; ein neues Puzzle / ein neuer Tag setzt zurück. Der erste Post wird top-level gespiegelt (rückwärtskompatibel; Alt-Format wird beim Lesen migriert).
+- `apply_solver_update()` editiert das Solver-Embed in ALLEN gemerkten Posts (Fehler pro Channel isoliert), ermittelt neue Solver aber nur EINMAL → Reinforcement-DMs feuern genau einmal pro Löser, unabhängig von der Channel-Anzahl.
+- Daily-Regenerate-Webhook und `/daily` posten/aktualisieren ebenfalls in alle konfigurierten Channels; `/daily` meldet Erfolg/Fehlschlag pro Channel.
+
 ## [2.66.0] - 2026-06-24
 ### Added
 - ECS-Logs können jetzt das native `tags`-Keyword-Array tragen (gemäß zentralem `logging-schema.md`). `es_client.send_log` zieht einen `tags`-Schlüssel aus `extra` (Liste oder Einzel-String), normalisiert ihn (dedupliziert, leere Einträge raus) und setzt `doc['tags']` — getrennt von `labels.*`. Ohne `tags`-Schlüssel bleibt das Verhalten unverändert (rückwärtskompatibel). Der Pfad funktioniert end-to-end über `log.info(..., extra={'es_fields': {'tags': [...]}})` (`_ESHandler.emit` → `extra` → `send_log`).

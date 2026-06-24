@@ -27,7 +27,7 @@ def test_daily():
         import puzzle as puzzle_mod
 
         old_bot = bot_mod.bot
-        old_channel_id = bot_mod.CHANNEL_ID
+        old_channel_ids = bot_mod.DAILY_CHANNEL_IDS
         orig_post = puzzle_mod.post_rookhub_puzzle
 
         call_log = []
@@ -38,30 +38,42 @@ def test_daily():
         puzzle_mod.post_rookhub_puzzle = fake_post
 
         try:
-            # Test: Channel nicht gefunden
-            bot_mod.CHANNEL_ID = 0
+            # Test: kein Daily-Channel konfiguriert → Fehler (ohne Posten)
+            bot_mod.DAILY_CHANNEL_IDS = []
+            bot_mod.bot = _CapturingBot()
+            ia = make_interaction(admin=True)
+            run_async(cmd(ia))
+            content = (ia.response.calls[0].get('content') or '').lower()
+            check('kein Channel konfiguriert → Fehler', 'kein daily-channel' in content)
+            check('kein Channel konfiguriert → kein Post', len(call_log) == 0)
+
+            # Test: konfigurierter Channel nicht auffindbar → Fehlschlag-Meldung
+            bot_mod.DAILY_CHANNEL_IDS = [123]
 
             class NullBot:
                 def get_channel(self, cid):
                     return None
+                async def fetch_channel(self, cid):
+                    raise RuntimeError('not found')
 
             bot_mod.bot = NullBot()
             ia = make_interaction(admin=True)
             run_async(cmd(ia))
-            content = (ia.response.calls[0].get('content') or '').lower()
-            check('Channel nicht gefunden → Fehler', 'nicht gefunden' in content)
+            followup = (ia.followup.calls[-1].get('content') or '').lower()
+            check('Channel nicht auffindbar → Fehlermeldung', 'nirgends' in followup or 'fehlgeschlagen' in followup)
 
-            # Test: Erfolg
-            bot_mod.CHANNEL_ID = 99999
+            # Test: Erfolg (zwei Channels) → in beide gepostet
+            call_log.clear()
+            bot_mod.DAILY_CHANNEL_IDS = [99999, 88888]
             bot_mod.bot = _CapturingBot()
             ia = make_interaction(admin=True)
             run_async(cmd(ia))
             check('defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
-            check('post_rookhub_puzzle aufgerufen', len(call_log) > 0)
+            check('post_rookhub_puzzle pro Channel aufgerufen', len(call_log) == 2)
             check('followup gesendet', len(ia.followup.calls) > 0)
         finally:
             bot_mod.bot = old_bot
-            bot_mod.CHANNEL_ID = old_channel_id
+            bot_mod.DAILY_CHANNEL_IDS = old_channel_ids
             puzzle_mod.post_rookhub_puzzle = orig_post
     finally:
         teardown_temp_config(tmpdir)
