@@ -603,7 +603,12 @@ def _sftpgo_rel_path(local_path: str) -> str | None:
 
 
 def _sftpgo_message(entry: dict, path: str, fmt: str) -> str:
-    """Baut die ephemere Antwort-Nachricht mit Web-Client-Link und Passwort."""
+    """Baut die ephemere Antwort-Nachricht mit Web-Client-Link (OHNE Passwort).
+
+    Das Passwort wird bewusst NICHT in diese Nachricht gepackt — es geht als
+    separate Nachricht (`_sftpgo_password_message`), damit es nicht im selben
+    (kopier-/weiterleitbaren) Block wie der Link steht.
+    """
     from urllib.parse import quote
     rel        = _sftpgo_rel_path(path) or os.path.basename(path)
     encoded    = quote('/' + rel)
@@ -614,8 +619,15 @@ def _sftpgo_message(entry: dict, path: str, fmt: str) -> str:
     msg = (f'📥 **{entry["title"]}** `[{fmt.upper()} · {mb:.1f} MB]`\n\n'
            f'🔗 {browse_url}')
     if _SFTPGO_SHARE_PASSWORD:
-        msg += f'\n\n🔑 Passwort: ||`{_SFTPGO_SHARE_PASSWORD}`|| *(bitte nicht weitergeben)*'
+        msg += '\n\n🔑 Das Passwort schicke ich dir gleich separat.'
     return msg
+
+
+def _sftpgo_password_message() -> str | None:
+    """Separate Nachricht NUR mit dem Share-Passwort (Spoiler), oder None wenn keins gesetzt."""
+    if not _SFTPGO_SHARE_PASSWORD:
+        return None
+    return f'🔑 Passwort: ||`{_SFTPGO_SHARE_PASSWORD}`|| *(bitte nicht weitergeben)*'
 
 
 async def _send_book(interaction: discord.Interaction,
@@ -628,6 +640,9 @@ async def _send_book(interaction: discord.Interaction,
             if _sftpgo_configured():
                 await interaction.followup.send(
                     _sftpgo_message(entry, path, fmt), ephemeral=True)
+                pw_msg = _sftpgo_password_message()
+                if pw_msg:
+                    await interaction.followup.send(pw_msg, ephemeral=True)
                 stats.inc(interaction.user.id, 'downloads')
             else:
                 mb = size / (1024 * 1024)
@@ -682,6 +697,9 @@ class _FormatView(discord.ui.View):
                 # Direkt antworten (kein defer nötig)
                 await interaction.response.send_message(
                     _sftpgo_message(self.entry, path, fmt), ephemeral=True)
+                pw_msg = _sftpgo_password_message()
+                if pw_msg:
+                    await interaction.followup.send(pw_msg, ephemeral=True)
                 stats.inc(interaction.user.id, 'downloads')
             elif big:
                 try:

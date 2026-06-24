@@ -34,8 +34,19 @@ _LOOKUP_TIMEOUT = 4
 
 # In-Memory-Cache line_id → id (None = in RookHub nicht vorhanden). Stabil, da RookHub-IDs
 # sich nicht ändern; wird beim Bot-Neustart geleert (deckt nachträgliche Importe ab).
+# Beschränkt auf _ID_CACHE_MAXSIZE Einträge (FIFO-Eviction über Insertion-Order), damit
+# der Cache bei vielen verschiedenen line_ids nicht unbegrenzt wächst.
+_ID_CACHE_MAXSIZE = 10000
 _id_cache: dict[str, int | None] = {}
 _id_cache_lock = threading.Lock()
+
+
+def _id_cache_put(line_id: str, value) -> None:
+    """Schreibt in den ID-Cache mit FIFO-Eviction. Muss unter ``_id_cache_lock`` laufen."""
+    _id_cache[line_id] = value
+    while len(_id_cache) > _ID_CACHE_MAXSIZE:
+        # Ältesten Eintrag (Insertion-Order) verwerfen.
+        _id_cache.pop(next(iter(_id_cache)), None)
 
 
 def _api(path: str) -> str:
@@ -117,13 +128,13 @@ def lookup_puzzle_id(line_id: str, timeout: int = _LOOKUP_TIMEOUT) -> int | None
                          params={'lineId': line_id}, timeout=timeout)
         if r.status_code == 404:
             with _id_cache_lock:
-                _id_cache[line_id] = None  # echtes 404: in RookHub nicht vorhanden → dauerhaft cachen
+                _id_cache_put(line_id, None)  # echtes 404: in RookHub nicht vorhanden → dauerhaft cachen
             return None
         r.raise_for_status()
         pid = r.json().get('id')
         if pid is not None:
             with _id_cache_lock:
-                _id_cache[line_id] = pid  # nur echte IDs cachen
+                _id_cache_put(line_id, pid)  # nur echte IDs cachen
         # 200 ohne id (z. B. während eines Imports / Proxy-Fehlerseite) gilt als transient
         # → NICHT cachen, damit ein späterer Aufruf erneut versucht.
         return pid

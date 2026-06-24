@@ -740,7 +740,7 @@ async def _tool_send_library_book(tool_input, ctx) -> str:
     from core import stats
     from library import (
         _search_library, _collect_formats, _author_str,
-        _sftpgo_configured, _sftpgo_message, _MAX_UPLOAD,
+        _sftpgo_configured, _sftpgo_message, _sftpgo_password_message, _MAX_UPLOAD,
     )
 
     channel = ctx.get('channel')
@@ -790,6 +790,9 @@ async def _tool_send_library_book(tool_input, ctx) -> str:
             file=discord.File(path, filename=os.path.basename(path)))
     elif _sftpgo_configured():
         await channel.send(_sftpgo_message(entry, path, fmt))
+        pw_msg = _sftpgo_password_message()
+        if pw_msg:
+            await channel.send(pw_msg)
     else:
         return json.dumps(
             {'error': f'Datei zu gross ({size_mb} MB, Discord-Limit 8 MB)',

@@ -173,6 +173,29 @@ def test_lookup_200_without_id_not_cached():
     check('200-ohne-id NICHT gecached (erneuter HTTP-Call)', calls['n'] == 2)
 
 
+def test_id_cache_bounded():
+    """_id_cache wächst nicht unbegrenzt — FIFO-Eviction über _ID_CACHE_MAXSIZE."""
+    rh.ROOKHUB_API_URL = 'http://rookhub:5001'
+    rh._id_cache.clear()
+    orig_max = rh._ID_CACHE_MAXSIZE
+    try:
+        rh._ID_CACHE_MAXSIZE = 5
+        counter = {'n': 0}
+        def fake_get(url, params=None, timeout=None):
+            counter['n'] += 1
+            return _FakeResp(200, {'id': counter['n']})
+        _patch_get(fake_get)
+        for i in range(20):
+            rh.lookup_puzzle_id(f'book.pgn:{i}')
+        check('Cache bleibt <= MAXSIZE', len(rh._id_cache) <= rh._ID_CACHE_MAXSIZE)
+        # Ältester Eintrag wurde verdrängt, neueste sind noch da
+        check('neuester Eintrag gecached', 'book.pgn:19' in rh._id_cache)
+        check('ältester Eintrag verdrängt', 'book.pgn:0' not in rh._id_cache)
+    finally:
+        rh._ID_CACHE_MAXSIZE = orig_max
+        rh._id_cache.clear()
+
+
 def test_game_from_puzzle_illegal_raises():
     # Illegaler Setup-Zug (e2e5 aus der Grundstellung) → parse_uci wirft →
     # der Aufrufer (post_rookhub_puzzle try/except) überspringt das Puzzle.
@@ -301,7 +324,7 @@ def main():
               test_send_heartbeat_ok, test_send_heartbeat_no_url, test_send_heartbeat_falls_back_to_web,
               test_lookup_and_url, test_url_no_fallback_to_api,
               test_lookup_caches_hit, test_lookup_caches_404,
-              test_lookup_200_without_id_not_cached,
+              test_lookup_200_without_id_not_cached, test_id_cache_bounded,
               test_game_from_puzzle_illegal_raises, test_game_from_puzzle,
               test_game_from_puzzle_startply_minus1, test_game_from_puzzle_startply_midline,
               test_get_daily_leaderboard_ok, test_get_daily_leaderboard_no_month,

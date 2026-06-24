@@ -49,6 +49,7 @@ from test_cmd_motivation import (
 from test_cmd_library import (
     test_bibliothek, test_tag, test_autor, test_reindex, test_reindex_requires_admin,
     test_parse_index_entry, test_auto_tag, test_build_library_catalog,
+    test_sftpgo_password_separated,
 )
 from test_cmd_admin import (
     test_daily, test_ignore_kapitel, test_test_cmd, test_announce,
@@ -108,6 +109,7 @@ def main():
     test_parse_index_entry()
     test_auto_tag()
     test_build_library_catalog()
+    test_sftpgo_password_separated()
     test_dm_log()
     test_log()
     test_schachrallye()

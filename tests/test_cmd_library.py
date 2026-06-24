@@ -338,3 +338,42 @@ def test_build_library_catalog():
         library.LIBRARY_FILE = orig_file
         shutil.rmtree(tmpdir, ignore_errors=True)
     print()
+
+
+def test_sftpgo_password_separated():
+    """SFTPGo-Passwort steht NICHT im Link-Block, sondern in einer separaten Nachricht."""
+    print('[sftpgo_password_separated]')
+    import library
+
+    tmpdir = tempfile.mkdtemp(prefix='sftp_test_')
+    orig_base = library._SFTPGO_BASE_URL
+    orig_share = library._SFTPGO_SHARE_ID
+    orig_pw = library._SFTPGO_SHARE_PASSWORD
+    try:
+        f = os.path.join(tmpdir, 'book.pdf')
+        with open(f, 'wb') as fh:
+            fh.write(b'x' * 1024)
+        entry = {'title': 'Mega Buch', 'author': 'Autor'}
+
+        library._SFTPGO_BASE_URL = 'https://sftp.example'
+        library._SFTPGO_SHARE_ID = 'abc'
+        library._SFTPGO_SHARE_PASSWORD = 'geheim123'
+
+        link_msg = library._sftpgo_message(entry, f, 'pdf')
+        pw_msg = library._sftpgo_password_message()
+        check('Link-Nachricht enthaelt KEIN Passwort', 'geheim123' not in link_msg)
+        check('Link-Nachricht verweist auf separate PW-Nachricht', 'separat' in link_msg)
+        check('PW-Nachricht enthaelt das Passwort', pw_msg and 'geheim123' in pw_msg)
+        check('PW-Nachricht maskiert per Spoiler', pw_msg and '||' in pw_msg)
+
+        # Ohne gesetztes Passwort → keine PW-Nachricht, kein Hinweis
+        library._SFTPGO_SHARE_PASSWORD = ''
+        link_msg2 = library._sftpgo_message(entry, f, 'pdf')
+        check('ohne PW → keine PW-Nachricht', library._sftpgo_password_message() is None)
+        check('ohne PW → kein Hinweis im Link', 'separat' not in link_msg2)
+    finally:
+        library._SFTPGO_BASE_URL = orig_base
+        library._SFTPGO_SHARE_ID = orig_share
+        library._SFTPGO_SHARE_PASSWORD = orig_pw
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    print()

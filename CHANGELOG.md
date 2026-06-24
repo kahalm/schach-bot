@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.72.1] - 2026-06-24
+### Changed
+- **SFTPGo-Share-Passwort separat**: Das Passwort für zu große Bücher steht nicht mehr im selben (kopier-/weiterleitbaren) Block wie der Download-Link — der Link-Text verweist nur noch darauf, dass das Passwort gleich kommt; das Passwort selbst geht als eigene (Spoiler-)Nachricht (`_sftpgo_password_message`). Betrifft `/bibliothek`-Download, Format-Button und den `send_library_book`-Chat-Tool-Pfad.
+- **`_id_cache` (puzzle/rookhub.py) beschränkt**: Der line_id→id-Lookup-Cache wächst nicht mehr unbegrenzt — FIFO-Eviction bei `_ID_CACHE_MAXSIZE` (10000) Einträgen.
+
 ## [2.72.0] - 2026-06-24
 ### Added
 - **KI-Chat Tages-Token-Cap**: Nicht-whitelisted DM-User dürfen pro UTC-Tag nur `CHAT_DAILY_TOKEN_CAP` Tokens (Default 60000, `0` = aus) für den Claude-Chat verbrauchen — schützt vor Claude-Kosten durch Fremd-DMs. Verbrauch (input+output) wird pro Antwort in `chat.json` (`usage`) gebucht, rollt täglich und wird auf Alt-Tage bereinigt; bei Überschreitung kommt ein freundlicher Hinweis statt einer Antwort. Whitelisted User bleiben unbegrenzt.
