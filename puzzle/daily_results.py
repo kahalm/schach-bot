@@ -207,7 +207,6 @@ async def apply_solver_update(bot, cur: dict, results: dict) -> None:
     identisch. Neue Solver werden EINMAL ermittelt → Reinforcement-DMs feuern genau
     einmal pro Loeser, unabhaengig von der Channel-Anzahl.
     """
-    import asyncio
     from core import reinforcement
 
     # Neue Solver vor dem Embed-Update ermitteln (State-Check ist synchron).
@@ -221,8 +220,9 @@ async def apply_solver_update(bot, cur: dict, results: dict) -> None:
         await _edit_post_embed(bot, post['channel_id'], post['message_id'], line, lang)
 
     # Reinforcement-DMs asynchron feuern (fire-and-forget) — genau einmal pro Loeser.
+    # spawn_dm haelt eine Task-Referenz (GC-Schutz) + drosselt via Semaphore.
     for s in new_solvers:
-        asyncio.create_task(
+        reinforcement.spawn_dm(
             reinforcement.notify_puzzle_solved(bot, s['discordId'], puzzle_id, s.get('timeSeconds', 0))
         )
 

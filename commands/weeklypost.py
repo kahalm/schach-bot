@@ -213,9 +213,9 @@ async def apply_weekly_update(bot, weekly_id, results: dict) -> None:
     except Exception as e:
         log.warning('Weekly-Post-Update fehlgeschlagen: %s', e)
 
-    # Reinforcement-DMs asynchron feuern (fire-and-forget).
+    # Reinforcement-DMs asynchron feuern (fire-and-forget) — gedrosselt + GC-sicher.
     for p in new_completions:
-        asyncio.create_task(
+        reinforcement.spawn_dm(
             reinforcement.notify_weekly_completed(bot, p['discordId'], weekly_id)
         )
 

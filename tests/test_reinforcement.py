@@ -151,9 +151,37 @@ def test_fmt_time():
     check('60 s → "1:00 min"', rf._fmt_time(60) == '1:00 min')
 
 
+def test_spawn_dm_throttle_and_gc():
+    """spawn_dm haelt Task-Referenzen (GC-Schutz) + drosselt parallele DMs via Semaphore."""
+    print('[spawn_dm]')
+    import asyncio
+
+    async def run():
+        rf._dm_semaphore = asyncio.Semaphore(2)
+        rf._MAX_CONCURRENT_DMS = 2
+        rf._pending_tasks.clear()
+
+        peak = {'concurrent': 0, 'max': 0}
+
+        async def fake_dm():
+            peak['concurrent'] += 1
+            peak['max'] = max(peak['max'], peak['concurrent'])
+            await asyncio.sleep(0.02)
+            peak['concurrent'] -= 1
+
+        tasks = [rf.spawn_dm(fake_dm()) for _ in range(6)]
+        check('Tasks werden gehalten (GC-Schutz)', len(rf._pending_tasks) == 6)
+        await asyncio.gather(*tasks)
+        check('Tasks nach Abschluss freigegeben', len(rf._pending_tasks) == 0)
+        check('max. 2 DMs gleichzeitig (Semaphore)', peak['max'] <= 2)
+
+    asyncio.run(run())
+
+
 def main():
     for t in (test_not_yet_notified, test_mark_and_check, test_idempotent_mark,
-              test_new_puzzle_solvers, test_new_weekly_completions, test_fmt_time):
+              test_new_puzzle_solvers, test_new_weekly_completions, test_fmt_time,
+              test_spawn_dm_throttle_and_gc):
         print(f'== {t.__name__} ==')
         t()
     print()

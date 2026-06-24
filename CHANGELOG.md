@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.71.0] - 2026-06-24
+### Changed
+- **Reinforcement-DMs gedrosselt + GC-sicher**: Daily-Solve- und Weekly-Webhooks konnten bei einer Löser-Welle pro Löser sofort ein `asyncio.create_task()` erzeugen (Discord-429-Risiko, parallele Claude-Aufrufe, und der GC konnte einen unreferenzierten Task mittendrin einsammeln). Neuer Helfer `core.reinforcement.spawn_dm()` hält jeden Task in einem Set (Referenz bis Abschluss) und drosselt die gleichzeitig laufenden DMs über ein `asyncio.Semaphore` (`_MAX_CONCURRENT_DMS` = 3). `puzzle/daily_results.py` und `commands/weeklypost.py` nutzen ihn statt direktem `create_task`.
+
 ## [2.70.0] - 2026-06-24
 ### Added
 - **Webhook Replay-/Timestamp-Schutz**: Schickt RookHub einen `X-Webhook-Timestamp`-Header (Unix-Sekunden) mit, fließt er in die HMAC ein (`HMAC("<ts>.<body>")`) und muss innerhalb ±300 s liegen — ein abgefangener Request kann so nach Ablauf des Fensters nicht erneut eingespielt werden. **Rückwärtskompatibel**: Fehlt der Header (RookHub-Gegenstelle `SchachBotWebhookService` noch nicht nachgezogen), greift weiterhin der alte Pfad (HMAC nur über den Body) — nichts bricht. ⚠️ **Die RookHub-Seite muss separat nachgezogen werden** (Timestamp signieren + Header senden), erst dann ist der Replay-Schutz scharf.

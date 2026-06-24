@@ -28,6 +28,44 @@ log = logging.getLogger('schach-bot')
 REINFORCE_FILE = os.path.join(CONFIG_DIR, 'reinforcement.json')
 _MOTIVATION_SUB_FILE = os.path.join(CONFIG_DIR, 'motivation_sub.json')
 
+# --- Drosselung & GC-Schutz fuer fire-and-forget Reinforcement-DMs ---------
+# Jeder Daily-Solve-/Weekly-Webhook kann eine ganze Welle neuer Loeser liefern.
+# Ohne Begrenzung wuerde pro Loeser sofort ein asyncio.create_task() entstehen
+# (Discord-429 + parallele Claude-Aufrufe). Wir
+#   1) halten eine Referenz auf jeden Task (sonst kann der GC ihn mittendrin
+#      einsammeln — siehe asyncio.create_task-Doku), und
+#   2) drosseln die gleichzeitig laufenden DMs ueber ein Semaphore.
+_MAX_CONCURRENT_DMS = 3
+_dm_semaphore: 'asyncio.Semaphore | None' = None
+_pending_tasks: set = set()
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    global _dm_semaphore
+    if _dm_semaphore is None:
+        _dm_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_DMS)
+    return _dm_semaphore
+
+
+def spawn_dm(coro) -> 'asyncio.Task':
+    """Startet eine Reinforcement-DM-Coroutine gedrosselt + GC-sicher.
+
+    - Die laufende DM wird durch ``_dm_semaphore`` auf ``_MAX_CONCURRENT_DMS``
+      gleichzeitig begrenzt (verhindert Discord-429 / Claude-Limit-Bursts).
+    - Der erzeugte Task wird in ``_pending_tasks`` gehalten, bis er fertig ist,
+      damit der Garbage-Collector ihn nicht vorzeitig verwirft.
+
+    Gibt den Task zurueck (v. a. fuer Tests).
+    """
+    async def _runner():
+        async with _get_semaphore():
+            await coro
+
+    task = asyncio.create_task(_runner())
+    _pending_tasks.add(task)
+    task.add_done_callback(_pending_tasks.discard)
+    return task
+
 
 def _default():
     return {'puzzle': {}, 'weekly': {}, 'goals': {}}
