@@ -198,11 +198,16 @@ def get_player_progress(discord_id, timeout: int = _TIMEOUT) -> dict | None:
     if not ROOKHUB_API_URL or not ROOKHUB_STATS_SECRET or discord_id is None:
         return None
     did = str(discord_id)
-    sig = hmac.new(ROOKHUB_STATS_SECRET.encode('utf-8'), did.encode('utf-8'),
+    # Replay-Schutz: Signatur ueber "<ts>.<did>" + X-Bot-Timestamp-Header (rookhub prueft ±300s).
+    # rookhub akzeptiert weiterhin auch die alte body-only-Signatur, sobald ein Timestamp
+    # mitgeschickt wird MUSS rookhub ihn aber einbeziehen → rookhub >= dieser Bot-Version deployen.
+    ts = str(int(datetime.now(timezone.utc).timestamp()))
+    sig = hmac.new(ROOKHUB_STATS_SECRET.encode('utf-8'), f'{ts}.{did}'.encode('utf-8'),
                    hashlib.sha256).hexdigest()
     try:
         r = requests.get(_api(f'/api/bot/player-progress/{did}'),
-                         headers={'X-Bot-Signature': f'sha256={sig}'}, timeout=timeout)
+                         headers={'X-Bot-Signature': f'sha256={sig}', 'X-Bot-Timestamp': ts},
+                         timeout=timeout)
         if r.status_code == 404:
             # Nicht verknuepft (oder Feature serverseitig aus) → kein Fortschritt.
             return None

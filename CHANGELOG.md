@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.73.0] - 2026-06-25
+### Changed
+- **BotStats-Pull mit Replay-Schutz**: `get_player_progress` (Motivations-DM, `GET /api/bot/player-progress`) signiert die HMAC jetzt über `"<ts>.<discordId>"` und schickt den Zeitstempel als `X-Bot-Timestamp`-Header mit. RookHub prüft ihn in einem ±300-s-Fenster → eine abgefangene Signatur lässt sich nicht mehr unbegrenzt wiederholen (vorher: statische, ewig gültige Signatur nur über die Discord-ID). Gegenstück zur rookhub-Seite (`BotStatsController`, v0.184.35), die weiterhin auch die alte body-only-Signatur akzeptiert — daher **rookhub ≥ v0.184.35 vor/mit diesem Bot deployen** (sonst Signatur-Mismatch). Test `test_player_progress_signature`.
+
 ## [2.72.1] - 2026-06-24
 ### Changed
 - **SFTPGo-Share-Passwort separat**: Das Passwort für zu große Bücher steht nicht mehr im selben (kopier-/weiterleitbaren) Block wie der Download-Link — der Link-Text verweist nur noch darauf, dass das Passwort gleich kommt; das Passwort selbst geht als eigene (Spoiler-)Nachricht (`_sftpgo_password_message`). Betrifft `/bibliothek`-Download, Format-Button und den `send_library_book`-Chat-Tool-Pfad.

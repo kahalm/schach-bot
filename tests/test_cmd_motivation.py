@@ -583,3 +583,41 @@ def test_slacker_text():
     check('unlinked slacker → Registrier-CTA enthalten',
           'registr' in utext.lower() or 'rookhub' in utext.lower() or 'link' in utext.lower())
     print()
+
+
+def test_player_progress_signature():
+    """get_player_progress signiert über '<ts>.<did>' + sendet X-Bot-Timestamp (Replay-Schutz)."""
+    print('[player-progress signature]')
+    import hmac
+    import hashlib
+    import puzzle.rookhub as rh
+
+    captured = {}
+
+    class _Resp:
+        status_code = 200
+        def raise_for_status(self):
+            pass
+        def json(self):
+            return {'username': 'x'}
+
+    def fake_get(url, headers=None, timeout=None):
+        captured['headers'] = headers or {}
+        return _Resp()
+
+    orig_get, orig_url, orig_secret = rh.requests.get, rh.ROOKHUB_API_URL, rh.ROOKHUB_STATS_SECRET
+    try:
+        rh.requests.get = fake_get
+        rh.ROOKHUB_API_URL = 'http://rookhub'
+        rh.ROOKHUB_STATS_SECRET = 'topsecret'
+        res = rh.get_player_progress('12345')
+        check('Antwort durchgereicht', res == {'username': 'x'})
+        hdrs = captured.get('headers', {})
+        ts = hdrs.get('X-Bot-Timestamp')
+        check('X-Bot-Timestamp gesendet', bool(ts))
+        expected = 'sha256=' + hmac.new(b'topsecret', f'{ts}.12345'.encode('utf-8'),
+                                        hashlib.sha256).hexdigest()
+        check('Signatur über "<ts>.<did>"', hdrs.get('X-Bot-Signature') == expected)
+    finally:
+        rh.requests.get, rh.ROOKHUB_API_URL, rh.ROOKHUB_STATS_SECRET = orig_get, orig_url, orig_secret
+    print()
