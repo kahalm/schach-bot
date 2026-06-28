@@ -2,7 +2,7 @@
 
 Discord-Bot fuer Schachtraining: taegliche Puzzles aus PGN-Buechern, Lichess-Integration, Turnierverwaltung, Wochenposts und KI-Chat.
 
-💬 **Community / Fragen?** Komm in unseren Discord: https://discord.gg/nKQCdC7Xff
+💬 **Community / Fragen?** Komm in unseren Discord: https://discord.gg/wczc4BJtMf
 
 Gebaut mit Python, `discord.py` und `python-chess`.
 
