@@ -26,6 +26,12 @@ LIBRARY_FILE  = (os.path.join(os.path.dirname(LIBRARY_INDEX), 'library.json')
 # Lokaler Basis-Pfad (Verzeichnis der index.txt) für Pfad-Übersetzung
 _LOCAL_BASE   = os.path.dirname(LIBRARY_INDEX) if LIBRARY_INDEX else ''
 
+# Gemeinfreiheits-Sperre durchsetzen? Default AUS: das ``publicDomainFrom``-Feld
+# wird zwar im Katalog gespeichert (reine Daten), sperrt aber nichts. Erst mit
+# ``LIBRARY_ENFORCE_PD=1`` werden noch nicht gemeinfreie Bücher in der Anzeige
+# markiert und vom Teilen ausgeschlossen.
+LIBRARY_ENFORCE_PD = os.getenv('LIBRARY_ENFORCE_PD', '').strip().lower() in ('1', 'true', 'yes', 'on')
+
 # SFTPGo-Config für Dateien über dem Discord-Upload-Limit
 _SFTPGO_BASE_URL       = os.getenv('SFTPGO_BASE_URL', '').rstrip('/')
 _SFTPGO_SHARE_ID       = os.getenv('SFTPGO_SHARE_ID', '')
@@ -538,7 +544,13 @@ def _pd_release(entry: dict) -> date | None:
 
 
 def _is_locked(entry: dict) -> bool:
-    """True, solange das Buch noch nicht gemeinfrei ist (Freigabedatum in der Zukunft)."""
+    """True, solange das Buch noch nicht gemeinfrei ist (Freigabedatum in der Zukunft).
+
+    Nur wirksam bei aktivierter Durchsetzung (``LIBRARY_ENFORCE_PD``). Ist sie aus
+    (Default), bleibt nichts gesperrt — das Datum ist dann reine Metainfo.
+    """
+    if not LIBRARY_ENFORCE_PD:
+        return False
     rel = _pd_release(entry)
     return rel is not None and rel > date.today()
 

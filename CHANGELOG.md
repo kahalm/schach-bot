@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.75.0] - 2026-06-28
+### Changed
+- **Gemeinfreiheits-Sperre ist jetzt opt-in (Default AUS)**: Das `publicDomainFrom`-Datum wird weiterhin im Sidecar/Katalog gespeichert (reine Metadaten), sperrt aber standardmäßig **nichts** — kein 🔒, keine Download-Blockade. Erst mit `LIBRARY_ENFORCE_PD=1` (`true`/`yes`/`on`) werden noch nicht gemeinfreie Bücher markiert und vom Teilen ausgeschlossen. So lassen sich die Freigabedaten in Ruhe pflegen, ohne dass sofort etwas gesperrt ist. (`_is_locked` prüft den Schalter; Test deckt beide Zustände ab.)
+
 ## [2.74.0] - 2026-06-28
 ### Added
 - **Gemeinfreiheits-Sperre für die Bibliothek**: Pro Buch lässt sich im Sidecar-`.json` ein Feld `publicDomainFrom` (ISO-Datum `YYYY-MM-DD`) hinterlegen — das Datum, ab dem das Werk gemeinfrei (Public Domain) wird. Solange dieses Datum in der Zukunft liegt, wird das Buch in `/bibliothek`/`/tag`/`/autor` weiterhin angezeigt (mit 🔒 + „frei ab <Datum>"), aber **nicht zum Download/SFTPGo-Link freigegeben** (`_send_book` + Format-Button-Callback blocken mit Hinweis). Ohne Feld bleibt alles teilbar wie bisher (Opt-in-Sperre). Das Feld wird vom Katalog-Builder (`build_library_catalog`) durchgereicht. Helfer `_pd_release`/`_is_locked`/`_lock_note`; Test `test_public_domain_from`.

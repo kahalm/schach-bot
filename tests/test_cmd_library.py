@@ -346,7 +346,14 @@ def test_public_domain_from():
     print('[public_domain_from]')
     import library
 
-    # --- reine Helfer ---
+    orig_enforce = library.LIBRARY_ENFORCE_PD
+
+    # --- Default AUS: nichts gesperrt, auch bei Zukunftsdatum ---
+    library.LIBRARY_ENFORCE_PD = False
+    check('Enforcement aus → nichts gesperrt', not library._is_locked({'publicDomainFrom': '2999-01-01'}))
+
+    # --- Mit Enforcement: reine Helfer ---
+    library.LIBRARY_ENFORCE_PD = True
     check('Zukunftsdatum → gesperrt', library._is_locked({'publicDomainFrom': '2999-01-01'}))
     check('Vergangenheit → frei', not library._is_locked({'publicDomainFrom': '1900-01-01'}))
     check('ohne Feld → frei', not library._is_locked({}))
@@ -354,7 +361,7 @@ def test_public_domain_from():
     check('lock_note enthält Datum', '01.01.2999' in library._lock_note({'publicDomainFrom': '2999-01-01'}))
     check('lock_note leer wenn frei', library._lock_note({'publicDomainFrom': '1900-01-01'}) == '')
 
-    # --- Sidecar-Feld landet im Katalog ---
+    # --- Sidecar-Feld landet im Katalog (unabhängig vom Schalter) ---
     tmpdir = tempfile.mkdtemp(prefix='pd_test_')
     orig_index, orig_file, orig_base = library.LIBRARY_INDEX, library.LIBRARY_FILE, library._LOCAL_BASE
     try:
@@ -382,6 +389,7 @@ def test_public_domain_from():
         check('Embed-Wert „frei ab"', 'frei ab' in emb.fields[0]['value'])
     finally:
         library.LIBRARY_INDEX, library.LIBRARY_FILE, library._LOCAL_BASE = orig_index, orig_file, orig_base
+        library.LIBRARY_ENFORCE_PD = orig_enforce
         shutil.rmtree(tmpdir, ignore_errors=True)
     print()
 
