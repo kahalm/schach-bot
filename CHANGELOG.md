@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.74.0] - 2026-06-28
+### Added
+- **Gemeinfreiheits-Sperre für die Bibliothek**: Pro Buch lässt sich im Sidecar-`.json` ein Feld `publicDomainFrom` (ISO-Datum `YYYY-MM-DD`) hinterlegen — das Datum, ab dem das Werk gemeinfrei (Public Domain) wird. Solange dieses Datum in der Zukunft liegt, wird das Buch in `/bibliothek`/`/tag`/`/autor` weiterhin angezeigt (mit 🔒 + „frei ab <Datum>"), aber **nicht zum Download/SFTPGo-Link freigegeben** (`_send_book` + Format-Button-Callback blocken mit Hinweis). Ohne Feld bleibt alles teilbar wie bisher (Opt-in-Sperre). Das Feld wird vom Katalog-Builder (`build_library_catalog`) durchgereicht. Helfer `_pd_release`/`_is_locked`/`_lock_note`; Test `test_public_domain_from`.
+
 ## [2.73.0] - 2026-06-25
 ### Changed
 - **BotStats-Pull mit Replay-Schutz**: `get_player_progress` (Motivations-DM, `GET /api/bot/player-progress`) signiert die HMAC jetzt über `"<ts>.<discordId>"` und schickt den Zeitstempel als `X-Bot-Timestamp`-Header mit. RookHub prüft ihn in einem ±300-s-Fenster → eine abgefangene Signatur lässt sich nicht mehr unbegrenzt wiederholen (vorher: statische, ewig gültige Signatur nur über die Discord-ID). Gegenstück zur rookhub-Seite (`BotStatsController`, v0.184.35), die weiterhin auch die alte body-only-Signatur akzeptiert — daher **rookhub ≥ v0.184.35 vor/mit diesem Bot deployen** (sonst Signatur-Mismatch). Test `test_player_progress_signature`.

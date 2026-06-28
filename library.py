@@ -7,6 +7,7 @@ import logging
 import os
 import re
 from collections import defaultdict
+from datetime import date
 
 from core import stats
 from core.json_store import atomic_write
@@ -410,6 +411,7 @@ def build_library_catalog() -> tuple[int, int, int, int, int]:
                 'targetMinElo': sc_elo,
                 'favorite':     sc_fav,
                 'size':         sc_size,
+                'publicDomainFrom': sidecar.get('publicDomainFrom'),
                 'files':        [e[4] for e in entries],
             }
         else:
@@ -424,6 +426,7 @@ def build_library_catalog() -> tuple[int, int, int, int, int]:
                 'tags':        auto_tags,
                 'manual_tags': [],
                 'file_type':   ext,
+                'publicDomainFrom': None,
                 'files':       [e[4] for e in entries],
             }
 
@@ -515,6 +518,40 @@ def _all_authors() -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Gemeinfreiheit (Public Domain) — pro Buch via Sidecar-Feld publicDomainFrom
+# ---------------------------------------------------------------------------
+
+def _pd_release(entry: dict) -> date | None:
+    """Freigabedatum aus ``publicDomainFrom`` (ISO ``YYYY-MM-DD``) oder ``None``.
+
+    Ohne (gültiges) Feld gilt das Buch als unbeschränkt teilbar (Opt-in-Sperre):
+    nur ein gesetztes Zukunftsdatum sperrt das Teilen bis dahin.
+    """
+    raw = entry.get('publicDomainFrom')
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(str(raw).strip())
+    except ValueError:
+        log.warning('publicDomainFrom unparsebar (%r) bei %s', raw, entry.get('id'))
+        return None
+
+
+def _is_locked(entry: dict) -> bool:
+    """True, solange das Buch noch nicht gemeinfrei ist (Freigabedatum in der Zukunft)."""
+    rel = _pd_release(entry)
+    return rel is not None and rel > date.today()
+
+
+def _lock_note(entry: dict) -> str:
+    """🔒-Hinweistext „frei ab <DD.MM.YYYY>" für gesperrte Bücher, sonst ''."""
+    rel = _pd_release(entry)
+    if rel is None or rel <= date.today():
+        return ''
+    return f'🔒 frei ab {rel.strftime("%d.%m.%Y")}'
+
+
+# ---------------------------------------------------------------------------
 # Embed + Pagination
 # ---------------------------------------------------------------------------
 
@@ -531,7 +568,9 @@ def _build_library_embed(entries: list[dict], page: int, total_pages: int,
         emoji = _TYPE_EMOJI.get(e.get('file_type', ''), '📄')
         year_str = f' ({e["year"]})' if e.get('year') else ''
         tags_str = ', '.join(e.get('tags', []))
-        name = f'{emoji} {e["title"]}{year_str}'
+        locked = _is_locked(e)
+        lock_prefix = '🔒 ' if locked else ''
+        name = f'{lock_prefix}{emoji} {e["title"]}{year_str}'
         if len(name) > 256:
             name = name[:253] + '...'
         value = f'**{_author_str(e.get("author", ""))}**'
@@ -539,12 +578,15 @@ def _build_library_embed(entries: list[dict], page: int, total_pages: int,
             value += f'  ·  Elo {e["targetMinElo"]}+'
         if tags_str:
             value += f'\n`{tags_str}`'
-        formats = _collect_formats(e)
-        if formats:
-            fmt_str = '  '.join(
-                f'{_FORMAT_EMOJI.get(f, "📄")} {f.upper()}'
-                for f in sorted(formats))
-            value += f'\n{fmt_str}'
+        if locked:
+            value += f'\n{_lock_note(e)} (noch nicht teilbar)'
+        else:
+            formats = _collect_formats(e)
+            if formats:
+                fmt_str = '  '.join(
+                    f'{_FORMAT_EMOJI.get(f, "📄")} {f.upper()}'
+                    for f in sorted(formats))
+                value += f'\n{fmt_str}'
         embed.add_field(name=name, value=value, inline=False)
     if total_pages > 1:
         embed.set_footer(text=f'Seite {page}/{total_pages}')
@@ -634,6 +676,14 @@ async def _send_book(interaction: discord.Interaction,
                      entry: dict, path: str, fmt: str) -> None:
     """Schickt eine Buchdatei per DM (oder SFTPGo-Link wenn zu groß).
     Setzt voraus dass interaction bereits deferred ist (ephemeral)."""
+    # Gemeinfreiheits-Sperre: noch nicht freie Bücher werden nicht geteilt.
+    if _is_locked(entry):
+        rel = _pd_release(entry)
+        await interaction.followup.send(
+            f'🔒 **{entry["title"]}** ist noch urheberrechtlich geschützt und wird erst '
+            f'am **{rel.strftime("%d.%m.%Y")}** gemeinfrei — bis dahin nicht teilbar.',
+            ephemeral=True)
+        return
     try:
         size = os.path.getsize(path)
         if size > _MAX_UPLOAD:
@@ -693,6 +743,14 @@ class _FormatView(discord.ui.View):
 
     def _make_callback(self, fmt: str, path: str, big: bool, link: bool):
         async def _cb(interaction: discord.Interaction):
+            # Gemeinfreiheits-Sperre auch hier (deckt den direkten SFTPGo-Link-Pfad ab).
+            if _is_locked(self.entry):
+                rel = _pd_release(self.entry)
+                await interaction.response.send_message(
+                    f'🔒 **{self.entry["title"]}** ist noch urheberrechtlich geschützt und wird '
+                    f'erst am **{rel.strftime("%d.%m.%Y")}** gemeinfrei — bis dahin nicht teilbar.',
+                    ephemeral=True)
+                return
             if big and link:
                 # Direkt antworten (kein defer nötig)
                 await interaction.response.send_message(

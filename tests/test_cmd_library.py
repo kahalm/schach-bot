@@ -1,6 +1,7 @@
 """Tests fuer Library Commands: /bibliothek, /tag, /autor, /reindex, parse, auto-tag, catalog."""
 
 import os
+import json
 import tempfile
 import shutil
 from unittest.mock import MagicMock
@@ -336,6 +337,51 @@ def test_build_library_catalog():
     finally:
         library.LIBRARY_INDEX = orig_index
         library.LIBRARY_FILE = orig_file
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    print()
+
+
+def test_public_domain_from():
+    """publicDomainFrom: Lock-Logik, Sidecar→Katalog-Durchreichung, Embed-🔒."""
+    print('[public_domain_from]')
+    import library
+
+    # --- reine Helfer ---
+    check('Zukunftsdatum → gesperrt', library._is_locked({'publicDomainFrom': '2999-01-01'}))
+    check('Vergangenheit → frei', not library._is_locked({'publicDomainFrom': '1900-01-01'}))
+    check('ohne Feld → frei', not library._is_locked({}))
+    check('unparsebar → frei (mit Warnung)', not library._is_locked({'publicDomainFrom': 'kaputt'}))
+    check('lock_note enthält Datum', '01.01.2999' in library._lock_note({'publicDomainFrom': '2999-01-01'}))
+    check('lock_note leer wenn frei', library._lock_note({'publicDomainFrom': '1900-01-01'}) == '')
+
+    # --- Sidecar-Feld landet im Katalog ---
+    tmpdir = tempfile.mkdtemp(prefix='pd_test_')
+    orig_index, orig_file, orig_base = library.LIBRARY_INDEX, library.LIBRARY_FILE, library._LOCAL_BASE
+    try:
+        index_file = os.path.join(tmpdir, 'index.txt')
+        library.LIBRARY_INDEX = index_file
+        library.LIBRARY_FILE = os.path.join(tmpdir, 'library.json')
+        library._LOCAL_BASE = tmpdir
+        bookdir = os.path.join(tmpdir, 'Tartakower')
+        os.makedirs(bookdir, exist_ok=True)
+        with open(os.path.join(bookdir, 'Some Book.json'), 'w', encoding='utf-8') as f:
+            json.dump({'title': 'Some Book', 'author': 'Tartakower',
+                       'publicDomainFrom': '2999-01-01'}, f)
+        with open(index_file, 'w', encoding='utf-8') as f:
+            f.write('/data/schach/Tartakower/Some Book.pdf\n')
+
+        library.build_library_catalog()
+        entry = next((e for e in library._load_library() if 'Some Book' in e['title']), None)
+        check('Katalog-Eintrag vorhanden', entry is not None)
+        check('publicDomainFrom durchgereicht', entry and entry.get('publicDomainFrom') == '2999-01-01')
+        check('Katalog-Eintrag gesperrt', entry and library._is_locked(entry))
+
+        # --- Embed markiert gesperrte Bücher mit 🔒 + "frei ab" ---
+        emb = library._build_library_embed([entry], 1, 1, 'q')
+        check('Embed-Name mit 🔒', '🔒' in emb.fields[0]['name'])
+        check('Embed-Wert „frei ab"', 'frei ab' in emb.fields[0]['value'])
+    finally:
+        library.LIBRARY_INDEX, library.LIBRARY_FILE, library._LOCAL_BASE = orig_index, orig_file, orig_base
         shutil.rmtree(tmpdir, ignore_errors=True)
     print()
 
