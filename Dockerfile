@@ -27,5 +27,7 @@ HEALTHCHECK --interval=60s --timeout=5s --start-period=30s --retries=3 \
 
 ARG GIT_SHA=dev
 ENV GIT_SHA=$GIT_SHA
+ARG GIT_REF=
+ENV GIT_REF=$GIT_REF
 
 CMD ["python", "bot.py"]

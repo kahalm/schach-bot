@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.76.0] - 2026-07-01
+### Added
+- **Build-Info-Endpoint `GET /webhook/build-info`**: liefert `{sha, ref}` des laufenden Bot-Images (aus den ENV `GIT_SHA`/`GIT_REF`, die der CI-Build als Build-Args setzt). RookHubs Admin-CI-Seite ruft das ab, um den GitHub-Actions-Run des laufenden Bot-Images zu markieren (Branch bei `:dev`, Tag bei `:prod`). Kein Auth (wie `/webhook/health`). `core/version.py` bekam `GIT_REF`; Dockerfile + Release-Workflow reichen `GIT_REF=${{ github.ref_name }}` durch. Test `tests/test_webhook_build_info.py`.
+
 ## [2.75.0] - 2026-06-28
 ### Changed
 - **Gemeinfreiheits-Sperre ist jetzt opt-in (Default AUS)**: Das `publicDomainFrom`-Datum wird weiterhin im Sidecar/Katalog gespeichert (reine Metadaten), sperrt aber standardmäßig **nichts** — kein 🔒, keine Download-Blockade. Erst mit `LIBRARY_ENFORCE_PD=1` (`true`/`yes`/`on`) werden noch nicht gemeinfreie Bücher markiert und vom Teilen ausgeschlossen. So lassen sich die Freigabedaten in Ruhe pflegen, ohne dass sofort etwas gesperrt ist. (`_is_locked` prüft den Schalter; Test deckt beide Zustände ab.)

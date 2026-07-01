@@ -28,6 +28,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import time
 from typing import Any
 
@@ -250,6 +251,14 @@ def _make_weekly_handler(bot, secret: str):
     return handle
 
 
+async def _build_info_handler(request: web.Request) -> web.Response:
+    """GET /webhook/build-info → {sha, ref} des laufenden Images (aus GIT_SHA/GIT_REF-ENV)."""
+    return web.json_response({
+        'sha': os.environ.get('GIT_SHA', ''),
+        'ref': os.environ.get('GIT_REF', ''),
+    })
+
+
 async def start(bot, host: str, port: int, secret: str, daily_channels=None) -> web.AppRunner | None:
     """Startet den aiohttp-Webhook-Server. Gibt den ``AppRunner`` zurueck (zum spaeteren Stop).
 
@@ -267,6 +276,9 @@ async def start(bot, host: str, port: int, secret: str, daily_channels=None) -> 
     app.router.add_post('/webhook/daily-regenerate', _make_daily_regenerate_handler(bot, secret, daily_channels))
     # Health-Endpoint fuer Compose-Healthcheck.
     app.router.add_get('/webhook/health', lambda r: web.Response(status=200, text='ok'))
+    # Build-Herkunft (CI setzt GIT_SHA/GIT_REF als Build-Arg → ENV). RookHubs Admin-CI-Seite
+    # ruft das ab, um den GitHub-Actions-Run des laufenden Bot-Images zu markieren.
+    app.router.add_get('/webhook/build-info', _build_info_handler)
 
     runner = web.AppRunner(app)
     await runner.setup()

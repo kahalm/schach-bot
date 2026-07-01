@@ -3,7 +3,8 @@
 import os
 from datetime import datetime, timezone
 
-VERSION = '2.75.0'
+VERSION = '2.76.0'
 GIT_SHA = os.environ.get('GIT_SHA', 'dev')
+GIT_REF = os.environ.get('GIT_REF', '')
 START_TIME = datetime.now(timezone.utc)
 EMBED_COLOR = 0x4e9e4e
