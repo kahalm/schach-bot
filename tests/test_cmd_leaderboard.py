@@ -161,3 +161,35 @@ def test_leaderboard_monthly_post():
         lb._bot, lb._channel_id = old_bot, old_cid
         teardown_temp_config(tmpdir)
     print()
+
+
+def test_leaderboard_daily_thread_endstand():
+    """Endstand-Helfer für den Tagespuzzle-Thread: monthly_due / build_endstand_embed / mark_monthly_posted."""
+    print('[endstand for daily thread]')
+    tmpdir = setup_temp_config()
+    orig_lb, orig_hof = lb.rookhub.get_daily_leaderboard, lb.rookhub.get_daily_hall_of_fame
+    orig_should = dlb.should_post_monthly
+    try:
+        dlb.should_post_monthly = lambda state, now: (
+            '2026-06' if not (state or {}).get('last_posted') == '2026-06' else None)
+        lb.rookhub.get_daily_leaderboard = lambda month=None: _sample_ladder()
+        lb.rookhub.get_daily_hall_of_fame = lambda: _sample_hof()
+
+        month = lb.monthly_due()
+        check('monthly_due: fällig → Monatsschlüssel', month == '2026-06')
+
+        embed = run_async(lb.build_endstand_embed(month))
+        check('build_endstand_embed: Endstand-Embed', embed is not None and 'Endstand' in embed.title)
+
+        # Leere Wertung → kein Embed (dann wird auch nichts gepostet).
+        lb.rookhub.get_daily_leaderboard = lambda month=None: _ladder([], period='2026-06')
+        check('leere Wertung → kein Embed', run_async(lb.build_endstand_embed('2026-06')) is None)
+
+        # Nach dem Markieren nicht mehr fällig (kein Doppelposten in weiteren Daily-Läufen).
+        lb.mark_monthly_posted(month)
+        check('mark_monthly_posted → nicht mehr fällig', lb.monthly_due() is None)
+    finally:
+        lb.rookhub.get_daily_leaderboard, lb.rookhub.get_daily_hall_of_fame = orig_lb, orig_hof
+        dlb.should_post_monthly = orig_should
+        teardown_temp_config(tmpdir)
+    print()

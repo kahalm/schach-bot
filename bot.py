@@ -768,6 +768,18 @@ async def _post_daily_to_all() -> list[tuple[int, bool]]:
     Dasselbe Puzzle ueberall: RookHubs ``daily``-Pool ist pro Tag deterministisch, also
     liefert jeder Aufruf dieselbe Puzzle-ID. Das Solver-Tracking sammelt die Posts via
     ``daily_results.remember()`` (Upsert pro Channel unter einem Puzzle)."""
+    # Am 1. eines Monats: Vormonats-Endstand vorbereiten, um ihn in JEDEN Tagespuzzle-Thread
+    # nachzulegen (statt eines eigenständigen Posts). Einmal je Monat (Dedupe via leaderboard-State).
+    from commands import leaderboard as _lb
+    endstand_month = _lb.monthly_due()
+    endstand_embed = None
+    if endstand_month:
+        try:
+            endstand_embed = await _lb.build_endstand_embed(endstand_month)
+        except Exception:
+            log.exception('Monats-Endstand-Embed konnte nicht gebaut werden (%s)', endstand_month)
+    endstand_posted = False
+
     results: list[tuple[int, bool]] = []
     for cid in DAILY_CHANNEL_IDS:
         channel = bot.get_channel(cid)
@@ -781,12 +793,24 @@ async def _post_daily_to_all() -> list[tuple[int, bool]]:
             results.append((cid, False))
             continue
         try:
-            pid = await puzzle.post_rookhub_puzzle(channel, 'daily', with_board=True, lang=_daily_lang(cid))
+            pid, target = await puzzle.post_rookhub_puzzle(
+                channel, 'daily', with_board=True, lang=_daily_lang(cid), return_target=True)
             results.append((cid, pid is not None))
+            # Endstand in DENSELBEN Thread wie das Tagespuzzle nachlegen.
+            if endstand_embed is not None and target is not None:
+                try:
+                    await target.send(embed=endstand_embed)
+                    endstand_posted = True
+                except Exception:
+                    log.exception('Monats-Endstand-Post in Channel %s fehlgeschlagen', cid)
         except Exception:
             log.exception('Daily-Post in Channel %s fehlgeschlagen', cid,
                           extra={'es_fields': {'tags': ['daily', 'puzzle']}})
             results.append((cid, False))
+
+    # Monat erst als abgerechnet markieren, wenn der Endstand mindestens einmal gepostet wurde.
+    if endstand_month and endstand_posted:
+        _lb.mark_monthly_posted(endstand_month)
     return results
 
 

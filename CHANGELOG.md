@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.77.0] - 2026-07-01
+### Changed
+- **Monats-Endstand wird jetzt AM 1. zusammen mit dem Tagespuzzle in DESSEN Thread gepostet** — statt eines eigenständigen 08:00-Posts in einen separaten Channel. `bot._post_daily_to_all` prüft am Monatsanfang `leaderboard.monthly_due()`, baut `build_endstand_embed(vormonat)` und legt ihn in jeden Tagespuzzle-Thread (`post_rookhub_puzzle(..., return_target=True)` liefert dafür den Thread); erst nach erfolgreichem Post `mark_monthly_posted()` (Dedupe je Monat). Der alte eigenständige Loop ist abgeschaltet (`run_monthly_post` bleibt für Tests/Ad-hoc). Test `test_leaderboard_daily_thread_endstand`.
+
 ## [2.76.0] - 2026-07-01
 ### Added
 - **Build-Info-Endpoint `GET /webhook/build-info`**: liefert `{sha, ref}` des laufenden Bot-Images (aus den ENV `GIT_SHA`/`GIT_REF`, die der CI-Build als Build-Args setzt). RookHubs Admin-CI-Seite ruft das ab, um den GitHub-Actions-Run des laufenden Bot-Images zu markieren (Branch bei `:dev`, Tag bei `:prod`). Kein Auth (wie `/webhook/health`). `core/version.py` bekam `GIT_REF`; Dockerfile + Release-Workflow reichen `GIT_REF=${{ github.ref_name }}` durch. Test `tests/test_webhook_build_info.py`.

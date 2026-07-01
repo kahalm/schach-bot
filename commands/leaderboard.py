@@ -72,6 +72,29 @@ def _mark_posted(month_key: str) -> None:
     atomic_update(STATE_FILE, _u, dict)
 
 
+def monthly_due() -> str | None:
+    """Monatsschlüssel (``yyyy-MM``) der Vormonats-Abrechnung, falls sie heute (1. UTC) fällig und
+    noch nicht gepostet ist — sonst ``None``. Dedupe via ``STATE_FILE``. Für die Einbettung in den
+    Tagespuzzle-Thread (der Daily-Flow ruft das am Monatsanfang auf)."""
+    state = atomic_read(STATE_FILE, default=dict)
+    return dlb.should_post_monthly(state if isinstance(state, dict) else {}, datetime.now(timezone.utc))
+
+
+async def build_endstand_embed(month: str) -> discord.Embed | None:
+    """Baut das „Endstand"-Embed (Ladder + Hall of Fame) für ``month``; ``None`` bei leerer Wertung."""
+    import asyncio
+    ladder = await asyncio.to_thread(rookhub.get_daily_leaderboard, month)
+    if not ladder or not ladder.get('entries'):
+        return None
+    hof = await asyncio.to_thread(rookhub.get_daily_hall_of_fame)
+    return _build_embed(ladder, hof, title_prefix='Endstand')
+
+
+def mark_monthly_posted(month: str) -> None:
+    """Monat als abgerechnet markieren (nach dem Posten in die Daily-Threads), damit nicht doppelt."""
+    _mark_posted(month)
+
+
 async def run_monthly_post() -> None:
     """Postet am 1. eines Monats die Endabrechnung des Vormonats (einmalig)."""
     if not _bot or not _channel_id:
@@ -130,17 +153,7 @@ def setup(bot, channel_id: int = 0):
         hof = await asyncio.to_thread(rookhub.get_daily_hall_of_fame)
         await interaction.followup.send(embed=_build_embed(ladder, hof))
 
-    @tasks.loop(time=_POST_TIME)
-    async def _monthly_loop():
-        try:
-            await run_monthly_post()
-        except Exception:
-            log.exception('Monats-Bestenlisten-Loop fehlgeschlagen')
-
-    @bot.listen('on_ready')
-    async def _start_monthly_loop():
-        if not _monthly_loop.is_running():
-            _monthly_loop.start()
-
-    if hasattr(bot, '_task_loops'):
-        bot._task_loops['leaderboard'] = _monthly_loop
+    # HINWEIS: Der frühere eigenständige 08:00-Loop (run_monthly_post → dedizierter Channel) ist
+    # abgeschaltet. Die Vormonats-Abrechnung wird stattdessen am 1. ZUSAMMEN mit dem Tagespuzzle in
+    # DESSEN Thread gepostet (siehe bot._post_daily_to_all → leaderboard.monthly_due/build_endstand_embed/
+    # mark_monthly_posted). `run_monthly_post` bleibt für Tests/Ad-hoc erhalten, wird aber nicht mehr geplant.

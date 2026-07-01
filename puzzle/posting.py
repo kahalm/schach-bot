@@ -341,7 +341,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0,
 async def post_rookhub_puzzle(channel, pool: str = 'daily',
                               user_id: int | None = None, exclude=None,
                               book_id=None, with_board: bool = False,
-                              lang: str = 'de') -> int | None:
+                              lang: str = 'de', return_target: bool = False):
     """Holt ein Puzzle aus dem RookHub-Pool (``daily`` | ``random`` | ``blind``) bzw. aus
     ``book_id`` und postet es. Auswahl, Lösen und Fortschritt liegen bei RookHub; der Link
     wird aus der Puzzle-ID gebaut (immer auflösbar – kein lineId-Reverse-Lookup).
@@ -351,13 +351,19 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
     Default = nur der klickbare Link (z. B. ``/puzzle``).
     ``exclude`` = Liste bereits geposteter IDs. ``book_id`` = RookHub-Buch-ID (überschreibt Pool).
     Gibt die Puzzle-ID zurück (oder ``None`` bei Fehler/keinem Puzzle).
+    ``return_target=True`` → gibt stattdessen ``(pid, target)`` zurück, wobei ``target`` der Thread
+    (bzw. Channel) ist, in den gepostet wurde — damit der Aufrufer z. B. den Monats-Endstand in
+    denselben Daily-Thread nachlegen kann.
     """
+    def _ret(p, t=None):
+        return (p, t) if return_target else p
+
     lang = i18n.norm(lang)  # Sprache des Daily-Posts (de/en) — pro Channel wählbar
     dto = await asyncio.to_thread(rookhub.get_puzzle, pool, exclude, book_id)
     if not dto:
         await _send_optional(channel, f'⚠️ Kein {pool}-Puzzle in RookHub verfügbar.',
                              label=f'rookhub-{pool}')
-        return None
+        return _ret(None)
 
     pid = dto.get('id')
     line_id = dto.get('lineId', '')
@@ -450,7 +456,7 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
                      extra={'es_fields': {'tags': ['daily', 'puzzle']}})
     if user_id:
         stats.inc(user_id, 'puzzles', 1)
-    return pid
+    return _ret(pid, target)
 
 
 async def post_blind_puzzle(channel,

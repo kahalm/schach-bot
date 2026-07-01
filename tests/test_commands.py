@@ -40,6 +40,7 @@ from test_cmd_weeklypost import (
 from test_cmd_leaderboard import (
     test_leaderboard_format, test_leaderboard_monthly_schedule,
     test_leaderboard_command, test_leaderboard_monthly_post,
+    test_leaderboard_daily_thread_endstand,
 )
 from test_cmd_motivation import (
     test_motivation_command, test_motivation_builder, test_motivation_random_spruch,
@@ -131,6 +132,7 @@ def main():
     test_leaderboard_monthly_schedule()
     test_leaderboard_command()
     test_leaderboard_monthly_post()
+    test_leaderboard_daily_thread_endstand()
     test_parse_zeit()
     test_motivation_command()
     test_motivation_builder()
