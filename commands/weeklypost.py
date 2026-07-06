@@ -98,7 +98,10 @@ async def _post_announcement(channel, post: dict):
     url = rookhub.weekly_web_url(post.get('id'))
     thread = await channel.create_thread(name=_thread_name(post), type=discord.ChannelType.public_thread)
     embed = discord.Embed(title=title, color=EMBED_COLOR)
-    embed.description = '\U0001f4ec Neuer Wochenpost zum Durchspielen auf RookHub'
+    base_line = '\U0001f4ec Neuer Wochenpost zum Durchspielen auf RookHub'
+    # Optionale, vom Admin gesetzte Kurzbeschreibung (RookHub-Feld) voranstellen, falls vorhanden.
+    desc = (post.get('description') or '').strip()
+    embed.description = f'{desc}\n\n{base_line}' if desc else base_line
     # Fortschritt sofort befüllen, falls schon Versuche existieren (z.B. Admin-Vorschau vor dem Termin,
     # Bot-Downtime): der Webhook feuert nur beim ERSTEN Versuch je Puzzle und ginge sonst ins Leere, weil
     # zum Zeitpunkt des Versuchs noch kein Ankündigungs-Thread existierte. Pull beim Ankündigen schließt

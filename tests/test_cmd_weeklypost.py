@@ -110,6 +110,34 @@ def test_weekly_announcement_prefills_progress():
     print()
 
 
+def test_weekly_announcement_includes_description():
+    """Die optionale RookHub-Beschreibung wird in die Embed-Beschreibung uebernommen; ohne Beschreibung
+    bleibt die Standardzeile."""
+    print('[weekly announcement includes description]')
+    tmpdir = setup_temp_config()
+    orig_results = wp.rookhub.get_weekly_results
+    try:
+        wp.rookhub.get_weekly_results = lambda wid, timeout=15: {'total': 2, 'completedCount': 0, 'players': []}
+
+        ch = FakeChannel(channel_id=88888)
+        post = {'id': 7, 'title': 'Mate in 2', 'description': 'Diese Woche: Damenopfer!',
+                'scheduledAt': '2026-06-19T18:00:00'}
+        run_async(wp._post_announcement(ch, post))
+        embed = ch.threads[0].sent[0].kwargs.get('embed')
+        check('Beschreibung im Embed', 'Damenopfer' in (embed.description or ''))
+        check('Standardzeile bleibt daneben', 'Wochenpost' in (embed.description or ''))
+
+        # Ohne Beschreibung → nur die Standardzeile.
+        ch2 = FakeChannel(channel_id=88888)
+        run_async(wp._post_announcement(ch2, {'id': 8, 'title': 'Ohne', 'scheduledAt': '2026-06-19T18:00:00'}))
+        embed2 = ch2.threads[0].sent[0].kwargs.get('embed')
+        check('Standardzeile ohne Beschreibung', 'Wochenpost' in (embed2.description or ''))
+    finally:
+        wp.rookhub.get_weekly_results = orig_results
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_weekly_results_format():
     """format_weekly_results: wer erledigt + gelöst/total + Gesamtzeit je User (rein)."""
     print('[weekly results format]')

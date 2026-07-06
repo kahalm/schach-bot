@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.0] - 2026-07-06
+### Added
+- **Wochenpost-Ankündigung zeigt jetzt die optionale Beschreibung** — RookHub-Admins können einem Wochenpost eine kurze Beschreibung mitgeben (neues Feld); der Announcer stellt sie im Embed der Standardzeile voran (`_post_announcement` nutzt `post.get('description')`). Ohne Beschreibung unverändert nur die Standardzeile. Bezogen über den bestehenden Poll `GET /api/weekly-posts` (kein Webhook nötig). Test `test_weekly_announcement_includes_description`.
+
 ## [2.77.0] - 2026-07-01
 ### Changed
 - **Monats-Endstand wird jetzt AM 1. zusammen mit dem Tagespuzzle in DESSEN Thread gepostet** — statt eines eigenständigen 08:00-Posts in einen separaten Channel. `bot._post_daily_to_all` prüft am Monatsanfang `leaderboard.monthly_due()`, baut `build_endstand_embed(vormonat)` und legt ihn in jeden Tagespuzzle-Thread (`post_rookhub_puzzle(..., return_target=True)` liefert dafür den Thread); erst nach erfolgreichem Post `mark_monthly_posted()` (Dedupe je Monat). Der alte eigenständige Loop ist abgeschaltet (`run_monthly_post` bleibt für Tests/Ad-hoc). Test `test_leaderboard_daily_thread_endstand`.
