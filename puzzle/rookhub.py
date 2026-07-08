@@ -131,15 +131,19 @@ def lookup_puzzle_id(line_id: str, timeout: int = _LOOKUP_TIMEOUT) -> int | None
                 _id_cache_put(line_id, None)  # echtes 404: in RookHub nicht vorhanden → dauerhaft cachen
             return None
         r.raise_for_status()
-        pid = r.json().get('id')
+        # Ein Proxy-Fehler kann mit HTTP 200 eine HTML-Seite (kein JSON) oder Nicht-dict-JSON
+        # liefern → r.json() wirft ValueError bzw. .get() einen AttributeError. Beides als
+        # transient behandeln statt den aufrufenden Follow-up crashen zu lassen.
+        data = r.json()
+        pid = data.get('id') if isinstance(data, dict) else None
         if pid is not None:
             with _id_cache_lock:
                 _id_cache_put(line_id, pid)  # nur echte IDs cachen
         # 200 ohne id (z. B. während eines Imports / Proxy-Fehlerseite) gilt als transient
         # → NICHT cachen, damit ein späterer Aufruf erneut versucht.
         return pid
-    except requests.RequestException as e:
-        # Transiente Fehler NICHT cachen (nächster Aufruf darf erneut versuchen).
+    except (requests.RequestException, ValueError) as e:
+        # Transiente Fehler (Netz ODER kaputter/Nicht-JSON-Body) NICHT cachen.
         log.debug('RookHub lookup_puzzle_id(%s) fehlgeschlagen: %s', line_id, e)
         return None
 

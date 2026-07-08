@@ -319,8 +319,30 @@ def test_get_daily_hall_of_fame_ok():
     check('get_daily_hall_of_fame top-param', captured['params'] == {'top': 3})
 
 
+def test_lookup_200_html_or_nondict_not_crash():
+    """Bug-First: ein Proxy-Fehler kann mit HTTP 200 eine HTML-Seite (r.json() wirft
+    ValueError) ODER Nicht-dict-JSON (list → .get AttributeError) liefern. lookup_puzzle_id
+    darf das NICHT propagieren (crasht sonst den Follow-up), sondern als transient → None."""
+    rh.ROOKHUB_API_URL = 'http://rookhub:5001'
+    rh._id_cache.clear()
+
+    class _HtmlResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): raise ValueError('Expecting value: line 1 column 1 (char 0)')
+
+    _patch_get(lambda url, params=None, timeout=None: _HtmlResp())
+    check('HTML-200 (json() wirft) → None statt Crash', rh.lookup_puzzle_id('h.pgn:1') is None)
+    check('HTML-200 nicht gecacht (transient)', 'h.pgn:1' not in rh._id_cache)
+
+    _patch_get(lambda url, params=None, timeout=None: _FakeResp(200, ['not', 'a', 'dict']))
+    check('Nicht-dict-JSON → None statt AttributeError', rh.lookup_puzzle_id('h.pgn:2') is None)
+    rh._id_cache.clear()
+
+
 def main():
     for t in (test_get_puzzle_ok, test_get_puzzle_404, test_get_puzzle_no_url,
+              test_lookup_200_html_or_nondict_not_crash,
               test_send_heartbeat_ok, test_send_heartbeat_no_url, test_send_heartbeat_falls_back_to_web,
               test_lookup_and_url, test_url_no_fallback_to_api,
               test_lookup_caches_hit, test_lookup_caches_404,

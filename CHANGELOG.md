@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.3] - 2026-07-08
+### Fixed
+- **`lookup_puzzle_id` crasht nicht mehr bei HTTP-200-Fehlerseiten** — liefert der RookHub-Proxy mit Status 200 eine HTML-Seite (`r.json()` wirft `ValueError`) oder Nicht-dict-JSON (`.get` → `AttributeError`), wurde die Ausnahme bisher NICHT gefangen (`except requests.RequestException`) und propagierte bis in den aufrufenden Follow-up. Jetzt `isinstance(dict)`-Guard + `except (RequestException, ValueError)` → als transient behandelt (None, nicht gecacht). Test `test_lookup_200_html_or_nondict_not_crash`.
+
 ## [2.78.2] - 2026-07-08
 ### Changed
 - **Wartbarkeit: duplizierte Logik in kleine geteilte Helfer extrahiert** (keine Verhaltensänderung):
