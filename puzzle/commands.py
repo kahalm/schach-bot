@@ -57,7 +57,7 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
         target_uid = target_user.id
 
         if id:
-            # Blind-Referenz: "lid:blind:N" → post_blind_puzzle
+            # Blind-Referenz: "lid:blind:N" → wird unten inline als Blind-Puzzle gepostet
             _blind_moves = 0
             _lookup_id = id
             _blind_match = re.search(r':blind:(\d+)$', id, re.IGNORECASE)

@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.4] - 2026-07-08
+### Changed
+- **`puzzle/posting.py` entschlackt (Wartbarkeit, keine Verhaltensänderung):**
+  - Neuer Helfer `_resolve_target(channel, thread_name) → (target, is_dm)` ersetzt den 3× duplizierten „DM/Thread → channel, sonst neuen Thread"-Block (`post_puzzle`, `post_rookhub_puzzle`, `post_blind_puzzle`); mit Fallback auf `channel`, falls `create_thread` scheitert (der Post geht nie ganz verloren).
+### Removed
+- **Toter Blind-Post-Pfad entfernt** — `post_blind_puzzle` hatte keinen Aufrufer mehr (`/blind` ist abgelöst → verweist auf `/puzzle`/RookHub); die vom Code-Review gemeldete Blind-Build-Duplizierung war Duplizierung *mit toter Funktion*. Funktion (~120 Z.) + `__init__`-Re-Export + die dadurch verwaisten Imports (`_split_for_blind`, `_format_blind_moves`, `pick_random_blind_lines`, `_render_board`) gelöscht. Der live genutzte Blind-Pfad (`/puzzle id:…:blind:N` in `puzzle/commands.py`) bleibt unverändert.
+
 ## [2.78.3] - 2026-07-08
 ### Fixed
 - **`lookup_puzzle_id` crasht nicht mehr bei HTTP-200-Fehlerseiten** — liefert der RookHub-Proxy mit Status 200 eine HTML-Seite (`r.json()` wirft `ValueError`) oder Nicht-dict-JSON (`.get` → `AttributeError`), wurde die Ausnahme bisher NICHT gefangen (`except requests.RequestException`) und propagierte bis in den aufrufenden Follow-up. Jetzt `isinstance(dict)`-Guard + `except (RequestException, ValueError)` → als transient behandelt (None, nicht gecacht). Test `test_lookup_200_html_or_nondict_not_crash`.

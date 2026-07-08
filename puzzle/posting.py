@@ -18,11 +18,10 @@ from puzzle.buttons import fresh_view as _fresh_button_view
 from puzzle.embed import build_daily_embed, build_puzzle_embed
 import puzzle.rookhub as rookhub
 from puzzle.processing import (
-    _solution_pgn, _prelude_pgn, _trim_to_training_position,
-    _split_for_blind, _format_blind_moves, _final_turn,
+    _solution_pgn, _prelude_pgn, _trim_to_training_position, _final_turn,
 )
-from puzzle.rendering import _render_board, safe_render_board
-from puzzle.selection import _list_pgn_files, pick_random_lines, pick_random_blind_lines
+from puzzle.rendering import safe_render_board
+from puzzle.selection import _list_pgn_files, pick_random_lines
 from puzzle.state import (
     _register_puzzle_msg, _endless_sessions, stop_endless,
     _load_books_config, _get_user_puzzle_count,
@@ -32,6 +31,28 @@ from puzzle.state import (
 log = logging.getLogger('schach-bot')
 
 _DISCORD_THREAD_NAME_MAX = 100
+
+
+async def _resolve_target(channel, thread_name: str):
+    """Ermittelt das Ziel für einen Puzzle-Post und ob es eine DM ist.
+
+    DM oder bereits ein Thread → direkt in ``channel`` posten; ein normaler Channel →
+    neuen öffentlichen Thread anlegen (bei Fehler Fallback auf ``channel``, damit der
+    Post nie ganz verloren geht). Ersetzt den zuvor 3× duplizierten Block.
+    Gibt ``(target, is_dm)`` zurück.
+    """
+    is_dm = isinstance(channel, discord.DMChannel)
+    if is_dm or isinstance(channel, discord.Thread):
+        return channel, is_dm
+    try:
+        target = await channel.create_thread(
+            name=thread_name[:_DISCORD_THREAD_NAME_MAX],
+            type=discord.ChannelType.public_thread,
+            auto_archive_duration=1440,
+        )
+    except Exception:
+        target = channel
+    return target, is_dm
 
 
 def _build_puzzle_context(game, turn, diff, line_id, include_solution=True):
@@ -264,15 +285,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0,
         thread_name = thread_name[:_DISCORD_THREAD_NAME_MAX - 3] + '...'
 
     # Ziel: Thread (Server) oder direkt (DM / bestehender Thread)
-    is_dm = isinstance(channel, discord.DMChannel)
-    if is_dm or isinstance(channel, discord.Thread):
-        target = channel
-    else:
-        target = await channel.create_thread(
-            name=thread_name,
-            type=discord.ChannelType.public_thread,
-            auto_archive_duration=1440,
-        )
+    target, is_dm = await _resolve_target(channel, thread_name)
 
     # Alle Puzzles als einzelne Bilder posten. Jede Iteration in try/except,
     # damit ein einzelner Crash (kaputtes Board, Discord-Edge-Case) nicht die
@@ -367,20 +380,11 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
     rating = dto.get('bookRating') or 0
 
     # Ziel: Thread (Server) oder direkt (DM / bestehender Thread)
-    is_dm = isinstance(channel, discord.DMChannel)
-    if is_dm or isinstance(channel, discord.Thread):
-        target = channel
-    else:
-        label = (i18n.t('daily.label', lang) if pool == 'daily'
-                 else {'random': 'Zufallspuzzle', 'blind': 'Blindpuzzle'}.get(pool, 'Puzzle'))
-        today = _date.today().strftime('%d.%m.%Y')
-        thread_name = f'{label} – {today}'[:_DISCORD_THREAD_NAME_MAX]
-        try:
-            target = await channel.create_thread(
-                name=thread_name, type=discord.ChannelType.public_thread,
-                auto_archive_duration=1440)
-        except Exception:
-            target = channel
+    label = (i18n.t('daily.label', lang) if pool == 'daily'
+             else {'random': 'Zufallspuzzle', 'blind': 'Blindpuzzle'}.get(pool, 'Puzzle'))
+    today = _date.today().strftime('%d.%m.%Y')
+    thread_name = f'{label} – {today}'
+    target, _is_dm = await _resolve_target(channel, thread_name)
 
     msg = None
     rendered = False
@@ -451,132 +455,3 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
     if user_id:
         stats.inc(user_id, 'puzzles', 1)
     return _ret(pid, target)
-
-
-async def post_blind_puzzle(channel,
-                            moves: int,
-                            count: int = 1,
-                            book_idx: int = 0,
-                            user_id: int | None = None):
-    """Postet Blind-Puzzles: Stellung X Halbzüge VOR der Trainingsposition.
-
-    moves    – Anzahl Halbzüge, die der User im Kopf spielen muss (≥1).
-    count    – Anzahl Puzzles (1–20).
-    book_idx – 1-basierte Buchnummer (0 = alle blind-fähigen Bücher).
-    """
-    moves = max(1, moves)
-    count = max(1, min(count, 20))
-
-    book_filename = None
-    if book_idx > 0:
-        books = _list_pgn_files()
-        if books:
-            if 1 <= book_idx <= len(books):
-                book_filename = books[book_idx - 1]
-            else:
-                await channel.send(
-                    f'⚠️ Buch {book_idx} nicht gefunden. `/kurs` zeigt verfügbare Bücher.'
-                )
-                return
-
-    config = _load_books_config()
-    if book_filename and not config.get(book_filename, {}).get('blind'):
-        await channel.send(
-            f'⚠️ Buch `{book_filename}` ist nicht für den Blind-Modus freigegeben.\n'
-            'Setze in `books/books.json` `"blind": true` für dieses Buch.'
-        )
-        return
-
-    results = await asyncio.to_thread(pick_random_blind_lines, count, book_filename, moves)
-    if not results:
-        if not any(m.get('blind') for m in config.values()):
-            await channel.send(
-                '⚠️ Kein Buch hat `blind: true` in `books/books.json`. '
-                'Bitte mindestens ein Buch dafür freigeben.'
-            )
-        else:
-            await channel.send(
-                f'⚠️ Kein Puzzle mit ≥{moves} Vorlauf-Zügen gefunden. '
-                'Versuche eine kleinere `moves:`-Zahl oder ein anderes Buch.'
-            )
-        return
-
-    h = dict(results[0][1].headers)
-    event = h.get('Event', 'Blind-Puzzle')
-    today = _date.today().strftime('%d.%m.%Y')
-    thread_name = f'🙈 {event} (blind {moves}) – {today}'
-    if len(thread_name) > 100:
-        thread_name = thread_name[:_DISCORD_THREAD_NAME_MAX - 3] + '...'
-
-    is_dm = isinstance(channel, discord.DMChannel)
-    if is_dm or isinstance(channel, discord.Thread):
-        target = channel
-    else:
-        target = await channel.create_thread(
-            name=thread_name,
-            type=discord.ChannelType.public_thread,
-            auto_archive_duration=1440,
-        )
-
-    posted = 0
-    for line_id, original_game in results:
-        split = _split_for_blind(original_game, moves)
-        if split is None:
-            continue
-        blind_board, blind_san, puzzle_game = split
-
-        fname = line_id.split(':')[0]
-        meta = config.get(fname, {})
-        diff = meta.get('difficulty', '')
-        rating = meta.get('rating', 0)
-
-        try:
-            img = await asyncio.to_thread(_render_board, blind_board)
-        except Exception as e:
-            log.warning('Blind-Board-Render fehlgeschlagen: %s', e)
-            img = None
-
-        embed = build_puzzle_embed(
-            puzzle_game,
-            turn=blind_board.turn,
-            difficulty=diff,
-            rating=rating,
-            line_id=line_id,
-            blind_moves=moves,
-        )
-        embed.title = f'🙈 Blind-Puzzle ({moves} Züge)'
-        blind_pgn = _format_blind_moves(blind_board, blind_san)
-        embed.add_field(
-            name='🙈 Spiele in Gedanken',
-            value=f'`{blind_pgn}`\n_Visualisiere die Stellung danach und löse das Puzzle._',
-            inline=False,
-        )
-
-        try:
-            if img:
-                file = discord.File(img, filename='board.png')
-                embed.set_image(url='attachment://board.png')
-                msg = await _resilient_send(target, file=file, embed=embed)
-            else:
-                msg = await _resilient_send(target, embed=embed)
-            posted += 1
-            _register_puzzle_msg(msg.id, line_id, mode='blind')
-            save_puzzle_context(user_id,
-                                _build_puzzle_context(puzzle_game, blind_board.turn,
-                                                      diff, line_id, include_solution=False))
-        except Exception as e:
-            log.exception('Blind-Puzzle (%s) fehlgeschlagen: %s', line_id, e)
-            continue
-
-        try:
-            await msg.edit(view=_fresh_button_view())
-        except Exception as e:
-            log.warning('Blind-Button-View-Edit fehlgeschlagen (%s): %s', line_id, e)
-
-        pgn_moves = _solution_pgn(puzzle_game)
-        if pgn_moves:
-            await _send_optional(target, f'Lösung des Puzzles: ||`{pgn_moves}`||',
-                                 label=f'Blind-Lösung {line_id}')
-
-    if user_id and posted:
-        stats.inc(user_id, 'blind_puzzles', posted)
