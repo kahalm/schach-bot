@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.6] - 2026-07-08
+### Changed
+- **Schritt 5 (Modul-Splits), Teil 1: `commands/motivation.py` entzerrt** (886 → 579 Z.). Der reine, discord-freie Text-/Analyse-Teil (`_analyze_progress`, `_facts_summary`, `_tournament_facts`, `_fmt_points`, `_days_phrase`, `_via_claude`, `_fallback_*`, `_build_motivation_text`/`_build_unlinked_text`/`_build_slacker_*` + die `*_SYSTEM`-Prompts) liegt jetzt im neuen, unabhängig testbaren Modul `commands/motivation_text.py` (335 Z.); `motivation.py` behält Abo-/Loop-/Discord-Logik und re-importiert die Funktionen (Aufrufer + Tests `mot._X` unverändert). Verhaltensneutral; Tests: 1005 command + 171 trim grün.
+
 ## [2.78.5] - 2026-07-08
 ### Changed
 - **KI-Chat: doppelten Claude-Aufruf in `_call_claude(...)` gebündelt** — der API-Aufruf (`api_kwargs` bauen + `messages.create` + Token-Buchung) stand identisch in der Hauptschleife UND im BadRequest-Retry. Jetzt ein Helfer.
