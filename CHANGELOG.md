@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.1] - 2026-07-08
+### Fixed
+- **Bibliothek: blockierendes Disk-/Netz-I/O aus dem Event-Loop verbannt** — die Download-Callbacks (`_send_book`, `_FormatView`-Button, `_BookSelect.callback`) riefen `os.path.getsize`/`os.path.isfile` (`_collect_formats`), das Öffnen der Buchdatei und `stats.inc` (JSON read-modify-write) synchron im Event-Loop auf. Da die Bücher auf Syncthing-/Netzpfaden liegen, fror ein hakendes Laufwerk den ganzen Bot ein. Diese Aufrufe laufen jetzt über `asyncio.to_thread` (wie die Autocomplete-Pfade bereits). Reines Nebenläufigkeits-Fix, kein Verhaltenswechsel.
+- **Bibliothek-Cache thread-sicher** — `_ensure_library`/`_reload_library` mutierten den globalen `_library_cache` ohne Lock, obwohl aus mehreren `asyncio.to_thread`-Workern gelesen und per `/reindex` invalidiert wird; ein Race konnte einen teilgefüllten Cache liefern. Jetzt double-checked Locking mit `threading.Lock`. Test `test_library_cache_threadsafe` (8 nebenläufige Aufrufe → genau 1 Ladevorgang).
+
 ## [2.78.0] - 2026-07-06
 ### Added
 - **Wochenpost-Ankündigung zeigt jetzt die optionale Beschreibung** — RookHub-Admins können einem Wochenpost eine kurze Beschreibung mitgeben (neues Feld); der Announcer stellt sie im Embed der Standardzeile voran (`_post_announcement` nutzt `post.get('description')`). Ohne Beschreibung unverändert nur die Standardzeile. Bezogen über den bestehenden Poll `GET /api/weekly-posts` (kein Webhook nötig). Test `test_weekly_announcement_includes_description`.

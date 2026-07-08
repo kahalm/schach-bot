@@ -1,6 +1,7 @@
 """Bibliothek-Katalog: index.txt parsen, Tags generieren, Suche, Slash-Commands."""
 
 import asyncio
+import threading
 import fnmatch
 import json
 import logging
@@ -460,18 +461,26 @@ def build_library_catalog() -> tuple[int, int, int, int, int]:
 
 _library_cache: list[dict] = []
 _library_loaded: bool = False
+# Der Cache wird aus mehreren Worker-Threads (asyncio.to_thread) gelesen UND per /reindex
+# invalidiert — ohne Lock kann ein konkurrierender Aufbau einen teilgefüllten Cache liefern.
+_library_lock = threading.Lock()
 
 def _ensure_library() -> list[dict]:
     global _library_cache, _library_loaded
-    if not _library_loaded:
-        full = _load_library()
-        _library_cache = [e for e in full if not _is_excluded(e)]
-        _library_loaded = True
+    if _library_loaded:
+        return _library_cache
+    with _library_lock:
+        # Double-checked: ein anderer Thread kann den Cache gefüllt haben, während wir warteten.
+        if not _library_loaded:
+            full = _load_library()
+            _library_cache = [e for e in full if not _is_excluded(e)]
+            _library_loaded = True
     return _library_cache
 
 def _reload_library():
     global _library_loaded
-    _library_loaded = False
+    with _library_lock:
+        _library_loaded = False
     _ignore_cache.clear()
 
 def _author_str(author) -> str:
@@ -697,7 +706,9 @@ async def _send_book(interaction: discord.Interaction,
             ephemeral=True)
         return
     try:
-        size = os.path.getsize(path)
+        # Disk-/Netz-I/O (Bücher liegen auf Syncthing-/Netzpfaden) NICHT im Event-Loop:
+        # ein hakendes Laufwerk würde sonst den ganzen Bot einfrieren.
+        size = await asyncio.to_thread(os.path.getsize, path)
         if size > _MAX_UPLOAD:
             if _sftpgo_configured():
                 await interaction.followup.send(
@@ -705,16 +716,18 @@ async def _send_book(interaction: discord.Interaction,
                 pw_msg = _sftpgo_password_message()
                 if pw_msg:
                     await interaction.followup.send(pw_msg, ephemeral=True)
-                stats.inc(interaction.user.id, 'downloads')
+                await asyncio.to_thread(stats.inc, interaction.user.id, 'downloads')
             else:
                 mb = size / (1024 * 1024)
                 await interaction.followup.send(
                     f'⚠️ Datei zu groß ({mb:.1f} MB, Discord-Limit 8 MB).', ephemeral=True)
             return
         dm = await interaction.user.create_dm()
+        book_file = await asyncio.to_thread(
+            lambda: discord.File(path, filename=os.path.basename(path)))
         await dm.send(
             content=f'📖 **{entry["title"]}** — {entry["author"]} `[{fmt.upper()}]`',
-            file=discord.File(path, filename=os.path.basename(path)))
+            file=book_file)
     except OSError:
         # Datei zwischen View-Bau und Klick verschwunden (Sync/Reindex/Verschiebung).
         log.warning('Buchdatei nicht mehr verfuegbar: %s', path)
@@ -722,7 +735,7 @@ async def _send_book(interaction: discord.Interaction,
             '⚠️ Datei nicht mehr verfügbar (evtl. zwischenzeitlich synchronisiert/verschoben).',
             ephemeral=True)
         return
-    stats.inc(interaction.user.id, 'downloads')
+    await asyncio.to_thread(stats.inc, interaction.user.id, 'downloads')
     await interaction.followup.send(
         f'✅ **{entry["title"]}** `[{fmt.upper()}]` per DM gesendet.', ephemeral=True)
 
@@ -770,10 +783,10 @@ class _FormatView(discord.ui.View):
                 pw_msg = _sftpgo_password_message()
                 if pw_msg:
                     await interaction.followup.send(pw_msg, ephemeral=True)
-                stats.inc(interaction.user.id, 'downloads')
+                await asyncio.to_thread(stats.inc, interaction.user.id, 'downloads')
             elif big:
                 try:
-                    mb = os.path.getsize(path) / (1024 * 1024)
+                    mb = (await asyncio.to_thread(os.path.getsize, path)) / (1024 * 1024)
                     msg = f'⚠️ Datei zu groß ({mb:.1f} MB, Discord-Limit 8 MB).'
                 except OSError:
                     msg = '⚠️ Datei nicht mehr verfügbar (evtl. zwischenzeitlich synchronisiert/verschoben).'
@@ -819,7 +832,9 @@ class _BookSelect(discord.ui.Select):
                 '⚠️ Keine Datei hinterlegt.', ephemeral=True)
             return
 
-        formats = _collect_formats(entry)
+        # _collect_formats macht viele os.path.isfile über evtl. langsame Netz-/Syncthing-Pfade
+        # → in einen Thread auslagern, damit der Event-Loop nicht blockiert.
+        formats = await asyncio.to_thread(_collect_formats, entry)
 
         if not formats:
             await interaction.response.send_message(

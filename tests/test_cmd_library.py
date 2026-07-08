@@ -431,3 +431,52 @@ def test_sftpgo_password_separated():
         library._SFTPGO_SHARE_PASSWORD = orig_pw
         shutil.rmtree(tmpdir, ignore_errors=True)
     print()
+
+
+def test_library_cache_threadsafe():
+    """Bug-First: _ensure_library darf bei nebenläufigen Aufrufen (asyncio.to_thread liest aus
+    mehreren Worker-Threads) NUR EINMAL laden und einen konsistenten Cache liefern — ohne Lock
+    baut ein Race einen teilgefüllten Cache. Deckt den Lock in library._ensure_library ab."""
+    print('[library cache threadsafe]')
+    import threading
+    import time
+    import library as lib_mod
+
+    orig_load = lib_mod._load_library
+    orig_excl = lib_mod._is_excluded
+    try:
+        calls = {'n': 0}
+        lock = threading.Lock()
+
+        def _slow_load():
+            with lock:
+                calls['n'] += 1
+            time.sleep(0.05)   # Fenster für die Race
+            return [{'id': f'b{i}', 'title': f'B{i}'} for i in range(5)]
+
+        lib_mod._load_library = _slow_load
+        lib_mod._is_excluded = lambda e: False
+        lib_mod._reload_library()   # Cache invalidieren (loaded=False)
+
+        results = []
+        rlock = threading.Lock()
+
+        def _worker():
+            r = lib_mod._ensure_library()
+            with rlock:
+                results.append(r)
+
+        threads = [threading.Thread(target=_worker) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        check('nur EINMAL geladen trotz 8 nebenläufiger Aufrufe', calls['n'] == 1)
+        check('alle Aufrufe liefern denselben Cache', all(r is results[0] for r in results))
+        check('Cache vollständig (5 Einträge)', len(results[0]) == 5)
+    finally:
+        lib_mod._load_library = orig_load
+        lib_mod._is_excluded = orig_excl
+        lib_mod._reload_library()
+    print()
