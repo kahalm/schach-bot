@@ -145,10 +145,7 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
             if show_board:
                 turn, img = await _pkg.safe_render_board(game)
             else:
-                board = game.board()
-                for move in game.mainline_moves():
-                    board.push(move)
-                turn = board.turn
+                turn = _pkg._final_turn(game)
                 img = None
 
             if user:

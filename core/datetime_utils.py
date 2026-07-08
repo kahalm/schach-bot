@@ -19,6 +19,16 @@ def parse_utc(ts: str) -> datetime:
     return dt
 
 
+def noon_utc_ts(d: date) -> int:
+    """Unix-Timestamp (Sekunden) für 12:00 UTC am gegebenen Datum.
+
+    Für Discord-Timestamp-Marker (`<t:...:D>`) von Terminen ohne Uhrzeit — Mittag
+    vermeidet Datums-Verschiebung über Zeitzonen. Ersetzt die zuvor mehrfach
+    duplizierte Inline-Konstruktion.
+    """
+    return int(datetime(d.year, d.month, d.day, 12, 0, tzinfo=timezone.utc).timestamp())
+
+
 def parse_zeit(raw: str) -> tuple[int, int] | None:
     """Parst eine Uhrzeit zu (hour, minute). Akzeptiert '17', '1730', '17:30', '17 30'.
 

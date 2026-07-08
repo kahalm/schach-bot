@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.2] - 2026-07-08
+### Changed
+- **Wartbarkeit: duplizierte Logik in kleine geteilte Helfer extrahiert** (keine Verhaltensänderung):
+  - `core.datetime_utils.noon_utc_ts(date)` ersetzt die 4× duplizierte Inline-Konstruktion des 12:00-UTC-Discord-Timestamps (`schachrallye.py` 3×, `test.py`). +Test `test_noon_utc_ts`.
+  - `puzzle.processing._final_turn(game)` ersetzt die 3× duplizierte „Seite am Zug durch Nachspielen der Hauptlinie"-Schleife (`posting.py` 2×, `puzzle/commands.py`); via `puzzle`-Paket re-exportiert.
+  - `core.webhook_server._read_verified_json(secret, request, label)` bündelt den in allen 3 Webhook-Handlern identischen Body-Read + HMAC-/Timestamp-Prüfung + JSON-Parse-Block.
+
 ## [2.78.1] - 2026-07-08
 ### Fixed
 - **Bibliothek: blockierendes Disk-/Netz-I/O aus dem Event-Loop verbannt** — die Download-Callbacks (`_send_book`, `_FormatView`-Button, `_BookSelect.callback`) riefen `os.path.getsize`/`os.path.isfile` (`_collect_formats`), das Öffnen der Buchdatei und `stats.inc` (JSON read-modify-write) synchron im Event-Loop auf. Da die Bücher auf Syncthing-/Netzpfaden liegen, fror ein hakendes Laufwerk den ganzen Bot ein. Diese Aufrufe laufen jetzt über `asyncio.to_thread` (wie die Autocomplete-Pfade bereits). Reines Nebenläufigkeits-Fix, kein Verhaltenswechsel.

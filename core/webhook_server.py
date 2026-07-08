@@ -103,21 +103,32 @@ def _is_int(value: Any) -> bool:
     return type(value) is int
 
 
+async def _read_verified_json(secret: str, request: web.Request, label: str = 'Webhook'):
+    """Liest den Body, prüft HMAC/Timestamp und parst JSON — der in allen Handlern
+    identische Eingangsblock, hier einmal zentral.
+
+    Rückgabe: ``(payload, None)`` bei Erfolg, sonst ``(None, web.Response)`` mit der
+    passenden 401/400-Antwort (der Aufrufer gibt sie einfach zurück).
+    """
+    raw = await request.read()
+    if not _verify_request(secret, raw, request):
+        log.warning('%s: HMAC-Signatur ungültig (len=%d)', label, len(raw))
+        return None, web.Response(status=401, text='invalid signature')
+    try:
+        return json.loads(raw.decode('utf-8')), None
+    except Exception as e:
+        log.warning('%s: kaputter JSON-Body: %s', label, e)
+        return None, web.Response(status=400, text='invalid json')
+
+
 def _make_handler(bot, secret: str):
     """Baut den aiohttp-Handler, der den Bot per Closure mitnimmt."""
     from puzzle import daily_results
 
     async def handle(request: web.Request) -> web.Response:
-        raw = await request.read()
-        if not _verify_request(secret, raw, request):
-            log.warning('Webhook: HMAC-Signatur ungueltig (len=%d)', len(raw))
-            return web.Response(status=401, text='invalid signature')
-
-        try:
-            payload: dict[str, Any] = json.loads(raw.decode('utf-8'))
-        except Exception as e:
-            log.warning('Webhook: kaputter JSON-Body: %s', e)
-            return web.Response(status=400, text='invalid json')
+        payload, err = await _read_verified_json(secret, request, 'Webhook')
+        if err:
+            return err
 
         puzzle_id = payload.get('puzzleId')
         if not _is_int(puzzle_id):
@@ -166,15 +177,9 @@ def _make_daily_regenerate_handler(bot, secret: str, daily_channels):
             norm_channels.append((cid, lang))
 
     async def handle(request: web.Request) -> web.Response:
-        raw = await request.read()
-        if not _verify_request(secret, raw, request):
-            log.warning('DailyRegenerate-Webhook: HMAC-Signatur ungültig')
-            return web.Response(status=401, text='invalid signature')
-        try:
-            payload: dict[str, Any] = json.loads(raw.decode('utf-8'))
-        except Exception as e:
-            log.warning('DailyRegenerate-Webhook: kaputter JSON-Body: %s', e)
-            return web.Response(status=400, text='invalid json')
+        payload, err = await _read_verified_json(secret, request, 'DailyRegenerate-Webhook')
+        if err:
+            return err
 
         date_str = payload.get('date')
         new_puzzle_id = payload.get('puzzleId')
@@ -230,15 +235,9 @@ def _make_weekly_handler(bot, secret: str):
     from commands import weeklypost
 
     async def handle(request: web.Request) -> web.Response:
-        raw = await request.read()
-        if not _verify_request(secret, raw, request):
-            log.warning('Weekly-Webhook: HMAC-Signatur ungueltig')
-            return web.Response(status=401, text='invalid signature')
-        try:
-            payload: dict[str, Any] = json.loads(raw.decode('utf-8'))
-        except Exception as e:
-            log.warning('Weekly-Webhook: kaputter JSON-Body: %s', e)
-            return web.Response(status=400, text='invalid json')
+        payload, err = await _read_verified_json(secret, request, 'Weekly-Webhook')
+        if err:
+            return err
 
         wid = payload.get('weeklyPostId')
         if not _is_int(wid):

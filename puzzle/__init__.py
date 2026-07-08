@@ -31,6 +31,7 @@ from .processing import (  # noqa: F401
     _solution_pgn, _clean_book_name, _prelude_pgn, _has_training_comment,
     _trim_to_training_position, _split_for_blind, _format_blind_moves,
     _flatten_null_move_variations, _strip_pgn_annotations, _clean_pgn_for_lichess,
+    _final_turn,
 )
 
 # --- Board-Rendering ---

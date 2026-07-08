@@ -13,7 +13,7 @@ from datetime import date, timezone
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, parent_dir)
 
-from core.datetime_utils import parse_datum, parse_utc, parse_zeit
+from core.datetime_utils import parse_datum, parse_utc, parse_zeit, noon_utc_ts
 
 PASS = 'OK  '
 FAIL = 'FAIL'
@@ -63,10 +63,22 @@ def test_parse_zeit():
     check('"17:99" -> None', parse_zeit('17:99') is None)
 
 
+def test_noon_utc_ts():
+    from datetime import datetime
+    d = date(2026, 6, 30)
+    ts = noon_utc_ts(d)
+    check('int zurück', isinstance(ts, int))
+    dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+    check('12:00 UTC am Datum', (dt.year, dt.month, dt.day, dt.hour, dt.minute) == (2026, 6, 30, 12, 0))
+    check('entspricht Inline-Formel',
+          ts == int(datetime(2026, 6, 30, 12, 0, tzinfo=timezone.utc).timestamp()))
+
+
 if __name__ == '__main__':
     print('=== test_datetime_utils.py ===\n')
     test_parse_datum()
     test_parse_utc()
     test_parse_zeit()
+    test_noon_utc_ts()
     print(f'\n--- {total} checks, {failed} failed ---')
     sys.exit(1 if failed else 0)

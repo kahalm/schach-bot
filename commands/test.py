@@ -13,6 +13,7 @@ import chess
 import chess.pgn
 import discord
 
+from core.datetime_utils import noon_utc_ts as _noon_utc_ts
 from core.json_store import atomic_read
 from core.paths import CONFIG_DIR
 from core.permissions import is_privileged
@@ -691,7 +692,7 @@ async def _trigger_test_reminders(interaction, bot):
                         name = ev.get('name', f'Termin #{ev.get("id", "?")}')
                         try:
                             d = datetime.strptime(ev['datum'], '%Y-%m-%d').date()
-                            ts = int(datetime(d.year, d.month, d.day, 12, 0, tzinfo=timezone.utc).timestamp())
+                            ts = _noon_utc_ts(d)
                             lines.append(f'**{name}** \u2014 <t:{ts}:D>')
                         except Exception:
                             lines.append(f'**{name}** \u2014 {ev.get("datum", "")}')

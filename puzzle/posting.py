@@ -19,7 +19,7 @@ from puzzle.embed import build_daily_embed, build_puzzle_embed
 import puzzle.rookhub as rookhub
 from puzzle.processing import (
     _solution_pgn, _prelude_pgn, _trim_to_training_position,
-    _split_for_blind, _format_blind_moves,
+    _split_for_blind, _format_blind_moves, _final_turn,
 )
 from puzzle.rendering import _render_board, safe_render_board
 from puzzle.selection import _list_pgn_files, pick_random_lines, pick_random_blind_lines
@@ -102,10 +102,7 @@ async def _send_puzzle_link_only(target, game: chess.pgn.Game, line_id: str,
         msg = await _resilient_send(target, content=f'🧩 Rätsel `{line_id}` (kein RookHub-Link verfügbar)')
     _register_puzzle_msg(msg.id, line_id)
     if turn is None:
-        board = game.board()
-        for move in game.mainline_moves():
-            board.push(move)
-        turn = board.turn
+        turn = _final_turn(game)
     save_puzzle_context(user_id, _build_puzzle_context(game, turn, diff, line_id))
     return msg
 
@@ -293,10 +290,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0,
                 turn, img = await safe_render_board(game)
             else:
                 # Nur turn ermitteln fuer Embed, kein Bild rendern
-                board = game.board()
-                for move in game.mainline_moves():
-                    board.push(move)
-                turn = board.turn
+                turn = _final_turn(game)
                 img = None
 
             if not show_board:

@@ -18,6 +18,18 @@ _RE_SETUP_HEADER = re.compile(r'^\[SetUp\s+"', re.MULTILINE)
 _RE_FEN_LINE = re.compile(r'(^\[FEN\s+"[^"]*"\])', re.MULTILINE)
 
 
+def _final_turn(game: chess.pgn.Game) -> chess.Color:
+    """Seite am Zug NACH Nachspielen der kompletten Hauptlinie (chess.WHITE/BLACK).
+
+    Ersetzt die zuvor mehrfach duplizierte Inline-Schleife (posting/commands),
+    um „wer ist im Rätsel am Zug" ohne Bild-Rendering zu bestimmen.
+    """
+    board = game.board()
+    for move in game.mainline_moves():
+        board.push(move)
+    return board.turn
+
+
 def _solution_pgn(game: chess.pgn.Game) -> str:
     """Exportiert die Lösung als bereinigten PGN-String (ohne Header, mit Varianten+Kommentaren)."""
     exporter = chess.pgn.StringExporter(headers=False, variations=True, comments=True)

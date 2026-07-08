@@ -27,7 +27,7 @@ from discord.ext import tasks
 
 from urllib.parse import urlparse
 
-from core.datetime_utils import parse_datum as _parse_datum
+from core.datetime_utils import parse_datum as _parse_datum, noon_utc_ts as _noon_utc_ts
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 from core.permissions import is_privileged
@@ -375,7 +375,7 @@ def setup(bot, tournament_channel_id: int = 0):
         lines = []
         for e in future:
             d = _parse_stored(e['datum'])
-            ts = int(datetime(d.year, d.month, d.day, 12, 0, tzinfo=timezone.utc).timestamp())
+            ts = _noon_utc_ts(d)
             name = e.get('name', '')
             ort = _shorten_ort(e.get('ort', ''))
             if name:
@@ -443,7 +443,7 @@ def setup(bot, tournament_channel_id: int = 0):
             return data
 
         atomic_update(TURNIER_FILE, _add)
-        ts = int(datetime(d.year, d.month, d.day, 12, 0, tzinfo=timezone.utc).timestamp())
+        ts = _noon_utc_ts(d)
         await interaction.response.send_message(
             f"\u2705 Termin #{result['id']} angelegt: <t:{ts}:D> in **{ort}**",
             ephemeral=True)
@@ -979,7 +979,7 @@ def setup(bot, tournament_channel_id: int = 0):
                 continue
             if (d - today).days <= 7:
                 mentions = ' '.join(f'<@{uid}>' for uid in subs)
-                ts = int(datetime(d.year, d.month, d.day, 12, 0, tzinfo=timezone.utc).timestamp())
+                ts = _noon_utc_ts(d)
                 name = event.get('name', '')
                 ort = _shorten_ort(event.get('ort', ''))
                 desc_text = f'**Termin #{event["id"]}**'
