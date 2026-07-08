@@ -364,3 +364,55 @@ def test_puzzle_context():
         ps._last_channel_puzzle = None
     finally:
         teardown_temp_config(tmpdir)
+
+
+def test_chat_retry_books_tokens():
+    """Nach v2.78.x: der BadRequest-Retry ruft _call_claude und bucht dadurch AUCH
+    den Token-Verbrauch (vorher ging der Retry-Verbrauch verloren)."""
+    print('[chat retry books tokens]')
+    tmpdir = setup_temp_config()
+    orig_client = chat_mod._client
+    orig_cap = chat_mod._DAILY_TOKEN_CAP
+    try:
+        atomic_write(chat_mod.CHAT_FILE, {})
+        chat_mod._DAILY_TOKEN_CAP = 100000
+
+        class _Blk:
+            type = 'text'
+            text = 'Antwort'
+
+        class _Usage:
+            input_tokens = 500
+            output_tokens = 300
+
+        class _Resp:
+            content = [_Blk()]
+            usage = _Usage()
+            stop_reason = 'end_turn'
+
+        class _BadRequestError(Exception):
+            pass
+
+        calls = {'n': 0}
+
+        class _Msgs:
+            async def create(self, **kw):
+                calls['n'] += 1
+                if calls['n'] == 1:
+                    raise _BadRequestError('bad history')
+                return _Resp()
+
+        class _FakeClient:
+            messages = _Msgs()
+
+        chat_mod._client = _FakeClient()
+        out = run_async(chat_mod._chat_response(7, 'hallo', channel=None, persist=True))
+        check('Retry lieferte die Antwort', out == 'Antwort')
+        check('1× BadRequest + 1× erfolgreicher Retry', calls['n'] == 2)
+        data = atomic_read(chat_mod.CHAT_FILE, default=dict)
+        rec = (data.get('usage') or {}).get('7') or {}
+        check('Retry hat Token gebucht (500+300=800)', rec.get('tokens') == 800)
+    finally:
+        chat_mod._client = orig_client
+        chat_mod._DAILY_TOKEN_CAP = orig_cap
+        teardown_temp_config(tmpdir)

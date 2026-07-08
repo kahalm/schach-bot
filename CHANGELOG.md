@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.5] - 2026-07-08
+### Changed
+- **KI-Chat: doppelten Claude-Aufruf in `_call_claude(...)` gebündelt** — der API-Aufruf (`api_kwargs` bauen + `messages.create` + Token-Buchung) stand identisch in der Hauptschleife UND im BadRequest-Retry. Jetzt ein Helfer.
+### Fixed
+- **Token-Verbrauch des BadRequest-Retrys wird jetzt gebucht** — der Retry-Pfad (nach geleerter History) rief `messages.create` direkt und verbuchte den Verbrauch NICHT auf den Tages-Token-Cap. Da er jetzt über `_call_claude` läuft, zählt auch der Retry. Test `test_chat_retry_books_tokens` (1× BadRequest → Retry bucht 800 Token).
+
 ## [2.78.4] - 2026-07-08
 ### Changed
 - **`puzzle/posting.py` entschlackt (Wartbarkeit, keine Verhaltensänderung):**

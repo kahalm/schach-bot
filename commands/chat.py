@@ -337,6 +337,27 @@ def _build_system_prompt(user_id: int) -> str:
     return system
 
 
+async def _call_claude(user_id: int, system: str, messages: list, channel):
+    """Ein einzelner Claude-API-Aufruf: baut ``api_kwargs`` (mit Tools, wenn ein
+    ``channel`` für Tool-Ausführung da ist), ruft ``messages.create`` und bucht den
+    Tages-Token-Verbrauch (input+output) für den Cap. Gibt die Response zurück.
+
+    Zentralisiert den zuvor doppelten Aufrufblock (Hauptschleife + BadRequest-Retry);
+    dadurch wird der Verbrauch jetzt AUCH im Retry gebucht.
+    """
+    api_kwargs = dict(model=_MODEL, max_tokens=1024, system=system, messages=messages)
+    if channel:
+        api_kwargs['tools'] = TOOLS
+    response = await _client.messages.create(**api_kwargs)
+    usage = getattr(response, 'usage', None)
+    if usage is not None:
+        used = (getattr(usage, 'input_tokens', 0) or 0) + \
+               (getattr(usage, 'output_tokens', 0) or 0)
+        if used:
+            await asyncio.to_thread(_record_token_usage, user_id, used)
+    return response
+
+
 async def _chat_response(user_id: int, text: str, channel=None, persist: bool = True) -> str:
     """Sendet Nachricht an Claude API und gibt die Antwort zurueck.
 
@@ -353,24 +374,7 @@ async def _chat_response(user_id: int, text: str, channel=None, persist: bool = 
 
     try:
         for _ in range(_MAX_TOOL_ROUNDS):
-            api_kwargs = dict(
-                model=_MODEL,
-                max_tokens=1024,
-                system=system,
-                messages=messages,
-            )
-            if channel:
-                api_kwargs['tools'] = TOOLS
-
-            response = await _client.messages.create(**api_kwargs)
-
-            # Tages-Token-Verbrauch buchen (input+output), damit der Cap greift.
-            usage = getattr(response, 'usage', None)
-            if usage is not None:
-                used = (getattr(usage, 'input_tokens', 0) or 0) + \
-                       (getattr(usage, 'output_tokens', 0) or 0)
-                if used:
-                    await asyncio.to_thread(_record_token_usage, user_id, used)
+            response = await _call_claude(user_id, system, messages, channel)
 
             if persist:
                 await asyncio.to_thread(
@@ -414,15 +418,9 @@ async def _chat_response(user_id: int, text: str, channel=None, persist: bool = 
                     history.pop(str(user_id), None)
                     return data
                 await asyncio.to_thread(atomic_update, CHAT_FILE, _clear, dict)
-                # Nochmal mit frischer History (nur aktuelle Nachricht)
+                # Nochmal mit frischer History (nur aktuelle Nachricht); bucht Token via _call_claude.
                 fresh = [{'role': 'user', 'content': text}]
-                api_kwargs = dict(
-                    model=_MODEL, max_tokens=1024, system=system,
-                    messages=fresh,
-                )
-                if channel:
-                    api_kwargs['tools'] = TOOLS
-                response = await _client.messages.create(**api_kwargs)
+                response = await _call_claude(user_id, system, fresh, channel)
                 await asyncio.to_thread(
                     _save_response_blocks, user_id, response.content)
                 return _extract_text(response.content)

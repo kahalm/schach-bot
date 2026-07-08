@@ -65,6 +65,7 @@ from test_cmd_chat import (
     test_chat_history_prune, test_chat_history_sanitize,
     test_chat_no_key, test_puzzle_context,
     test_rate_hits_bounded, test_daily_token_cap,
+    test_chat_retry_books_tokens,
 )
 from test_cmd_chat_tools import (
     test_tool_schemas, test_tool_list_books, test_tool_get_training_status,
@@ -169,6 +170,7 @@ def main():
     test_chat_routing()
     test_rate_hits_bounded()
     test_daily_token_cap()
+    test_chat_retry_books_tokens()
     test_chat_history_prune()
     test_chat_history_sanitize()
     test_chat_no_key()
