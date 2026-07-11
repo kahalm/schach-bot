@@ -4,6 +4,18 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.7] - 2026-07-11
+### Fixed
+- Daily-Regenerate-Webhook: das Regenerieren eines **vergangenen** Tagespuzzles löste
+  fälschlich einen sofortigen Discord-Post des **heutigen** Rätsels aus (vor dem geplanten
+  Tages-Post) und bog die Solver-Verfolgung aufs falsche Puzzle um — deshalb wurde ein
+  Lösungsversuch am regenerierten Alt-Tag nicht in Discord notiert. Ursache: der Handler
+  postete, sobald `current().date == payload.date`; `current().date` hinkt aber bis zum
+  Tages-Post dem gestrigen Daily hinterher, und `post_rookhub_puzzle('daily')` holt immer das
+  HEUTIGE Puzzle. Jetzt wird nur noch das **aktive heutige** Daily live ersetzt
+  (`date == heute`); ein Regenerate für einen Alt-Tag macht auf Discord nichts mehr.
+  Regressionstest in `test_daily_regenerate_webhook`.
+
 ## [2.78.6] - 2026-07-08
 ### Changed
 - **Schritt 5 (Modul-Splits), Teil 1: `commands/motivation.py` entzerrt** (886 → 579 Z.). Der reine, discord-freie Text-/Analyse-Teil (`_analyze_progress`, `_facts_summary`, `_tournament_facts`, `_fmt_points`, `_days_phrase`, `_via_claude`, `_fallback_*`, `_build_motivation_text`/`_build_unlinked_text`/`_build_slacker_*` + die `*_SYSTEM`-Prompts) liegt jetzt im neuen, unabhängig testbaren Modul `commands/motivation_text.py` (335 Z.); `motivation.py` behält Abo-/Loop-/Discord-Logik und re-importiert die Funktionen (Aufrufer + Tests `mot._X` unverändert). Verhaltensneutral; Tests: 1005 command + 171 trim grün.

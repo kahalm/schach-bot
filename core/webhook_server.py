@@ -198,7 +198,15 @@ def _make_daily_regenerate_handler(bot, secret: str, daily_channels):
                      new_puzzle_id, date_str)
             return web.Response(status=200, text='already current')
 
-        if cur and cur.get('date') == date_str:
+        # NUR das aktive (heutige) Tagespuzzle live ersetzen. Ein Regenerate fuer einen
+        # VERGANGENEN Tag darf KEIN Discord-Update ausloesen: post_rookhub_puzzle('daily')
+        # holt immer das HEUTIGE Puzzle (RookHubs daily-Pool = heute) und remember() stempelt
+        # es als heutiges — bei einem Alt-Datum wuerde also verfrueht das heutige Puzzle
+        # gepostet und die Solver-Verfolgung aufs falsche Puzzle umgebogen. (current().date
+        # hinkt bis zum Tages-Post dem gestrigen Daily hinterher, darum reicht
+        # cur.date == date_str allein nicht — date_str muss zusaetzlich == heute sein.)
+        today = daily_results._today()
+        if cur and cur.get('date') == date_str and date_str == today:
             # Alten Post in JEDEM gemerkten Channel als ersetzt markieren
             # (_posts_of normalisiert auch migriertes Einzel-Format).
             for post in daily_results._posts_of(cur):
@@ -222,8 +230,9 @@ def _make_daily_regenerate_handler(bot, secret: str, daily_channels):
             log.info('DailyRegenerate: Neues Daily in %d Channel(s) gepostet (date=%s)',
                      len(norm_channels), date_str)
         else:
-            log.debug('DailyRegenerate: date=%s nicht aktuell (current=%s) – kein Discord-Update.',
-                      date_str, cur.get('date') if cur else None)
+            log.info('DailyRegenerate: date=%s ist nicht das aktive heutige Daily '
+                     '(current=%s, today=%s) – kein Discord-Update.',
+                     date_str, cur.get('date') if cur else None, today)
 
         return web.Response(status=200, text='ok')
 

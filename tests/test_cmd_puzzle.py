@@ -825,15 +825,29 @@ def test_daily_regenerate_webhook():
         handler = webhook_server._make_daily_regenerate_handler(
             bot=fake_bot, secret=secret, daily_channels=[(999, 'de')])
 
-        # 1) Datum == aktuelles Daily → neues Puzzle posten, alter Thread bekommt Hinweis
-        dr.current = lambda: {'date': '2026-06-06', 'channel_id': 1, 'message_id': 555, 'puzzle_id': 100}
+        today = dr._today()
+
+        # 1) Datum == aktuelles HEUTIGES Daily → neues Puzzle posten, alter Thread bekommt Hinweis
+        dr.current = lambda: {'date': today, 'channel_id': 1, 'message_id': 555, 'puzzle_id': 100}
         posted.clear()
-        req = run_async(make_request({'date': '2026-06-06', 'puzzleId': 200}))
+        req = run_async(make_request({'date': today, 'puzzleId': 200}))
         resp = run_async(handler(req))
         check('current date → status 200', resp.status == 200)
         check('current date → post_rookhub_puzzle aufgerufen', posted.get('called') is True)
         check('current date → pool daily', posted.get('pool') == 'daily')
         check('current date → alter Thread bekommt Reply', fake_old_msg.reply.called)
+
+        # 1b) REGRESSION: Regenerate eines VERGANGENEN Datums, das (noch) als current gilt
+        #     (heutiges Daily bis zum Tages-Post noch nicht gepostet) → KEIN Posting.
+        #     Vorher wurde hier verfrueht das heutige Puzzle gepostet + Solver-Tracking gekapert.
+        dr.current = lambda: {'date': '2020-01-01', 'channel_id': 1, 'message_id': 555, 'puzzle_id': 100}
+        posted.clear()
+        fake_old_msg.reply.reset_mock()
+        req = run_async(make_request({'date': '2020-01-01', 'puzzleId': 200}))
+        resp = run_async(handler(req))
+        check('past date == current → status 200', resp.status == 200)
+        check('past date == current → KEIN Posting (kein Vorzeitig-Post)', not posted.get('called'))
+        check('past date == current → kein Ersetzt-Reply', not fake_old_msg.reply.called)
 
         # 2) Datum != aktuelles Daily → kein Posting
         posted.clear()
