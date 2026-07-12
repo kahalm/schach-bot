@@ -149,12 +149,48 @@ def test_remember_current_roundtrip():
     os.remove(dr.DAILY_FILE)
 
 
+def test_remember_midnight_rollover():
+    """UTC-Datumswechsel zwischen Haupt-Post und Spiegel-Post desselben Puzzles
+    darf die posts-Liste und 'since' NICHT resetten (sonst verwaist das erste
+    Channel-Embed und bekommt nie wieder Solver-Updates)."""
+    dr.DAILY_FILE = f'/tmp/test_daily_post_mn_{os.getpid()}.json'
+    if os.path.exists(dr.DAILY_FILE):
+        os.remove(dr.DAILY_FILE)
+    orig_today = dr._today
+    try:
+        # Haupt-Post um 23:59 am Tag 1
+        dr._today = lambda: '2026-07-11'
+        dr.remember(111, 1001, 789)
+        since1 = dr.current()['since']
+
+        # Spiegel-Post um 00:00 am Tag 2 — GLEICHES Puzzle
+        dr._today = lambda: '2026-07-12'
+        dr.remember(222, 2002, 789)
+
+        cur = dr.current()
+        cids = [p['channel_id'] for p in cur['posts']]
+        check('Rollover: beide Posts gemerkt', cids == [111, 222])
+        check('Rollover: since bleibt vom ersten Post', cur['since'] == since1)
+        check('Rollover: Primaer-Post bleibt Channel 1', cur['channel_id'] == 111)
+
+        # Neues Puzzle (andere ID) → Reset wie gehabt
+        dr.remember(111, 3003, 999)
+        cur = dr.current()
+        check('neues Puzzle → posts-Reset', len(cur['posts']) == 1)
+        check('neues Puzzle → neue puzzle_id', cur['puzzle_id'] == 999)
+        check('neues Puzzle → since neu', cur['since'] != since1)
+    finally:
+        dr._today = orig_today
+        if os.path.exists(dr.DAILY_FILE):
+            os.remove(dr.DAILY_FILE)
+
+
 def main():
     for t in (test_no_solvers, test_mentions_and_names, test_truncates_long_list,
               test_anonymous_counted, test_only_anonymous, test_all_solved_hides_try_count,
               test_fmt_time, test_time_display, test_time_zero_hidden,
               test_hints_badge, test_hints_badge_without_time,
-              test_remember_current_roundtrip):
+              test_remember_current_roundtrip, test_remember_midnight_rollover):
         print(f'== {t.__name__} ==')
         t()
     print()

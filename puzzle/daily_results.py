@@ -69,7 +69,11 @@ def remember(channel_id, message_id, puzzle_id, lang: str = 'de') -> None:
     lang = i18n.norm(lang)
     today = _today()
     data = atomic_read(DAILY_FILE, default=dict) or {}
-    same = data.get('date') == today and data.get('puzzle_id') == puzzle_id
+    # "Dasselbe Puzzle" haengt NUR an der puzzle_id: ein UTC-Datumswechsel
+    # zwischen Haupt-Post und Spiegel-Post (23:59 → 00:00) darf die posts-Liste
+    # und `since` nicht resetten — sonst verwaist das erste Channel-Embed.
+    # Die Datei haelt immer nur das aktuellste Daily, Alt-Daten sind weg.
+    same = data.get('puzzle_id') == puzzle_id
     posts = _posts_of(data) if same else []
     for p in posts:  # Upsert in-place (Primaer bleibt stabil)
         if p['channel_id'] == channel_id:
@@ -80,7 +84,9 @@ def remember(channel_id, message_id, puzzle_id, lang: str = 'de') -> None:
         posts.append({'channel_id': channel_id, 'message_id': message_id, 'lang': lang})
     primary = posts[0]
     atomic_write(DAILY_FILE, {
-        'date': today,
+        # `date` bleibt der Tag des ERSTEN Posts dieses Puzzles (der Daily-
+        # Regenerate-Webhook vergleicht dagegen), nicht der jeder Spiegelung.
+        'date': (data.get('date') or today) if same else today,
         'puzzle_id': puzzle_id,
         # `since` bleibt der Zeitpunkt des ersten Posts dieses Puzzles (korrektes
         # Poll-Fenster fuer get_daily_results), nicht der jeder Spiegelung.

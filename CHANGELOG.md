@@ -4,6 +4,15 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.13] - 2026-07-12
+### Fixed
+- Tagespuzzle-Tracking: ein UTC-Datumswechsel zwischen Haupt-Post und Spiegel-Post
+  desselben Puzzles (23:59 → 00:00) setzte in `remember()` die `posts`-Liste und das
+  `since`-Poll-Fenster zurück — das erste Channel-Embed bekam danach nie wieder
+  Solver-Updates. „Dasselbe Puzzle" hängt jetzt nur an der `puzzle_id`; `date` bleibt
+  der Tag des ersten Posts (Daily-Regenerate-Vergleich unverändert). Regressionstest
+  `test_remember_midnight_rollover`.
+
 ## [2.78.12] - 2026-07-12
 ### Fixed
 - Event-Loop-Freeze beim ersten `/puzzle id:` nach einem Neustart: `find_line_by_id`
