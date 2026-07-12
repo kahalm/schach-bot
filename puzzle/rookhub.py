@@ -13,6 +13,7 @@ import hmac
 import os
 import logging
 import threading
+import time
 from datetime import datetime, timezone
 
 import chess
@@ -99,21 +100,40 @@ def get_puzzle(pool: str = 'random', exclude=None, book_id=None, timeout: int = 
         return None
 
 
+# Kurzer TTL-Cache fuer den Buecherkatalog: aendert sich nur bei Importen,
+# wurde aber bei JEDEM /kurs neu geholt (bis zu 15 s Wartezeit bei langsamem
+# RookHub). Nur erfolgreiche Antworten werden gecached.
+_BOOKS_CACHE_TTL = 300.0  # Sekunden
+_books_cache: list | None = None
+_books_cache_ts: float = 0.0
+_books_cache_lock = threading.Lock()
+
+
 def get_books(timeout: int = _TIMEOUT) -> list:
     """Liste der Puzzle-Bücher von RookHub: Einträge mit ``bookId``, ``bookFileName``,
     ``difficulty``, ``bookRating``, ``tags``, ``puzzleCount``. Leere Liste bei Fehler.
+    Erfolgreiche Antworten werden ``_BOOKS_CACHE_TTL`` Sekunden gecached.
     """
+    global _books_cache, _books_cache_ts
     if not ROOKHUB_API_URL:
         log.warning('ROOKHUB_API_URL nicht gesetzt – kann keine Bücher von RookHub holen.')
         return []
+    now = time.monotonic()
+    with _books_cache_lock:
+        if _books_cache is not None and now - _books_cache_ts < _BOOKS_CACHE_TTL:
+            return _books_cache
     try:
         r = requests.get(_api('/api/book-puzzles/books'), timeout=timeout)
         r.raise_for_status()
         data = r.json()
-        return data if isinstance(data, list) else []
+        books = data if isinstance(data, list) else []
     except (requests.RequestException, ValueError) as e:
         log.warning('RookHub get_books fehlgeschlagen: %s', e)
         return []
+    with _books_cache_lock:
+        _books_cache = books
+        _books_cache_ts = time.monotonic()
+    return books
 
 
 def lookup_puzzle_id(line_id: str, timeout: int = _LOOKUP_TIMEOUT) -> int | None:

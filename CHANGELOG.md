@@ -4,6 +4,18 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.17] - 2026-07-12
+### Changed
+- DM-Log: das 30-Tage-Pruning greift jetzt bei jedem Schreiben für ALLE User (leere
+  Keys werden entfernt) — vorher lingerten Einträge inaktiver User für immer und jede
+  DM schrieb eine monoton wachsende Datei komplett neu.
+- /kurs: der RookHub-Bücherkatalog wird 5 Minuten gecached (nur erfolgreiche
+  Antworten) — vorher zahlte jeder Aufruf einen HTTP-Roundtrip mit bis zu 15 s
+  Timeout für einen Katalog, der sich nur bei Importen ändert.
+### Removed
+- `selection.pick_random_blind_lines` (toter Code): der lokale Blind-Modus wurde
+  durch RookHub-Blind-Puzzles abgelöst; die Funktion hatte keine Aufrufer mehr.
+
 ## [2.78.16] - 2026-07-12
 ### Fixed
 - Button-Klicks: der fire-and-forget Side-Effect-Task wird jetzt referenziert

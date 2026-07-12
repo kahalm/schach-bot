@@ -55,17 +55,23 @@ def _describe(*args, **kwargs) -> str:
 
 def _append(user_id: int, text: str):
     """Hängt einen Eintrag an das DM-Log an (sync, für asyncio.to_thread).
-    Entfernt Einträge älter als 30 Tage für diesen User."""
+    Entfernt Einträge älter als 30 Tage — für ALLE User, nicht nur den
+    aktuellen: sonst lingern Einträge inaktiver User für immer und jede
+    einzelne DM schreibt eine monoton wachsende Datei komplett neu."""
     cutoff = (datetime.now(timezone.utc) - timedelta(days=_DM_LOG_MAX_AGE_DAYS)).isoformat()
 
     def _update(data):
         key = str(user_id)
-        entries = data.setdefault(key, [])
-        entries.append({
+        data.setdefault(key, []).append({
             'ts':   datetime.now(timezone.utc).isoformat(),
             'text': text,
         })
-        data[key] = [e for e in entries if e.get('ts', '') >= cutoff]
+        for k in list(data.keys()):
+            pruned = [e for e in data[k] if e.get('ts', '') >= cutoff]
+            if pruned:
+                data[k] = pruned
+            else:
+                del data[k]
         return data
 
     atomic_update(DM_LOG_FILE, _update)

@@ -679,6 +679,22 @@ def test_dm_log_internals():
             entries = data.get('99', [])
             check('append → alter Eintrag bereinigt',
                   len(entries) == 1 and entries[0]['text'] == 'neu')
+
+            # Pruning gilt fuer ALLE User: alte Eintraege INAKTIVER User
+            # verschwinden mit, leere Keys werden entfernt (sonst waechst
+            # die Datei mit jedem je angeschriebenen User fuer immer).
+            from core.json_store import atomic_write as aw2
+            aw2(dm_log_mod.DM_LOG_FILE, {
+                '77': [{'ts': '2020-01-01T00:00:00+00:00', 'text': 'uralt'}],
+                '88': [{'ts': '2020-01-01T00:00:00+00:00', 'text': 'uralt'},
+                       {'ts': '2099-01-01T00:00:00+00:00', 'text': 'frisch'}],
+            })
+            dm_log_mod._append(99, 'neu')
+            data = atomic_read(dm_log_mod.DM_LOG_FILE)
+            check('append → inaktiver User komplett geprunt (Key weg)',
+                  '77' not in data)
+            check('append → frische Eintraege anderer User bleiben',
+                  [e['text'] for e in data.get('88', [])] == ['frisch'])
         finally:
             dm_log_mod.DM_LOG_FILE = old_file
     finally:

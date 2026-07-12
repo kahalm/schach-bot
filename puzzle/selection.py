@@ -21,7 +21,7 @@ from puzzle.state import (
     _is_chapter_ignored,
     load_puzzle_state, save_puzzle_state,
 )
-from puzzle.processing import _flatten_null_move_variations, _has_training_comment, _split_for_blind
+from puzzle.processing import _flatten_null_move_variations, _has_training_comment
 from core.json_store import atomic_update
 import puzzle.state as _pzstate  # fuer dynamischen PUZZLE_STATE_FILE-Pfad (Test-Patching)
 
@@ -370,41 +370,3 @@ def get_blind_books() -> list[str]:
     """Liefert Liste der für Blind-Modus freigegebenen Buch-Dateinamen."""
     config = _load_books_config()
     return [fn for fn, meta in config.items() if meta.get('blind')]
-
-
-def pick_random_blind_lines(count: int,
-                            book_filename: str | None,
-                            x_moves: int,
-                            ) -> list[tuple[str, chess.pgn.Game]]:
-    """Wählt zufällige Linien aus Blind-Büchern mit ≥ x_moves Vorlauf."""
-    config = _load_books_config()
-    blind_books = {fn for fn, meta in config.items() if meta.get('blind')}
-    if book_filename:
-        if book_filename not in blind_books:
-            return []
-        eligible_files = {book_filename}
-    else:
-        eligible_files = blind_books
-    if not eligible_files:
-        return []
-
-    all_lines = load_all_lines()
-    ignored = _load_ignore_list()
-    chapter_ignored = _load_chapter_ignore_list()
-    candidates: list[tuple[str, chess.pgn.Game]] = []
-    for lid, g in all_lines:
-        fn = lid.split(':')[0]
-        if fn not in eligible_files:
-            continue
-        if lid in ignored:
-            continue
-        if _is_chapter_ignored(lid, chapter_ignored):
-            continue
-        if _split_for_blind(g, x_moves) is None:
-            continue
-        candidates.append((lid, g))
-
-    if not candidates:
-        return []
-    count = max(1, min(count, len(candidates)))
-    return random.sample(candidates, count)

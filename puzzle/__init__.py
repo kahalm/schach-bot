@@ -44,7 +44,7 @@ from .selection import (  # noqa: F401
     _books_fingerprint, clear_lines_cache, load_all_lines, _parse_all_lines,
     book_training_lines, pick_sequential_lines, get_random_books,
     pick_random_lines, pick_random_line, find_line_by_id,
-    get_blind_books, pick_random_blind_lines,
+    get_blind_books,
 )
 
 # --- Lichess-API ---

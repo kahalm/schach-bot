@@ -340,8 +340,45 @@ def test_lookup_200_html_or_nondict_not_crash():
     rh._id_cache.clear()
 
 
+def test_get_books_cached():
+    """get_books cached erfolgreiche Antworten (TTL) — /kurs holte den Katalog
+    sonst bei jedem Aufruf per HTTP (bis 15 s bei langsamem RookHub);
+    Fehler-Antworten werden NICHT gecached."""
+    rh.ROOKHUB_API_URL = 'http://rookhub:5001'
+    rh._books_cache = None
+    rh._books_cache_ts = 0.0
+    calls = {'n': 0}
+
+    def fake_get(url, params=None, timeout=None):
+        calls['n'] += 1
+        return _FakeResp(200, [{'bookId': 1, 'bookFileName': 'a.pgn'}])
+
+    _patch_get(fake_get)
+    b1 = rh.get_books()
+    b2 = rh.get_books()
+    check('erster Aufruf liefert Buecher', len(b1) == 1)
+    check('zweiter Aufruf aus Cache (1 HTTP-Call)', calls['n'] == 1)
+    check('Cache liefert gleichen Inhalt', b2 == b1)
+
+    # Fehler duerfen nicht gecached werden
+    rh._books_cache = None
+    rh._books_cache_ts = 0.0
+
+    def fail_get(url, params=None, timeout=None):
+        calls['n'] += 1
+        raise rh.requests.RequestException('down')
+
+    _patch_get(fail_get)
+    check('Fehler → leere Liste', rh.get_books() == [])
+    _patch_get(fake_get)
+    check('nach Fehler wird neu geholt', len(rh.get_books()) == 1)
+    rh._books_cache = None
+    rh._books_cache_ts = 0.0
+
+
 def main():
     for t in (test_get_puzzle_ok, test_get_puzzle_404, test_get_puzzle_no_url,
+              test_get_books_cached,
               test_lookup_200_html_or_nondict_not_crash,
               test_send_heartbeat_ok, test_send_heartbeat_no_url, test_send_heartbeat_falls_back_to_web,
               test_lookup_and_url, test_url_no_fallback_to_api,
