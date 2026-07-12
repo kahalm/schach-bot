@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.14] - 2026-07-12
+### Fixed
+- Trainings-Fortschritt (Chat-Tool `send_next`/`get_training_status`): der Footer
+  „Training: x/y" zählte y über ALLE Buch-Linien, während der Positions-Index in die
+  ignore-gefilterte Liste zeigt — bei ignorierten Linien/Kapiteln passten Anzeige und
+  Position nicht zusammen. Neue gemeinsame Basis `selection.book_training_lines()`
+  für Auswahl und Zählung. Test in `test_pick_sequential_lines`.
+
 ## [2.78.13] - 2026-07-12
 ### Fixed
 - Tagespuzzle-Tracking: ein UTC-Datumswechsel zwischen Haupt-Post und Spiegel-Post

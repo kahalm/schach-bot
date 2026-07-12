@@ -265,16 +265,25 @@ def _parse_all_lines() -> list[tuple[str, chess.pgn.Game]]:
 # Auswahl-Funktionen
 # ---------------------------------------------------------------------------
 
-def pick_sequential_lines(book_filename: str, start: int, count: int
-                          ) -> list[tuple[str, chess.pgn.Game]]:
-    """Gibt bis zu `count` Linien ab Position `start` zurück (sequentiell)."""
+def book_training_lines(book_filename: str) -> list[tuple[str, chess.pgn.Game]]:
+    """Ignore-/Kapitel-gefilterte Linien eines Buchs.
+
+    Gemeinsame Basis für die sequentielle Auswahl UND die Fortschrittsanzeige —
+    Positions-Index und Total müssen auf derselben (gefilterten) Liste beruhen.
+    """
     all_lines = load_all_lines()
     ignored = _load_ignore_list()
     chapter_ignored = _load_chapter_ignore_list()
-    book_lines = [(lid, g) for lid, g in all_lines
-                  if lid.startswith(book_filename + ':')
-                  and lid not in ignored
-                  and not _is_chapter_ignored(lid, chapter_ignored)]
+    return [(lid, g) for lid, g in all_lines
+            if lid.startswith(book_filename + ':')
+            and lid not in ignored
+            and not _is_chapter_ignored(lid, chapter_ignored)]
+
+
+def pick_sequential_lines(book_filename: str, start: int, count: int
+                          ) -> list[tuple[str, chess.pgn.Game]]:
+    """Gibt bis zu `count` Linien ab Position `start` zurück (sequentiell)."""
+    book_lines = book_training_lines(book_filename)
     end = min(start + count, len(book_lines))
     return book_lines[start:end]
 

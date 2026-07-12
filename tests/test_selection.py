@@ -400,6 +400,16 @@ def test_pick_sequential_lines():
         result = sel_mod.pick_sequential_lines('test_a.pgn', 0, 10)
         ids = [lid for lid, _ in result]
         check('ignorierte uebersprungen', 'test_a.pgn:1.1' not in ids)
+
+        # book_training_lines = gemeinsame Basis fuer Auswahl UND Fortschritts-
+        # anzeige: der Total-Wert muss dieselbe (gefilterte) Basis nutzen wie
+        # der Positions-Index, sonst zeigt der Footer "5/100" fuer Position 5
+        # von 80 und Ignorieren mitten im Training verschiebt die Indizes.
+        book_lines = sel_mod.book_training_lines('test_a.pgn')
+        check('book_training_lines: gefilterte Anzahl (3-1 ignoriert = 2)',
+              len(book_lines) == 2, f'got {len(book_lines)}')
+        check('book_training_lines == pick_sequential-Basis',
+              [lid for lid, _ in book_lines] == ids)
     finally:
         teardown()
 

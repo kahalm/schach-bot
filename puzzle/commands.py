@@ -307,9 +307,10 @@ async def send_next_training(channel, user_id: int, count: int = 1) -> dict:
     position = training.get('position', 0)
 
     results = await asyncio.to_thread(_pkg.pick_sequential_lines, book_filename, position, count)
-    all_book_lines = await asyncio.to_thread(_pkg.load_all_lines)
-    total_in_book = sum(1 for lid, _ in all_book_lines
-                        if lid.startswith(book_filename + ':'))
+    # Gleiche (ignore-gefilterte) Basis wie pick_sequential_lines — Position und
+    # Total muessen zusammenpassen, sonst zeigt der Footer z.B. "5/100" bei 80
+    # trainierbaren Linien.
+    total_in_book = len(await asyncio.to_thread(_pkg.book_training_lines, book_filename))
 
     if not results:
         name = _pkg._clean_book_name(book_filename)

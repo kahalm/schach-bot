@@ -313,7 +313,7 @@ async def _tool_suggest_book(tool_input, ctx) -> str:
 
 async def _tool_get_training_status(tool_input, ctx) -> str:
     from puzzle.state import _get_user_training, _get_user_puzzle_count
-    from puzzle.selection import load_all_lines, _list_pgn_files
+    from puzzle.selection import book_training_lines, _list_pgn_files
     from puzzle.processing import _clean_book_name
 
     user_id = ctx['user_id']
@@ -328,8 +328,8 @@ async def _tool_get_training_status(tool_input, ctx) -> str:
     if training:
         book_fn = training['book']
         pos = training['position']
-        all_lines = await asyncio.to_thread(load_all_lines)
-        total = sum(1 for lid, _ in all_lines if lid.startswith(book_fn + ':'))
+        # Gleiche gefilterte Basis wie das Training selbst (send_next_training)
+        total = len(await asyncio.to_thread(book_training_lines, book_fn))
         books = _list_pgn_files()
         kurs_nr = books.index(book_fn) + 1 if book_fn in books else 0
         result['training'] = {
