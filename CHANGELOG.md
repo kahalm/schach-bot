@@ -4,6 +4,17 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.10] - 2026-07-12
+### Fixed
+- KI-Chat-Tool `send_library_book`: umging die Gemeinfreiheits-Sperre der Bibliothek —
+  mit `LIBRARY_ENFORCE_PD=1` verweigerte `/bibliothek` ein noch geschütztes Buch, aber
+  „schick mir Buch X" im Chat lieferte Datei/SFTPGo-Link trotzdem aus. Jetzt greift
+  dieselbe `_is_locked`-Sperre wie in `_send_book`. Außerdem laufen `os.path.getsize`/
+  `discord.File`/`stats.inc` wie in `library.py` via `asyncio.to_thread` (hakende
+  Syncthing-/Netzpfade froren sonst den Event-Loop ein) und eine zwischenzeitlich
+  verschwundene Datei liefert einen sauberen Fehler statt eines Crashs.
+  Regressionstests in `test_tool_send_library_book` (Fälle 8+9).
+
 ## [2.78.9] - 2026-07-12
 ### Fixed
 - Reinforcement-DMs (Daily-Löser / Wochenpost-Fertigsteller): Check-then-act-Race behoben,

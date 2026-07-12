@@ -890,5 +890,33 @@ def test_tool_send_library_book():
         result = json.loads(result_str)
         check('ohne Channel → error', 'error' in result)
 
+        # 8. Gemeinfreiheits-Sperre: gesperrtes Buch darf NICHT via Chat-Tool
+        # ausgeliefert werden (gleiche Sperre wie /bibliothek _send_book)
+        from datetime import date as _date
+        channel8 = FakeChannel()
+        ctx8 = {'user_id': 42, 'channel': channel8}
+        with patch('library._search_library', return_value=[fake_entry]), \
+             patch('library._collect_formats', return_value={'pdf': small_file}), \
+             patch('library._is_locked', return_value=True), \
+             patch('library._pd_release', return_value=_date(2077, 1, 1)):
+            result_str = run_async(_tool_send_library_book(
+                {'query': 'Test'}, ctx8))
+            result = json.loads(result_str)
+        check('gesperrtes Buch → error', 'error' in result)
+        check('gesperrtes Buch → nichts gesendet', len(channel8.sent) == 0)
+        check('gesperrtes Buch → Datum genannt', '2077' in result.get('error', ''))
+
+        # 9. Datei verschwindet zwischen Suche und Send (OSError) → sauberer error
+        channel9 = FakeChannel()
+        ctx9 = {'user_id': 42, 'channel': channel9}
+        gone = os.path.join(tmpdir, 'gone.pdf')
+        with patch('library._search_library', return_value=[fake_entry]), \
+             patch('library._collect_formats', return_value={'pdf': gone}):
+            result_str = run_async(_tool_send_library_book(
+                {'query': 'Test'}, ctx9))
+            result = json.loads(result_str)
+        check('verschwundene Datei → error statt Crash', 'error' in result)
+        check('verschwundene Datei → nichts gesendet', len(channel9.sent) == 0)
+
     finally:
         teardown_temp_config(tmpdir)

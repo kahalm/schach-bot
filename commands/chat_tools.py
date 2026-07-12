@@ -735,9 +735,11 @@ async def _tool_get_release_notes(tool_input, ctx) -> str:
 # ---------------------------------------------------------------------------
 
 async def _tool_send_library_book(tool_input, ctx) -> str:
+    import asyncio
     import os
     import discord
     from core import stats
+    import library as _lib
     from library import (
         _search_library, _collect_formats, _author_str,
         _sftpgo_configured, _sftpgo_message, _sftpgo_password_message, _MAX_UPLOAD,
@@ -763,6 +765,16 @@ async def _tool_send_library_book(tool_input, ctx) -> str:
     title = entry.get('title', '')
     author = _author_str(entry.get('author', ''))
 
+    # Gemeinfreiheits-Sperre: gleiche Regel wie /bibliothek (_send_book) —
+    # noch nicht freie Bücher werden auch via Chat-Tool nicht ausgeliefert.
+    if _lib._is_locked(entry):
+        rel = _lib._pd_release(entry)
+        return json.dumps(
+            {'error': f'Buch ist noch urheberrechtlich geschützt und erst ab '
+                      f'{rel.strftime("%d.%m.%Y")} gemeinfrei — nicht teilbar.',
+             'title': title},
+            ensure_ascii=False)
+
     formats = _collect_formats(entry)
     if not formats:
         return json.dumps(
@@ -781,26 +793,37 @@ async def _tool_send_library_book(tool_input, ctx) -> str:
             fmt = next(iter(formats))
 
     path = formats[fmt]
-    size = os.path.getsize(path)
-    size_mb = round(size / (1024 * 1024), 1)
+    # Disk-/Netz-I/O (Bücher liegen auf Syncthing-/Netzpfaden) NICHT im Event-Loop
+    # (wie library._send_book); OSError = Datei zwischenzeitlich verschoben/gelöscht.
+    try:
+        size = await asyncio.to_thread(os.path.getsize, path)
+        size_mb = round(size / (1024 * 1024), 1)
 
-    if size <= _MAX_UPLOAD:
-        await channel.send(
-            content=f'📖 **{title}** — {author} `[{fmt.upper()}]`',
-            file=discord.File(path, filename=os.path.basename(path)))
-    elif _sftpgo_configured():
-        await channel.send(_sftpgo_message(entry, path, fmt))
-        pw_msg = _sftpgo_password_message()
-        if pw_msg:
-            await channel.send(pw_msg)
-    else:
+        if size <= _MAX_UPLOAD:
+            book_file = await asyncio.to_thread(
+                lambda: discord.File(path, filename=os.path.basename(path)))
+            await channel.send(
+                content=f'📖 **{title}** — {author} `[{fmt.upper()}]`',
+                file=book_file)
+        elif _sftpgo_configured():
+            await channel.send(_sftpgo_message(entry, path, fmt))
+            pw_msg = _sftpgo_password_message()
+            if pw_msg:
+                await channel.send(pw_msg)
+        else:
+            return json.dumps(
+                {'error': f'Datei zu gross ({size_mb} MB, Discord-Limit 8 MB)',
+                 'title': title},
+                ensure_ascii=False)
+    except OSError:
         return json.dumps(
-            {'error': f'Datei zu gross ({size_mb} MB, Discord-Limit 8 MB)',
+            {'error': 'Datei nicht mehr verfügbar (evtl. zwischenzeitlich '
+                      'synchronisiert/verschoben).',
              'title': title},
             ensure_ascii=False)
 
     user_id = ctx.get('user_id', 0)
-    stats.inc(user_id, 'downloads')
+    await asyncio.to_thread(stats.inc, user_id, 'downloads')
 
     return json.dumps(
         {'sent': True, 'title': title, 'author': author,
