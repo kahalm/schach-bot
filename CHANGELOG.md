@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.20] - 2026-07-13
+### Fixed
+- Changelog→Discord-Workflow: der Webhook-POST wurde von Discords Cloudflare mit
+  403 (error code 1010) geblockt, weil Pythons urllib-Default-User-Agent gesperrt
+  ist — jetzt expliziter User-Agent-Header im Post.
+
 ## [2.78.19] - 2026-07-13
 ### Added
 - CI: neuer Workflow `changelog-discord.yml` — postet neue CHANGELOG-Abschnitte nach
