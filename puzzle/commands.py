@@ -69,7 +69,8 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
                     return
                 _lookup_id = id[:_blind_match.start()]
 
-            result = _pkg.find_line_by_id(_lookup_id)
+            # Erstaufruf nach Restart parst ggf. alle PGNs → nicht auf dem Event-Loop
+            result = await asyncio.to_thread(_pkg.find_line_by_id, _lookup_id)
             if not result:
                 await interaction.followup.send(f'⚠️ Puzzle `{id}` nicht gefunden.', ephemeral=True)
                 return

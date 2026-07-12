@@ -2,12 +2,16 @@
 
 import io
 import os
+import pickle
 import random
 import logging
+import tempfile
 import threading
 
 import chess
 import chess.pgn
+
+import core.paths
 
 from puzzle.state import (
     BOOKS_DIR,
@@ -109,19 +113,68 @@ def _books_fingerprint() -> tuple:
     return tuple(items)
 
 
+def _lines_cache_file() -> str:
+    """Pfad des Pickle-Disk-Caches (CONFIG_DIR zur Laufzeit, testbar)."""
+    return os.path.join(core.paths.CONFIG_DIR, 'lines_cache.pkl')
+
+
+def _load_disk_cache(fp: tuple) -> list[tuple[str, chess.pgn.Game]] | None:
+    """Lädt den Pickle-Cache, wenn sein Fingerprint zu `fp` passt — sonst None."""
+    try:
+        with open(_lines_cache_file(), 'rb') as f:
+            payload = pickle.load(f)
+        if payload.get('fp') == fp:
+            return payload['lines']
+    except (FileNotFoundError, OSError, pickle.UnpicklingError,
+            EOFError, AttributeError, KeyError, ImportError, IndexError):
+        pass
+    return None
+
+
+def _save_disk_cache(fp: tuple, lines: list) -> None:
+    """Schreibt den Pickle-Cache atomar (best-effort — Fehler nur loggen)."""
+    path = _lines_cache_file()
+    try:
+        dir_name = os.path.dirname(path) or '.'
+        os.makedirs(dir_name, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
+        try:
+            with os.fdopen(fd, 'wb') as f:
+                pickle.dump({'fp': fp, 'lines': lines}, f,
+                            protocol=pickle.HIGHEST_PROTOCOL)
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            raise
+    except Exception as e:
+        log.warning('Linien-Disk-Cache konnte nicht geschrieben werden: %s', e)
+
+
 def clear_lines_cache() -> None:
-    """In-Memory-Cache löschen. Nächster ``load_all_lines()`` parst neu."""
+    """In-Memory- UND Disk-Cache löschen. Nächster ``load_all_lines()`` parst neu
+    (/reindex muss ein echtes Re-Parse erzwingen)."""
     global _lines_cache, _lines_cache_fp
     with _lines_lock:
         _lines_cache = None
         _lines_cache_fp = None
+    try:
+        os.remove(_lines_cache_file())
+    except OSError:
+        pass
     _invalidate_books_config_cache()
     _invalidate_ignore_cache()
     _invalidate_chapter_ignore_cache()
 
 
 def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
-    """Alle Linien aus .pgn-Dateien in BOOKS_DIR laden – gecached."""
+    """Alle Linien aus .pgn-Dateien in BOOKS_DIR laden – gecached.
+
+    Cache-Hierarchie: In-Memory → Pickle-Disk-Cache (überlebt Neustarts,
+    Fingerprint aus Datei-mtimes/-Größen + Bot-VERSION) → volles Re-Parse.
+    """
     global _lines_cache, _lines_cache_fp
 
     fp = _books_fingerprint()
@@ -131,13 +184,19 @@ def load_all_lines() -> list[tuple[str, chess.pgn.Game]]:
         if _lines_cache is not None and _lines_cache_fp == fp:
             return _lines_cache
 
-    # 2) Volles Re-Parse (ausserhalb des Locks — kann laenger dauern)
-    lines = _parse_all_lines()
+    # 2) Disk-Cache (z.B. nach Bot-Neustart — spart das Multi-MB-PGN-Parsing)
+    lines = _load_disk_cache(fp)
+    if lines is not None:
+        log.info('Puzzle-Linien aus Disk-Cache geladen: %d Linien', len(lines))
+    else:
+        # 3) Volles Re-Parse (ausserhalb des Locks — kann laenger dauern)
+        lines = _parse_all_lines()
+        log.info('Puzzle-Linien geparst: %d Linien', len(lines))
+        _save_disk_cache(fp, lines)
 
     with _lines_lock:
         _lines_cache = lines
         _lines_cache_fp = fp
-    log.info('Puzzle-Linien geparst: %d Linien', len(lines))
 
     return lines
 

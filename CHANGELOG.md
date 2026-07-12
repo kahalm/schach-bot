@@ -4,6 +4,20 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.12] - 2026-07-12
+### Fixed
+- Event-Loop-Freeze beim ersten `/puzzle id:` nach einem Neustart: `find_line_by_id`
+  lief synchron im Command-Handler und parste dabei alle PGN-Bücher (~5 MB) auf dem
+  Event-Loop — Heartbeat und alle Interaktionen standen so lange still. Jetzt via
+  `asyncio.to_thread` (auch im /test-Puzzle-Dropdown und den Chat-Tools
+  `list_books`/`get_training_status`).
+### Added
+- Pickle-Disk-Cache für die Puzzle-Linien (`config/lines_cache.pkl`): der in CLAUDE.md
+  dokumentierte Cache existierte im Code gar nicht — jeder Neustart parste alle Bücher
+  neu. Der Cache wird über den Datei-Fingerprint (+Bot-VERSION) invalidiert, `/reindex`
+  (`clear_lines_cache`) löscht ihn mit. Zusätzlich wärmt `on_ready` den Cache im
+  Hintergrund vor. Tests in `test_selection.test_disk_cache`.
+
 ## [2.78.11] - 2026-07-12
 ### Fixed
 - Reminder- und Motivations-Loop: ein einzelner korrupter `next`-Zeitstempel in

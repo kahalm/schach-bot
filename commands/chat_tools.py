@@ -224,7 +224,7 @@ async def _tool_list_books(tool_input, ctx) -> str:
 
     books = _list_pgn_files()
     config = _load_books_config()
-    all_lines = load_all_lines()
+    all_lines = await asyncio.to_thread(load_all_lines)
 
     # Linien pro Buch zaehlen
     lines_per_book = {}
@@ -328,7 +328,7 @@ async def _tool_get_training_status(tool_input, ctx) -> str:
     if training:
         book_fn = training['book']
         pos = training['position']
-        all_lines = load_all_lines()
+        all_lines = await asyncio.to_thread(load_all_lines)
         total = sum(1 for lid, _ in all_lines if lid.startswith(book_fn + ':'))
         books = _list_pgn_files()
         kurs_nr = books.index(book_fn) + 1 if book_fn in books else 0

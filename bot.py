@@ -272,6 +272,12 @@ async def on_ready():
         await daily_results.refresh(bot)
     except Exception:
         log.warning('Initialer daily_results.refresh fehlgeschlagen')
+    # Linien-Cache im Hintergrund vorwaermen, damit der erste /puzzle-Aufruf
+    # nach einem Neustart nicht auf das PGN-Parsing warten muss.
+    try:
+        await asyncio.to_thread(puzzle.load_all_lines)
+    except Exception:
+        log.warning('Linien-Cache-Vorwaermen fehlgeschlagen')
 
 
 @bot.event

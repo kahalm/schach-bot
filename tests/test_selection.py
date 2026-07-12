@@ -254,6 +254,57 @@ def test_fingerprint_and_cache():
         teardown()
 
 
+def test_disk_cache():
+    """Tests fuer den Pickle-Disk-Cache: Neustart parst nicht neu."""
+    print('[disk_cache]')
+    setup()
+    try:
+        lines1 = sel_mod.load_all_lines()
+        cache_file = sel_mod._lines_cache_file()
+        check('Pickle-Cache geschrieben', os.path.exists(cache_file))
+
+        # Simulierter Neustart: In-Memory-Cache weg, Disk-Cache bleibt.
+        sel_mod._lines_cache = None
+        sel_mod._lines_cache_fp = None
+
+        def _boom():
+            raise AssertionError('Re-Parse trotz gueltigem Disk-Cache!')
+        orig_parse = sel_mod._parse_all_lines
+        sel_mod._parse_all_lines = _boom
+        try:
+            lines2 = sel_mod.load_all_lines()
+        finally:
+            sel_mod._parse_all_lines = orig_parse
+        check('Neustart: aus Pickle geladen (kein Re-Parse)', len(lines2) == len(lines1))
+        check('Pickle-Roundtrip: line_ids gleich',
+              [l for l, _ in lines2] == [l for l, _ in lines1])
+        # Games sind nach Unpickle benutzbar
+        _, g = lines2[0]
+        check('Pickle-Roundtrip: Game benutzbar', g.board() is not None)
+
+        # Geaenderte PGN → Fingerprint aendert sich → Disk-Cache ungueltig → Re-Parse
+        sel_mod._lines_cache = None
+        sel_mod._lines_cache_fp = None
+        with open(os.path.join(sel_mod.BOOKS_DIR, 'test_a.pgn'), 'a', encoding='utf-8') as f:
+            f.write('\n')
+        parse_calls = []
+        def _counting_parse():
+            parse_calls.append(1)
+            return orig_parse()
+        sel_mod._parse_all_lines = _counting_parse
+        try:
+            sel_mod.load_all_lines()
+        finally:
+            sel_mod._parse_all_lines = orig_parse
+        check('geaenderte PGN → Re-Parse', len(parse_calls) == 1)
+
+        # clear_lines_cache (/reindex) loescht auch den Disk-Cache
+        sel_mod.clear_lines_cache()
+        check('clear_lines_cache loescht Disk-Cache', not os.path.exists(cache_file))
+    finally:
+        teardown()
+
+
 def test_chapter_helpers():
     """Tests fuer _find_chapter_prefix und _list_chapters."""
     print('[chapter_helpers]')
@@ -383,6 +434,7 @@ if __name__ == '__main__':
     test_list_pgn_files()
     test_load_all_lines()
     test_fingerprint_and_cache()
+    test_disk_cache()
     test_chapter_helpers()
     test_get_random_books()
     test_get_blind_books()

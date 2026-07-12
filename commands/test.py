@@ -390,7 +390,7 @@ class _PuzzleSelect(discord.ui.Select):
         puzzle_id = self.values[0]
         await interaction.response.defer(ephemeral=True)
 
-        result = find_line_by_id(puzzle_id)
+        result = await asyncio.to_thread(find_line_by_id, puzzle_id)
         if not result:
             await interaction.followup.send(
                 f'Puzzle `{puzzle_id}` nicht gefunden.', ephemeral=True)
