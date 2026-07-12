@@ -5,7 +5,6 @@ Neue Turniere werden per DM mit Approve/Reject-Buttons vorgelegt.
 Bei Freigabe kann optional ein Spieler-Tagging-Feld ausgefuellt werden.
 """
 
-import asyncio
 import logging
 
 import discord

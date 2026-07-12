@@ -361,6 +361,36 @@ async def _call_claude(user_id: int, system: str, messages: list, channel):
     return response
 
 
+async def claude_oneshot(system: str, prompt: str, *, max_tokens: int = 300,
+                         timeout: float = 30.0) -> str | None:
+    """One-Shot-Claude-Call ohne Chat-Verlauf, mit Timeout. ``None`` bei fehlendem
+    Client, Timeout oder Fehler — Aufrufer haben immer einen Fallback-Text.
+
+    Gemeinsame Basis für Motivations- und Reinforcement-Texte (vorher zwei
+    fast identische ``_via_claude``-Kopien).
+    """
+    if _client is None:
+        return None
+    try:
+        resp = await asyncio.wait_for(
+            _client.messages.create(
+                model=_MODEL,
+                max_tokens=max_tokens,
+                system=system,
+                messages=[{'role': 'user', 'content': prompt}],
+            ),
+            timeout=timeout,
+        )
+        parts = [b.text for b in resp.content if getattr(b, 'type', None) == 'text']
+        return ''.join(parts).strip() or None
+    except asyncio.TimeoutError:
+        log.warning('Claude-One-Shot Timeout (>%.0fs) → Fallback', timeout)
+        return None
+    except Exception:
+        log.warning('Claude-One-Shot fehlgeschlagen')
+        return None
+
+
 async def _chat_response(user_id: int, text: str, channel=None, persist: bool = True) -> str:
     """Sendet Nachricht an Claude API und gibt die Antwort zurueck.
 

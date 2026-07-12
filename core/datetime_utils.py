@@ -29,6 +29,26 @@ def noon_utc_ts(d: date) -> int:
     return int(datetime(d.year, d.month, d.day, 12, 0, tzinfo=timezone.utc).timestamp())
 
 
+def fmt_mmss(seconds, *, hours: bool = False) -> str:
+    """Sekunden human-lesbar: '' (<=0/None), 'Xs' (<60), sonst 'm:ss'.
+
+    ``hours=True``: ab 60 Minuten 'h:mm:ss' statt wachsender Minutenzahl.
+    Gemeinsame Basis für alle Dauer-Anzeigen (Solver-Zeile, Leaderboard,
+    Reinforcement, Wochenpost) — Sonderfälle wie '—' oder ' min' setzen die
+    Aufrufer selbst obendrauf.
+    """
+    s = int(seconds or 0)
+    if s <= 0:
+        return ''
+    if s < 60:
+        return f'{s}s'
+    m, sec = divmod(s, 60)
+    if hours and m >= 60:
+        h, m = divmod(m, 60)
+        return f'{h}:{m:02d}:{sec:02d}'
+    return f'{m}:{sec:02d}'
+
+
 def parse_zeit(raw: str) -> tuple[int, int] | None:
     """Parst eine Uhrzeit zu (hour, minute). Akzeptiert '17', '1730', '17:30', '17 30'.
 

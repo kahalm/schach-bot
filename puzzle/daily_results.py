@@ -15,6 +15,7 @@ import os
 from datetime import datetime, timezone
 
 from core import i18n
+from core.datetime_utils import fmt_mmss
 from core.json_store import atomic_read, atomic_write
 from core.paths import CONFIG_DIR
 
@@ -121,11 +122,7 @@ def current() -> dict | None:
 
 def _fmt_time(seconds: int) -> str:
     """Formatiert Sekunden als m:ss (ab 60 s) oder Xs."""
-    if seconds <= 0:
-        return ''
-    if seconds < 60:
-        return f'{seconds}s'
-    return f'{seconds // 60}:{seconds % 60:02d}'
+    return fmt_mmss(seconds)
 
 
 def format_solver_line(results: dict, max_names: int = MAX_NAMES, lang: str = 'de') -> str:

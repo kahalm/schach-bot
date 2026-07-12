@@ -4,6 +4,21 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.18] - 2026-07-12
+### Changed
+- Duplikate konsolidiert (CLAUDE.md „Keine duplizierte Logik"):
+  - Der m:ss-Zeit-Formatter existierte 4× mit Drift (daily_results, daily_leaderboard,
+    reinforcement, weeklypost) → gemeinsame Basis `core.datetime_utils.fmt_mmss()`;
+    die Aufrufer setzen nur noch ihre Sonderfälle ('—', ' min', '0:00') obendrauf.
+    Wochenpost-Zeiten < 60 s zeigen jetzt 'Xs' statt '0:ss'.
+  - `_via_claude` war fast wortgleich in motivation_text.py und reinforcement.py →
+    gemeinsamer One-Shot-Helfer `commands.chat.claude_oneshot()` (Timeout, Text-Extraktion).
+  - `/test` nutzt jetzt die Produktions-Helfer statt eigener Kopien:
+    `_solution_pgn` (2 Inline-Kopien), `find_line_by_id` (statt eigenem PGN-Scan in
+    `_find_game`) und `_clean_book_name` (statt 3× `replace('_firstkey.pgn','')`).
+  - Tote Imports entfernt (leaderboard `tasks`, turnier_buttons `asyncio`,
+    schachrallye `timezone`, blind `is_privileged`).
+
 ## [2.78.17] - 2026-07-12
 ### Changed
 - DM-Log: das 30-Tage-Pruning greift jetzt bei jedem Schreiben für ALLE User (leere

@@ -20,7 +20,7 @@ from core.permissions import is_privileged
 from core.version import VERSION, START_TIME, EMBED_COLOR
 from puzzle.selection import find_line_by_id
 from puzzle.processing import (
-    _trim_to_training_position, _strip_pgn_annotations, _prelude_pgn,
+    _trim_to_training_position, _prelude_pgn, _solution_pgn, _clean_book_name,
     _flatten_null_move_variations,
 )
 from puzzle.embed import build_puzzle_embed
@@ -211,7 +211,7 @@ def _run_pgn() -> list[CheckResult]:
             if game is None:
                 checks.append(CheckResult(fname, False, 'Keine Partie gefunden'))
             else:
-                label = fname.replace('_firstkey.pgn', '')
+                label = _clean_book_name(fname)
                 checks.append(CheckResult(label, True, f'{line_count} Linien'))
         except Exception as e:
             checks.append(CheckResult(fname, False, str(e)[:200]))
@@ -344,34 +344,21 @@ def _load_snapshots():
         raise ValueError(f'Snapshot-Datei fehlerhaft: {e}')
 
 
-_MAX_PARSE_ERRORS = 50
-
-
 def _find_game(filename, round_id):
-    """PGN-Datei lesen und Partie mit passendem Round-Header finden."""
-    path = os.path.join(BOOKS_DIR, filename)
-    with open(path, encoding='utf-8') as f:
-        pgn_text = _flatten_null_move_variations(f.read())
-    stream = io.StringIO(pgn_text)
-    errors = 0
-    while True:
-        try:
-            game = chess.pgn.read_game(stream)
-        except Exception:
-            errors += 1
-            if errors >= _MAX_PARSE_ERRORS:
-                raise ValueError(
-                    f'Zu viele Parse-Fehler ({errors}) in {filename}, '
-                    f'Round {round_id!r} nicht gefunden')
-            continue
-        if game is None:
-            raise ValueError(f'Round {round_id!r} nicht gefunden in {filename}')
-        if game.headers.get('Round', '') == round_id:
-            return game
+    """Partie mit passendem Round-Header holen.
+
+    Nutzt den gecachten Produktions-Loader (``find_line_by_id``) statt eigener
+    PGN-Parserei — /test validiert dadurch exakt die Partien, die die
+    Produktion auswaehlt (CLAUDE.md: keine duplizierte Logik).
+    """
+    result = find_line_by_id(f'{filename}:{round_id}')
+    if result is None:
+        raise ValueError(f'Round {round_id!r} nicht gefunden in {filename}')
+    return result[1]
 
 
-def _book_label(filename):
-    return filename.replace('_firstkey.pgn', '')
+# Buch-Anzeigename — gleiche Regel wie in den Produktions-Embeds.
+_book_label = _clean_book_name
 
 
 class _PuzzleSelect(discord.ui.Select):
@@ -423,9 +410,7 @@ class _PuzzleSelect(discord.ui.Select):
                 val = f'||`{text[:1014]}`\u2026||'
             return val
 
-        exporter = chess.pgn.StringExporter(
-            headers=False, variations=True, comments=True)
-        pgn_moves = _strip_pgn_annotations(game.accept(exporter))
+        pgn_moves = _solution_pgn(game)
         if pgn_moves:
             embed.add_field(
                 name='Loesung', value=_field_val(pgn_moves), inline=False)
@@ -538,9 +523,7 @@ async def _run_snapshots(interaction, kurs, show_puzzle, show_lichess):
 
             context_game = game if was_trimmed else None
 
-            exporter = chess.pgn.StringExporter(
-                headers=False, variations=True, comments=True)
-            solution_text = _strip_pgn_annotations(result.accept(exporter))
+            solution_text = _solution_pgn(result)
             exp_solution = snap.get('solution', '')
             if exp_solution and solution_text != exp_solution:
                 errors.append(f'solution abweichend')

@@ -11,7 +11,6 @@ import discord
 from discord.ext import commands
 
 import puzzle
-from core.permissions import is_privileged
 
 log = logging.getLogger('schach-bot')
 

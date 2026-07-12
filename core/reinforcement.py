@@ -20,6 +20,7 @@ import logging
 import os
 from datetime import datetime, timezone
 
+from core.datetime_utils import fmt_mmss
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 
@@ -183,31 +184,17 @@ _CLAUDE_TIMEOUT = 30.0  # s — Reinforcement laeuft im Loop; haengender Call da
 
 async def _via_claude(system: str, prompt: str) -> str | None:
     try:
-        from commands.chat import _client, _MODEL
-        if _client is None:
-            return None
-        resp = await asyncio.wait_for(
-            _client.messages.create(
-                model=_MODEL,
-                max_tokens=200,
-                system=system,
-                messages=[{'role': 'user', 'content': prompt}],
-            ),
-            timeout=_CLAUDE_TIMEOUT,
-        )
-        parts = [b.text for b in resp.content if getattr(b, 'type', None) == 'text']
-        return ''.join(parts).strip() or None
+        from commands.chat import claude_oneshot
+        return await claude_oneshot(system, prompt, max_tokens=200,
+                                    timeout=_CLAUDE_TIMEOUT)
     except Exception:
         log.debug('Reinforcement-Claude-Aufruf fehlgeschlagen')
         return None
 
 
 def _fmt_time(seconds: int) -> str:
-    if not seconds or seconds <= 0:
-        return ''
-    if seconds < 60:
-        return f'{seconds}s'
-    return f'{seconds // 60}:{seconds % 60:02d} min'
+    t = fmt_mmss(seconds)
+    return f'{t} min' if ':' in t else t
 
 
 async def _puzzle_text(time_secs: int) -> str:

@@ -8,6 +8,8 @@ monatlicher Auto-Post) liegt in :mod:`commands.leaderboard`; die HTTP-Abfragen i
 
 from datetime import datetime
 
+from core.datetime_utils import fmt_mmss
+
 MEDALS = {1: '🥇', 2: '🥈', 3: '🥉'}
 MAX_LADDER = 10
 
@@ -28,12 +30,8 @@ def _rank_marker(rank: int) -> str:
 
 
 def _fmt_time(seconds: int) -> str:
-    """Sekunden als m:ss (ab 60 s) oder Xs."""
-    if not seconds or seconds <= 0:
-        return '—'
-    if seconds < 60:
-        return f'{seconds}s'
-    return f'{seconds // 60}:{seconds % 60:02d}'
+    """Sekunden als m:ss (ab 60 s) oder Xs; ohne Zeit → '—'."""
+    return fmt_mmss(seconds) or '—'
 
 
 def format_period(period: str) -> str:

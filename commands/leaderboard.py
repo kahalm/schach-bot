@@ -14,7 +14,6 @@ import os
 from datetime import datetime, time, timezone
 
 import discord
-from discord.ext import tasks
 
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR

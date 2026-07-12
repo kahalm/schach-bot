@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 import discord
 from discord.ext import tasks
 
-from core.datetime_utils import parse_utc as _parse_utc
+from core.datetime_utils import fmt_mmss, parse_utc as _parse_utc
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 from core.version import EMBED_COLOR
@@ -151,12 +151,8 @@ def _field_name(f):
 
 
 def _fmt_secs(s) -> str:
-    s = int(s or 0)
-    m, sec = divmod(s, 60)
-    if m >= 60:
-        h, m = divmod(m, 60)
-        return f'{h}:{m:02d}:{sec:02d}'
-    return f'{m}:{sec:02d}'
+    """Gesamtzeit als m:ss bzw. h:mm:ss; 0/fehlend → '0:00'."""
+    return fmt_mmss(s, hours=True) or '0:00'
 
 
 def format_weekly_results(results: dict) -> str:

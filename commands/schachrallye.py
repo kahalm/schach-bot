@@ -18,7 +18,7 @@ import asyncio
 import logging
 import os
 import re
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta
 from html.parser import HTMLParser
 
 import discord

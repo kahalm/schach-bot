@@ -74,11 +74,27 @@ def test_noon_utc_ts():
           ts == int(datetime(2026, 6, 30, 12, 0, tzinfo=timezone.utc).timestamp()))
 
 
+def test_fmt_mmss():
+    """Gemeinsamer Dauer-Formatter — ersetzt die 4 gedrifteten Kopien
+    (daily_results, daily_leaderboard, reinforcement, weeklypost)."""
+    from core.datetime_utils import fmt_mmss
+    check('0 → leer', fmt_mmss(0) == '')
+    check('None → leer', fmt_mmss(None) == '')
+    check('negativ → leer', fmt_mmss(-5) == '')
+    check('45 → "45s"', fmt_mmss(45) == '45s')
+    check('60 → "1:00"', fmt_mmss(60) == '1:00')
+    check('83 → "1:23"', fmt_mmss(83) == '1:23')
+    check('3661 → "61:01" (ohne hours)', fmt_mmss(3661) == '61:01')
+    check('3661 → "1:01:01" (mit hours)', fmt_mmss(3661, hours=True) == '1:01:01')
+    check('605 → "10:05"', fmt_mmss(605) == '10:05')
+
+
 if __name__ == '__main__':
     print('=== test_datetime_utils.py ===\n')
     test_parse_datum()
     test_parse_utc()
     test_parse_zeit()
     test_noon_utc_ts()
+    test_fmt_mmss()
     print(f'\n--- {total} checks, {failed} failed ---')
     sys.exit(1 if failed else 0)
