@@ -212,6 +212,55 @@ def test_fresh_view():
     check('5 Buttons', len(view.children) == 5, f'got {len(view.children)}')
 
 
+def test_endless_origin():
+    """Tests: Endless-Auto-Next feuert nur fuer Klicks auf Endless-Puzzles."""
+    print('[endless origin]')
+    reset()
+    import asyncio
+    import puzzle.state as state_mod
+    import puzzle.posting as posting_mod
+    from core import event_log, stats
+
+    calls = []
+
+    async def fake_next(bot, user_id):
+        calls.append(user_id)
+
+    async def _noop_async(*a, **kw):
+        return None
+
+    orig = (posting_mod.post_next_endless, event_log.log_reaction, stats.inc)
+    posting_mod.post_next_endless = fake_next
+    event_log.log_reaction = lambda *a, **kw: None
+    stats.inc = lambda *a, **kw: None
+    try:
+        state_mod._endless_sessions.clear()
+        state_mod.start_endless(10, None)
+
+        interaction = MagicMock()
+        interaction.edit_original_response = _noop_async
+
+        # Klick auf ein NORMALES Puzzle (z.B. Daily im Channel) → kein Auto-Next
+        state_mod._register_puzzle_msg(500, 'book.pgn:1.1', 'normal')
+        asyncio.run(btn_mod._run_side_effects(
+            interaction, 500, 10, 'book.pgn:1.1', 'normal', '✅', 1, None))
+        check('normal-Puzzle: kein Endless-Next', calls == [], f'calls={calls}')
+
+        # Klick auf ein ENDLESS-Puzzle → Auto-Next
+        state_mod._register_puzzle_msg(501, 'book.pgn:2.1', 'endless')
+        asyncio.run(btn_mod._run_side_effects(
+            interaction, 501, 10, 'book.pgn:2.1', 'endless', '❌', 1, None))
+        check('endless-Puzzle: Endless-Next', calls == [10], f'calls={calls}')
+
+        # Toggle-Off (delta<0) auf Endless-Puzzle → kein Auto-Next
+        asyncio.run(btn_mod._run_side_effects(
+            interaction, 501, 10, 'book.pgn:2.1', 'endless', '❌', -1, None))
+        check('toggle-off: kein Endless-Next', calls == [10], f'calls={calls}')
+    finally:
+        (posting_mod.post_next_endless, event_log.log_reaction, stats.inc) = orig
+        state_mod._endless_sessions.clear()
+
+
 def test_puzzle_view_structure():
     """Tests: PuzzleView hat korrekte Struktur."""
     print('[PuzzleView structure]')
@@ -235,6 +284,7 @@ if __name__ == '__main__':
     test_multi_user()
     test_lru_eviction()
     test_fresh_view()
+    test_endless_origin()
     test_puzzle_view_structure()
     print(f'\n--- {total} checks, {failed} failed ---')
     sys.exit(1 if failed else 0)

@@ -47,7 +47,7 @@ def get_puzzle_line_id(msg_id: int) -> str | None:
 
 
 def get_puzzle_mode(msg_id: int) -> str | None:
-    """'normal' oder 'blind' — None wenn die Nachricht nicht registriert ist."""
+    """'normal', 'blind' oder 'endless' — None wenn die Nachricht nicht registriert ist."""
     entry = _puzzle_msg_ids.get(msg_id)
     return entry['mode'] if entry else None
 

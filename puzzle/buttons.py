@@ -143,8 +143,11 @@ async def _run_side_effects(interaction: discord.Interaction,
                 except Exception as e:
                     log.warning('Ersatz-Puzzle fehlgeschlagen: %s', e)
 
-        # Endless: nach ✅/❌ nächstes Puzzle senden (nur beim Hinzufügen)
-        if delta > 0 and emoji in ('✅', '❌') and _state.is_endless(user_id):
+        # Endless: nach ✅/❌ nächstes Puzzle senden (nur beim Hinzufügen und nur
+        # wenn die geklickte Nachricht selbst ein Endless-Puzzle ist — sonst
+        # triggert z.B. ein ✅ auf dem Tagespuzzle ein neues Endless-DM-Puzzle)
+        if (delta > 0 and emoji in ('✅', '❌') and mode == 'endless'
+                and _state.is_endless(user_id)):
             try:
                 await _posting.post_next_endless(bot, user_id)
             except Exception as e:

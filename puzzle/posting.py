@@ -189,7 +189,7 @@ async def post_next_endless(bot, user_id: int):
         # wenn Render/Send dazwischen fehlschlaegt (count erhoeht ohne geliefertes Puzzle).
         session['count'] = next_count
 
-        _register_puzzle_msg(msg.id, line_id)
+        _register_puzzle_msg(msg.id, line_id, mode='endless')
         save_puzzle_context(user_id, _build_puzzle_context(game, turn, diff, line_id))
         await msg.edit(view=_fresh_button_view())
 

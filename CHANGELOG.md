@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.8] - 2026-07-12
+### Fixed
+- Endless-Modus: der Auto-Next feuerte bei **jedem** ✅/❌-Klick eines Users mit aktiver
+  Endless-Session — auch auf fremden Puzzles (z.B. dem Tagespuzzle im Channel). Dadurch
+  gab es unerwartete Endless-DMs und der Session-Zähler wurde aufgebläht. Endless-DMs
+  werden jetzt mit `mode='endless'` registriert und der Auto-Next prüft die Herkunft der
+  geklickten Nachricht. Regressionstest in `test_buttons.test_endless_origin`.
+
 ## [2.78.7] - 2026-07-11
 ### Fixed
 - Daily-Regenerate-Webhook: das Regenerieren eines **vergangenen** Tagespuzzles löste
