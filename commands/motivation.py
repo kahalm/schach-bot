@@ -280,7 +280,14 @@ async def _run_motivation_dms():
         raw_next = info.get('next')
         if not raw_next:
             continue
-        if now < _parse_utc(raw_next):
+        try:
+            if now < _parse_utc(raw_next):
+                continue
+        except ValueError:
+            # Korrupter Eintrag darf nicht den ganzen Pass abbrechen
+            # (alle Abonnenten danach wuerden sonst nie mehr bedient).
+            log.warning('Motivation: ungueltiger next-Wert %r fuer User %s, uebersprungen.',
+                        raw_next, uid_str)
             continue
 
         hour = info.get('hour', _DEFAULT_HOUR)

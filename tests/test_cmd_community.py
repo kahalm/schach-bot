@@ -302,6 +302,24 @@ def test_reminder():
             run_async(_reminder_loop())
             check('Loop ueberlebt fehlenden hours-Key', True)
             check('valider Eintrag nach kaputtem wird trotzdem bedient', 22222 in _calls)
+
+            # Regression: korrupter 'next'-String (nicht parsebar) darf nicht die
+            # ganze Runde killen. Vorher: _parse_utc -> ValueError -> Pass bricht
+            # ab, alle User danach verhungern UND bereits bediente Eintraege
+            # bekommen kein next-Update -> Duplikat-DMs jede Minute.
+            _calls.clear()
+            atomic_write(RF, {
+                '11111': {'hours': 4, 'puzzle': 1, 'buch': 0, 'next': past},      # valide, VOR dem kaputten
+                '22222': {'hours': 4, 'puzzle': 1, 'buch': 0, 'next': 'kaputt'},  # korruptes next
+                '33333': {'hours': 4, 'puzzle': 1, 'buch': 0, 'next': past},      # valide, NACH dem kaputten
+            })
+            run_async(_reminder_loop())
+            check('Loop ueberlebt korruptes next', True)
+            check('User vor kaputtem Eintrag bedient', 11111 in _calls)
+            check('User nach kaputtem Eintrag bedient', 33333 in _calls)
+            data_after = atomic_read(RF, dict)
+            check('next-Update trotz kaputtem Eintrag geschrieben',
+                  data_after['11111']['next'] != past)
         finally:
             _leg.post_puzzle = _orig_post
             reminder_mod._bot = _orig_bot

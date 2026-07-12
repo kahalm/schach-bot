@@ -4,6 +4,15 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.11] - 2026-07-12
+### Fixed
+- Reminder- und Motivations-Loop: ein einzelner korrupter `next`-Zeitstempel in
+  `reminder.json`/`motivation_sub.json` brach den kompletten Durchlauf ab — alle danach
+  iterierten User bekamen nie wieder DMs, und im Reminder-Fall wurden die `next`-Updates
+  bereits bedienter User nicht geschrieben (→ Duplikat-Reminder jede Minute). Korrupte
+  Einträge werden jetzt pro User geloggt und übersprungen. Regressionstest in
+  `test_reminder` (korruptes next).
+
 ## [2.78.10] - 2026-07-12
 ### Fixed
 - KI-Chat-Tool `send_library_book`: umging die Gemeinfreiheits-Sperre der Bibliothek —

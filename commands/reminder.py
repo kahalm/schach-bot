@@ -38,7 +38,15 @@ async def _reminder_loop_inner():
         raw_next = entry.get('next')
         if not raw_next:
             continue
-        next_time = _parse_utc(raw_next)
+        try:
+            next_time = _parse_utc(raw_next)
+        except ValueError:
+            # Korrupter Eintrag darf nicht den ganzen Pass abbrechen (sonst
+            # verhungern alle nachfolgenden User und bereits bediente bekommen
+            # kein next-Update → Duplikat-DMs jede Minute).
+            log.warning('Reminder: ungueltiger next-Wert %r fuer User %s, uebersprungen.',
+                        raw_next, uid_str)
+            continue
         if now < next_time:
             continue
 
