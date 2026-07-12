@@ -1,0 +1,25 @@
+name: Changelog → Discord
+
+# Postet neue CHANGELOG.md-Abschnitte in den Discord-Changelog-Channel.
+# workflow_dispatch postet den neuesten Abschnitt (manueller Test/Nachreichen).
+
+on:
+  push:
+    branches: [main]
+    paths: [CHANGELOG.md]
+  workflow_dispatch:
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Neue Changelog-Abschnitte posten
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          REPO_LABEL: schach-bot
+        run: python3 .github/scripts/changelog_discord.py

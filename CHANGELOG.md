@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.19] - 2026-07-13
+### Added
+- CI: neuer Workflow `changelog-discord.yml` — postet neue CHANGELOG-Abschnitte nach
+  jedem Push auf main als „silent messages" (keine Push-Benachrichtigungen) in den
+  Discord-Changelog-Channel (Webhook-Secret `DISCORD_CHANGELOG_WEBHOOK`; ohne Secret
+  No-op). `workflow_dispatch` postet den neuesten Abschnitt manuell nach.
+  Tests in `tests/test_changelog_discord.py`.
+
 ## [2.78.18] - 2026-07-12
 ### Changed
 - Duplikate konsolidiert (CLAUDE.md „Keine duplizierte Logik"):
