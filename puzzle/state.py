@@ -313,11 +313,15 @@ def save_puzzle_context(user_id: int | None, info: dict):
     global _last_channel_puzzle
     _last_channel_puzzle = info
     if user_id is not None:
+        # LRU: Ueberschreiben muss den Key ans Ende ruecken (Insertion-Order =
+        # Recency), sonst evicted der Cap-Ueberlauf die AKTIVSTEN User zuerst.
         _last_puzzle_context[user_id] = info
+        _last_puzzle_context.move_to_end(user_id)
         while len(_last_puzzle_context) > _PUZZLE_CTX_CAP:
             _last_puzzle_context.popitem(last=False)
         # Auf Disk persistieren (ueberlebt Bot-Neustarts)
         def _persist(data):
+            data.pop(str(user_id), None)  # ans Ende ruecken (LRU wie in-memory)
             data[str(user_id)] = info
             # Disk-Datei ebenfalls begrenzen
             if len(data) > _PUZZLE_CTX_CAP:

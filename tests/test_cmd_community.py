@@ -159,6 +159,51 @@ def test_collection_limits():
     print()
 
 
+def test_collection_embed_size_limit():
+    """Discords kombiniertes 6000-Zeichen-Limit pro Nachricht: grosse Sammlungen
+    mit langen Feldern muessen auf mehrere Nachrichten verteilt werden, sonst
+    wirft send_message(embeds=...) HTTPException 400 und /resourcen ist tot."""
+    print('[collection_embed_size]')
+    import commands._collection as col
+
+    def _embed_size(em):
+        n = len(getattr(em, 'title', '') or '')
+        for f in em.fields:
+            n += len(f.get('name') or '') + len(f.get('value') or '')
+        return n
+
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('resourcen')
+        json_file = col._json_path('resourcen.json')
+        # 30 Eintraege mit maximal langen Feldern (~770 Zeichen pro Feld)
+        prefill = [{'url': 'https://example.com/' + 'x' * 480,
+                    'beschreibung': 'B' * 250,
+                    'user': 'Tester', 'datum': '2026-01-01'}
+                   for _ in range(30)]
+        atomic_write(json_file, prefill)
+
+        ia = make_interaction()
+        run_async(cmd(ia, url=None, beschreibung=None))
+
+        # Alle gesendeten Nachrichten einsammeln (response + followups)
+        messages = list(ia.response.calls) + list(ia.followup.calls)
+        sizes = []
+        total_fields = 0
+        for call in messages:
+            embeds = call.get('embeds') or ([call['embed']] if call.get('embed') else [])
+            if not embeds:
+                continue
+            sizes.append(sum(_embed_size(e) for e in embeds))
+            total_fields += sum(len(e.fields) for e in embeds)
+        check('alle 30 Eintraege gelistet', total_fields == 30, f'got {total_fields}')
+        check('jede Nachricht <= 6000 Zeichen (kombiniert)',
+              sizes and all(s <= 6000 for s in sizes), f'sizes={sizes}')
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_youtube():
     """Tests fuer /youtube Command."""
     print('[/youtube]')

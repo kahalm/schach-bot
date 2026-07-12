@@ -45,6 +45,12 @@ _MUTEX_PAIRS = {'✅': '❌', '❌': '✅', '👍': '👎', '👎': '👍'}
 _CLICKS_CAP = 500
 _tracker = ClickTracker(_MUTEX_PAIRS, cap=_CLICKS_CAP)
 
+# Referenzen auf laufende Side-Effect-Tasks: asyncio.create_task haelt nur eine
+# schwache Referenz — ohne Set koennte der GC einen laufenden Task einsammeln
+# und Counter/Logs/Endless-Next verschwinden lautlos (siehe asyncio-Doku;
+# gleiches Muster wie core/reinforcement._pending_tasks).
+_bg_tasks: set = set()
+
 # Abwaertskompatible Aliases fuer Tests und externe Zugriffe
 _clicks = _tracker._clicks
 _count = _tracker.count
@@ -88,8 +94,10 @@ async def _handle_click(interaction: discord.Interaction, emoji: str):
 
     # 2) Alles andere (Counter-Edit, Logging, Stats, Endless) als Background-
     #    Task – Klicks bleiben dadurch flüssig.
-    asyncio.create_task(_run_side_effects(
+    task = asyncio.create_task(_run_side_effects(
         interaction, msg_id, user_id, line_id, mode, emoji, delta, removed))
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
 
 
 async def _run_side_effects(interaction: discord.Interaction,

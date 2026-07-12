@@ -81,8 +81,6 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
                 return
 
             if _blind_moves:
-                if user:
-                    await dm.send(f'**{interaction.user.display_name}** schickt dir ein Blind-Puzzle 🙈')
                 line_id = result[0]
                 orig = result[1]
                 split = _pkg._split_for_blind(orig, _blind_moves)
@@ -91,6 +89,10 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
                         f'⚠️ Puzzle `{line_id}` hat nicht genug Vorlauf-Züge für blind:{_blind_moves}.',
                         ephemeral=True)
                     return
+                # Ankuendigung erst NACH erfolgreicher Validierung — sonst
+                # bekommt der Empfaenger eine DM ohne folgendes Puzzle.
+                if user:
+                    await dm.send(f'**{interaction.user.display_name}** schickt dir ein Blind-Puzzle 🙈')
                 blind_board, blind_san, puzzle_game = split
                 fname = line_id.split(':')[0]
                 meta  = _pkg._load_books_config().get(fname, {})
@@ -443,6 +445,7 @@ async def _cmd_endless(bot, interaction: discord.Interaction, buch: int = 0):
             f'Nochmal `/endless` zum Stoppen.',
             ephemeral=True)
     except Exception as e:
+        log.exception('/endless fehlgeschlagen (user=%s): %s', user_id, e)
         _pkg.stop_endless(user_id)
         await interaction.followup.send('❌ Ein Fehler ist aufgetreten.', ephemeral=True)
 

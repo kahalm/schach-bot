@@ -480,3 +480,20 @@ def test_library_cache_threadsafe():
         lib_mod._is_excluded = orig_excl
         lib_mod._reload_library()
     print()
+
+
+def test_format_view_missing_file():
+    """_FormatView darf nicht crashen (und nicht den Event-Loop blockieren),
+    wenn eine Buchdatei zwischen _collect_formats und View-Bau verschwindet —
+    genau das Szenario, das library.py selbst als real dokumentiert."""
+    print('[_FormatView missing file]')
+    import library as lib_mod
+
+    entry = {'title': 'Test', 'author': 'A', 'files': [], 'tags': []}
+    try:
+        view = lib_mod._FormatView(entry, {'pdf': '/nonexistent/dir/gone.pdf'})
+        check('View-Bau ohne Datei crasht nicht', True)
+        check('Button vorhanden', len(getattr(view, 'children', [])) == 1)
+    except OSError as e:
+        check('View-Bau ohne Datei crasht nicht', False, f'OSError: {e}')
+    print()

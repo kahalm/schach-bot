@@ -15,7 +15,7 @@ from test_cmd_info import (
     test_event_log, test_healthcheck,
 )
 from test_cmd_puzzle import (
-    test_puzzle, test_puzzle_blind_by_id, test_puzzle_link_only, test_kurs, test_train, test_next, test_endless, test_blind,
+    test_puzzle, test_puzzle_blind_by_id, test_puzzle_blind_announce_after_validation, test_puzzle_link_only, test_kurs, test_train, test_next, test_endless, test_blind,
     test_buttons, test_format_blind_moves, test_puzzle_anzahl_validation,
     test_posted_reset_per_pool, test_build_puzzle_embed, test_build_daily_embed,
     test_post_rookhub_puzzle_board_vs_link, test_post_rookhub_puzzle_daily_uses_minimal_embed,
@@ -26,7 +26,7 @@ from test_cmd_puzzle import (
     test_daily_regenerate_webhook,
 )
 from test_cmd_community import (
-    test_elo, test_resourcen, test_collection_limits, test_youtube,
+    test_elo, test_resourcen, test_collection_limits, test_collection_embed_size_limit, test_youtube,
     test_reminder, test_wanted, test_collection_duplicate_url,
 )
 from test_cmd_events import (
@@ -52,7 +52,7 @@ from test_cmd_library import (
     test_bibliothek, test_tag, test_autor, test_reindex, test_reindex_requires_admin,
     test_parse_index_entry, test_auto_tag, test_build_library_catalog,
     test_sftpgo_password_separated, test_public_domain_from,
-    test_library_cache_threadsafe,
+    test_library_cache_threadsafe, test_format_view_missing_file,
 )
 from test_cmd_admin import (
     test_daily, test_ignore_kapitel, test_test_cmd, test_announce,
@@ -88,9 +88,11 @@ def main():
     test_elo()
     test_resourcen()
     test_collection_limits()
+    test_collection_embed_size_limit()
     test_youtube()
     test_puzzle()
     test_puzzle_blind_by_id()
+    test_puzzle_blind_announce_after_validation()
     test_puzzle_link_only()
     test_kurs()
     test_train()
@@ -115,6 +117,7 @@ def main():
     test_auto_tag()
     test_build_library_catalog()
     test_library_cache_threadsafe()
+    test_format_view_missing_file()
     test_sftpgo_password_separated()
     test_public_domain_from()
     test_dm_log()

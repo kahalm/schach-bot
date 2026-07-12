@@ -4,6 +4,31 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.16] - 2026-07-12
+### Fixed
+- Button-Klicks: der fire-and-forget Side-Effect-Task wird jetzt referenziert
+  (`_bg_tasks` + done-callback) — `asyncio.create_task` hält nur eine schwache
+  Referenz, der GC konnte Counter-Update/Logging/Endless-Next lautlos verschlucken
+  (gleiches Muster wie `reinforcement._pending_tasks`). Test `test_click_task_reference`.
+- /resourcen & /youtube: große Sammlungen mit langen Feldern sprengten Discords
+  kombiniertes 6000-Zeichen-Embed-Limit pro Nachricht → HTTPException 400, Liste
+  unbenutzbar. Embeds werden jetzt nach Zeichen-Budget gechunkt und einzeln gesendet.
+  Test `test_collection_embed_size_limit`.
+- /bibliothek Format-Auswahl: `os.path.getsize` lief ungeschützt und synchron im
+  View-Konstruktor auf dem Event-Loop — eine zwischenzeitlich verschobene Datei warf
+  eine unbehandelte OSError („interaction failed"), langsame Syncthing-/Netzpfade
+  froren den Bot ein. Größen werden jetzt vorab im Thread ermittelt (OSError → 0).
+  Test `test_format_view_missing_file`.
+- /puzzle Blind-per-ID an andere User: die „schickt dir ein Blind-Puzzle"-DM ging
+  VOR der Vorlauf-Validierung raus — bei zu wenig Vorlauf-Zügen blieb beim Empfänger
+  eine Ankündigung ohne Puzzle zurück. Test `test_puzzle_blind_announce_after_validation`.
+- /endless: Fehler aus `post_next_endless` werden jetzt geloggt (`log.exception`)
+  statt lautlos verschluckt — vorher war der Abbruch nicht diagnostizierbar.
+- KI-Chat-Puzzle-Kontext: die Cap-Eviction (200 Einträge) war Insertion-Order statt
+  LRU — aktive User flogen zuerst raus, während Monate alte One-Shot-User überlebten
+  (In-Memory UND Disk). Überschreiben rückt den Eintrag jetzt ans Ende.
+  Test `test_puzzle_context_lru`.
+
 ## [2.78.15] - 2026-07-12
 ### Fixed
 - KI-Chat: eine Claude-Response ohne Text-Blöcke führte zu `channel.send('')` →

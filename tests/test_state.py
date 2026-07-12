@@ -115,6 +115,40 @@ def teardown():
 # ===================================================================
 
 
+def test_puzzle_context_lru():
+    """Eviction des Puzzle-Kontexts muss Recency beruecksichtigen: ein frisch
+    aktualisierter (frueh eingefuegter) User darf nicht vor monatealten
+    One-Shot-Usern rausfliegen (OrderedDict-Overwrite ohne move_to_end)."""
+    print('[puzzle_context LRU]')
+    setup()
+    try:
+        state_mod.PUZZLE_CONTEXT_FILE = os.path.join(_tmpdir, 'puzzle_context.json')
+        state_mod._last_puzzle_context.clear()
+        cap = state_mod._PUZZLE_CTX_CAP
+
+        # Cap fuellen: User 0 zuerst
+        for uid in range(cap):
+            state_mod.save_puzzle_context(uid, {'line_id': f'l{uid}'})
+        # User 0 ist AKTIV: Kontext frisch ueberschreiben
+        state_mod.save_puzzle_context(0, {'line_id': 'l0-fresh'})
+        # Ein neuer User verdraengt einen Eintrag — es muss der aelteste
+        # NICHT-aktualisierte sein (User 1), nicht der aktive User 0.
+        state_mod.save_puzzle_context(9999, {'line_id': 'l-new'})
+
+        check('aktiver User ueberlebt Eviction (in-memory)',
+              0 in state_mod._last_puzzle_context)
+        check('aeltester inaktiver User evicted (in-memory)',
+              1 not in state_mod._last_puzzle_context)
+
+        from core.json_store import atomic_read
+        disk = atomic_read(state_mod.PUZZLE_CONTEXT_FILE, dict)
+        check('aktiver User ueberlebt Eviction (disk)', '0' in disk)
+        check('aeltester inaktiver User evicted (disk)', '1' not in disk)
+    finally:
+        state_mod._last_puzzle_context.clear()
+        teardown()
+
+
 def test_puzzle_msg_registry():
     """Tests fuer Puzzle-Nachrichten-Registry."""
     print('[puzzle_msg_registry]')
@@ -314,6 +348,7 @@ def test_puzzle_state_persistence():
 
 if __name__ == '__main__':
     print('=== test_state.py ===\n')
+    test_puzzle_context_lru()
     test_puzzle_msg_registry()
     test_ignore_system()
     test_chapter_ignore()

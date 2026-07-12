@@ -261,6 +261,46 @@ def test_endless_origin():
         state_mod._endless_sessions.clear()
 
 
+def test_click_task_reference():
+    """_handle_click muss eine starke Referenz auf den Side-Effect-Task halten
+    (asyncio.create_task-Doku: sonst kann der GC den Task mittendrin einsammeln
+    und Counter/Logs/Endless-Next verschwinden lautlos)."""
+    print('[click task reference]')
+    reset()
+    import asyncio
+
+    async def run():
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def slow_side_effects(*a, **kw):
+            started.set()
+            await release.wait()
+
+        orig = btn_mod._run_side_effects
+        btn_mod._run_side_effects = slow_side_effects
+        try:
+            interaction = MagicMock()
+            interaction.message.id = 1
+            interaction.user.id = 10
+
+            async def _defer():
+                return None
+            interaction.response.defer = _defer
+
+            await btn_mod._handle_click(interaction, '✅')
+            await started.wait()
+            check('laufender Task wird referenziert',
+                  len(btn_mod._bg_tasks) == 1, f'got {len(getattr(btn_mod, "_bg_tasks", set()))}')
+            release.set()
+            await asyncio.gather(*btn_mod._bg_tasks)
+            check('Referenz nach Abschluss freigegeben', len(btn_mod._bg_tasks) == 0)
+        finally:
+            btn_mod._run_side_effects = orig
+
+    asyncio.run(run())
+
+
 def test_puzzle_view_structure():
     """Tests: PuzzleView hat korrekte Struktur."""
     print('[PuzzleView structure]')
@@ -285,6 +325,7 @@ if __name__ == '__main__':
     test_lru_eviction()
     test_fresh_view()
     test_endless_origin()
+    test_click_task_reference()
     test_puzzle_view_structure()
     print(f'\n--- {total} checks, {failed} failed ---')
     sys.exit(1 if failed else 0)

@@ -92,23 +92,32 @@ def setup_collection(bot, *,
             await interaction.response.send_message(msg, ephemeral=True)
             return
 
+        # Discord-Limits: 25 Felder pro Embed UND max. 6000 Zeichen kombiniert
+        # ueber ALLE Embeds einer Nachricht. Lange Sammlungen (Feld bis ~770
+        # Zeichen) sprengen das 6000er-Budget lange vor den 25 Feldern → wir
+        # chunken nach Zeichen-Budget und senden jeden Embed als eigene
+        # Nachricht (erste via response, Rest via followup).
         _MAX_FIELDS = 25
+        _CHAR_BUDGET = 5800  # Puffer unterm 6000er-Limit (Titel etc.)
         embeds = []
-        for i in range(0, len(entries), _MAX_FIELDS):
-            chunk = entries[i:i + _MAX_FIELDS]
-            em = discord.Embed(
-                title=embed_title if i == 0 else None,
-                color=embed_color,
-            )
-            for j, e in enumerate(chunk, i + 1):
-                name = f'{j}. {e["beschreibung"]}'
-                if len(name) > 256:
-                    name = name[:253] + '...'
-                value = f'{e["url"]}\n_von {e["user"]} am {e["datum"]}_'
-                em.add_field(name=name, value=value, inline=False)
-            embeds.append(em)
+        em = None
+        em_size = 0
+        for j, e in enumerate(entries, 1):
+            name = f'{j}. {e["beschreibung"]}'
+            if len(name) > 256:
+                name = name[:253] + '...'
+            value = f'{e["url"]}\n_von {e["user"]} am {e["datum"]}_'
+            field_size = len(name) + len(value)
+            if em is None or len(em.fields) >= _MAX_FIELDS or em_size + field_size > _CHAR_BUDGET:
+                em = discord.Embed(
+                    title=embed_title if not embeds else None,
+                    color=embed_color,
+                )
+                em_size = len(embed_title) if not embeds else 0
+                embeds.append(em)
+            em.add_field(name=name, value=value, inline=False)
+            em_size += field_size
 
-        if len(embeds) == 1:
-            await interaction.response.send_message(embed=embeds[0])
-        else:
-            await interaction.response.send_message(embeds=embeds)
+        await interaction.response.send_message(embed=embeds[0])
+        for em in embeds[1:]:
+            await interaction.followup.send(embed=em)

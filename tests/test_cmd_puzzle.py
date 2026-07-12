@@ -136,6 +136,51 @@ def test_puzzle_blind_by_id():
     print()
 
 
+def test_puzzle_blind_announce_after_validation():
+    """Die 'schickt dir ein Blind-Puzzle'-DM darf erst NACH erfolgreicher
+    _split_for_blind-Validierung rausgehen — sonst bekommt der Empfaenger
+    eine Ankuendigung ohne folgendes Puzzle."""
+    print('[/puzzle blind announce order]')
+    import chess
+    import chess.pgn
+    import puzzle as leg
+    from test_helpers import FakeChannel, FakeUser
+
+    tmpdir = setup_temp_config()
+    cmd = _captured_commands.get('puzzle')
+    game = chess.pgn.Game()
+    game.add_variation(chess.Move.from_uci('e2e4'))
+
+    dm = FakeChannel()
+
+    class _StickyDMUser(FakeUser):
+        def __init__(self):
+            super().__init__(uid=777, name='Bob')
+        async def create_dm(self):
+            return dm
+
+    names = ('find_line_by_id', '_has_training_comment', '_split_for_blind')
+    orig = {n: getattr(leg, n) for n in names}
+    try:
+        leg.find_line_by_id = lambda lid: ('test.pgn:1.1', game)
+        leg._has_training_comment = lambda g: True
+        leg._split_for_blind = lambda g, n: None  # nicht genug Vorlauf-Zuege
+
+        ia = make_interaction(admin=True)
+        run_async(cmd(ia, anzahl=1, buch=0, id='test.pgn:1.1:blind:30',
+                      user=_StickyDMUser()))
+
+        contents = ' '.join((c.get('content') or '') for c in ia.followup.calls)
+        check('Admin sieht Vorlauf-Fehler', 'Vorlauf' in contents)
+        check('Empfaenger bekommt KEINE verwaiste Ankuendigung',
+              len(dm.sent) == 0, f'dm.sent={[(m.content or "") for m in dm.sent]}')
+    finally:
+        for n, fn in orig.items():
+            setattr(leg, n, fn)
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_puzzle_link_only():
     """hideBoard: _send_puzzle_link_only postet NUR den klickbaren Link, kein Embed/Bild."""
     print('[/puzzle hideBoard link-only]')

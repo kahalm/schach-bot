@@ -743,11 +743,24 @@ async def _send_book(interaction: discord.Interaction,
 class _FormatView(discord.ui.View):
     """Ein Button pro verfügbarem Format; User wählt welches er herunterladen will."""
 
-    def __init__(self, entry: dict, formats: dict[str, str]):
+    def __init__(self, entry: dict, formats: dict[str, str],
+                 sizes: dict[str, int] | None = None):
+        """``sizes`` (fmt → Bytes) idealerweise vorab in einem Thread ermitteln
+        (siehe _BookSelect.callback) — der Konstruktor laeuft im Event-Loop und
+        Buecher liegen auf Syncthing-/Netzpfaden."""
         super().__init__(timeout=60)
         self.entry = entry
         for fmt, path in formats.items():
-            size  = os.path.getsize(path)
+            if sizes is not None and fmt in sizes:
+                size = sizes[fmt]
+            else:
+                try:
+                    size = os.path.getsize(path)
+                except OSError:
+                    # Datei zwischen _collect_formats und View-Bau verschwunden
+                    # (Sync/Reindex) — Button trotzdem bauen, der Klick-Pfad
+                    # meldet den Fehler sauber.
+                    size = 0
             mb    = size / (1024 * 1024)
             big   = size > _MAX_UPLOAD
             link  = big and bool(_sftpgo_configured())
@@ -848,13 +861,23 @@ class _BookSelect(discord.ui.Select):
             await interaction.response.defer(ephemeral=True)
             await _send_book(interaction, entry, path, fmt)
         else:
-            # Mehrere Formate → User wählen lassen
+            # Mehrere Formate → User wählen lassen. Groessen vorab im Thread
+            # ermitteln (getsize auf Netzpfaden darf den Loop nicht blockieren).
+            def _sizes():
+                out = {}
+                for f, p in formats.items():
+                    try:
+                        out[f] = os.path.getsize(p)
+                    except OSError:
+                        out[f] = 0
+                return out
+            sizes = await asyncio.to_thread(_sizes)
             fmts = '  '.join(
                 f'{_FORMAT_EMOJI.get(f, "📄")} **{_FORMAT_LABEL.get(f, f.upper())}**'
                 for f in formats)
             await interaction.response.send_message(
                 f'**{entry["title"]}**\nVerfügbare Formate: {fmts}',
-                view=_FormatView(entry, formats),
+                view=_FormatView(entry, formats, sizes),
                 ephemeral=True)
 
 
