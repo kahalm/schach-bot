@@ -4,6 +4,15 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.15] - 2026-07-12
+### Fixed
+- KI-Chat: eine Claude-Response ohne Text-Blöcke führte zu `channel.send('')` →
+  HTTPException 400, der User bekam gar keine Antwort (Tipp-Indikator verschwand
+  einfach). `_chat_response` liefert jetzt garantiert nicht-leeren Text (Fallback-
+  Nachricht). Außerdem respektiert der BadRequest-Retry-Pfad jetzt `persist=False`:
+  er leerte bisher die echte Chat-History des Users und schrieb die Einmal-Antwort
+  hinein. Tests `test_chat_empty_response` + `test_chat_persist_false_badrequest`.
+
 ## [2.78.14] - 2026-07-12
 ### Fixed
 - Trainings-Fortschritt (Chat-Tool `send_next`/`get_training_status`): der Footer

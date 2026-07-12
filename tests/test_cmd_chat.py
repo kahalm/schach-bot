@@ -416,3 +416,87 @@ def test_chat_retry_books_tokens():
         chat_mod._client = orig_client
         chat_mod._DAILY_TOKEN_CAP = orig_cap
         teardown_temp_config(tmpdir)
+
+
+def test_chat_empty_response():
+    """Eine Claude-Response ohne Text-Bloecke darf nicht '' liefern —
+    message.channel.send('') wirft sonst HTTPException 400 und der User
+    bekommt gar keine Antwort."""
+    print('[chat empty response]')
+    tmpdir = setup_temp_config()
+    orig_client = chat_mod._client
+    try:
+        atomic_write(chat_mod.CHAT_FILE, {})
+
+        class _Resp:
+            content = []  # keine Text-Bloecke
+            usage = None
+            stop_reason = 'end_turn'
+
+        class _Msgs:
+            async def create(self, **kw):
+                return _Resp()
+
+        class _FakeClient:
+            messages = _Msgs()
+
+        chat_mod._client = _FakeClient()
+        out = run_async(chat_mod._chat_response(7, 'hallo', channel=None, persist=True))
+        check('leere Response → nicht-leerer Fallback-Text', isinstance(out, str) and out.strip() != '')
+    finally:
+        chat_mod._client = orig_client
+        teardown_temp_config(tmpdir)
+
+
+def test_chat_persist_false_badrequest():
+    """persist=False darf auch im BadRequest-Retry-Pfad die History weder
+    leeren noch beschreiben (Contract: Einmal-Antwort ohne History-Zugriff)."""
+    print('[chat persist=False BadRequest]')
+    tmpdir = setup_temp_config()
+    orig_client = chat_mod._client
+    try:
+        existing = {
+            'history': {
+                '7': [
+                    {'role': 'user', 'content': 'Echte Konversation'},
+                    {'role': 'assistant', 'content': 'Echte Antwort'},
+                ]
+            }
+        }
+        atomic_write(chat_mod.CHAT_FILE, existing)
+
+        class _Blk:
+            type = 'text'
+            text = 'Spark-Antwort'
+
+        class _Resp:
+            content = [_Blk()]
+            usage = None
+            stop_reason = 'end_turn'
+
+        class _BadRequestError(Exception):
+            pass
+
+        calls = {'n': 0}
+
+        class _Msgs:
+            async def create(self, **kw):
+                calls['n'] += 1
+                if calls['n'] == 1:
+                    raise _BadRequestError('bad request')
+                return _Resp()
+
+        class _FakeClient:
+            messages = _Msgs()
+
+        chat_mod._client = _FakeClient()
+        out = run_async(chat_mod._chat_response(7, 'spark', channel=None, persist=False))
+        check('persist=False Retry lieferte Antwort', out == 'Spark-Antwort')
+        data = atomic_read(chat_mod.CHAT_FILE, default=dict)
+        msgs = (data.get('history') or {}).get('7') or []
+        check('persist=False: echte History unangetastet',
+              len(msgs) == 2 and msgs[0]['content'] == 'Echte Konversation',
+              )
+    finally:
+        chat_mod._client = orig_client
+        teardown_temp_config(tmpdir)

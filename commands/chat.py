@@ -80,6 +80,9 @@ _RATE_LIMIT_MSG = (
     'Kleiner Moment — du schreibst gerade sehr schnell. '
     'Versuch es in einer Minute nochmal. 🐢'
 )
+# Fallback wenn Claude eine Response ohne Text-Bloecke liefert — '' wuerde bei
+# channel.send('') eine HTTPException 400 ausloesen und der User bekaeme nichts.
+_EMPTY_RESPONSE_MSG = 'Hmm, dazu faellt mir gerade nichts ein — formulier es nochmal anders? 🤔'
 # Maximale Anzahl getrackter User im Rate-Limit-Dict. Ohne Deckel wuchse das
 # defaultdict mit jeder je angeschriebenen DM-User-ID unbegrenzt. Beim Erreichen
 # werden abgelaufene (leere) Eintraege geprunt; bringt das nichts, faellt der
@@ -385,7 +388,9 @@ async def _chat_response(user_id: int, text: str, channel=None, persist: bool = 
             })
 
             if response.stop_reason != 'tool_use':
-                return _extract_text(response.content)
+                # Nie '' zurueckgeben: channel.send('') wirft HTTPException 400
+                # (Response ohne Text-Bloecke, z.B. nach max_tokens-Abbruch).
+                return _extract_text(response.content) or _EMPTY_RESPONSE_MSG
 
             # Tools ausfuehren
             ctx = {'user_id': user_id, 'channel': channel}
@@ -413,17 +418,21 @@ async def _chat_response(user_id: int, text: str, channel=None, persist: bool = 
             log.warning('Claude API BadRequest fuer User %s — History wird geleert: %s',
                         user_id, e)
             try:
-                def _clear(data):
-                    history = data.get('history', {})
-                    history.pop(str(user_id), None)
-                    return data
-                await asyncio.to_thread(atomic_update, CHAT_FILE, _clear, dict)
+                # persist=False: Einmal-Antwort darf die echte History weder
+                # leeren noch beschreiben (Contract, siehe Docstring).
+                if persist:
+                    def _clear(data):
+                        history = data.get('history', {})
+                        history.pop(str(user_id), None)
+                        return data
+                    await asyncio.to_thread(atomic_update, CHAT_FILE, _clear, dict)
                 # Nochmal mit frischer History (nur aktuelle Nachricht); bucht Token via _call_claude.
                 fresh = [{'role': 'user', 'content': text}]
                 response = await _call_claude(user_id, system, fresh, channel)
-                await asyncio.to_thread(
-                    _save_response_blocks, user_id, response.content)
-                return _extract_text(response.content)
+                if persist:
+                    await asyncio.to_thread(
+                        _save_response_blocks, user_id, response.content)
+                return _extract_text(response.content) or _EMPTY_RESPONSE_MSG
             except Exception as retry_err:
                 log.exception('Claude API Retry fehlgeschlagen fuer User %s', user_id)
         else:
