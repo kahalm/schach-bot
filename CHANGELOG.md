@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.78.9] - 2026-07-12
+### Fixed
+- Reinforcement-DMs (Daily-Löser / Wochenpost-Fertigsteller): Check-then-act-Race behoben,
+  das Duplikat-DMs auslösen konnte. Bisher wurde ein Löser erst am **Ende** des DM-Tasks als
+  benachrichtigt markiert (nach fetch_user + bis zu 30s Claude-Call); ein überlappender
+  Webhook mit derselben Löser-Liste erkannte ihn in diesem Fenster erneut als „neu".
+  `new_puzzle_solvers`/`new_weekly_completions` claimen die Rückgabe jetzt **atomar**
+  (Ermitteln + Markieren in einem `atomic_update`). Regressionstests in
+  `test_reinforcement` (zweiter Aufruf liefert niemanden doppelt).
+
 ## [2.78.8] - 2026-07-12
 ### Fixed
 - Endless-Modus: der Auto-Next feuerte bei **jedem** ✅/❌-Klick eines Users mit aktiver

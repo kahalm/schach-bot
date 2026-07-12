@@ -106,9 +106,13 @@ def test_new_puzzle_solvers():
         check('Nicht-Sub nicht dabei', all(s['discordId'] != '999' for s in new))
         check('Anon nicht dabei', all(s.get('discordId') for s in new))
 
-        rf._mark_notified('puzzle', '42', '111')
+        # Claim-Semantik: die Rueckgabe ist sofort als benachrichtigt markiert —
+        # ein zweiter (ueberlappender) Webhook darf dieselben Loeser NICHT
+        # nochmal liefern (sonst Duplikat-DMs waehrend der DM-Task noch laeuft).
         new2 = rf.new_puzzle_solvers(42, solvers)
-        check('nach Mark für Anna: nur Ben', len(new2) == 1 and new2[0]['discordId'] == '222')
+        check('zweiter Aufruf: niemand doppelt', new2 == [])
+        check('Anna als benachrichtigt markiert', rf._already_notified('puzzle', '42', '111'))
+        check('Ben als benachrichtigt markiert', rf._already_notified('puzzle', '42', '222'))
     finally:
         rf._motivation_subscriber_ids = orig_subs
         if os.path.exists(rf.REINFORCE_FILE):
@@ -134,9 +138,10 @@ def test_new_weekly_completions():
         check('Dave (nicht fertig) nicht dabei', all(p['discordId'] != '444' for p in new))
         check('Anon nicht dabei', all(p.get('discordId') for p in new))
 
-        rf._mark_notified('weekly', '7', '333')
+        # Claim-Semantik (siehe test_new_puzzle_solvers)
         new2 = rf.new_weekly_completions(7, players)
-        check('nach Mark für Carl: nur Anna', len(new2) == 1 and new2[0]['discordId'] == '111')
+        check('zweiter Aufruf: niemand doppelt', new2 == [])
+        check('Carl als benachrichtigt markiert', rf._already_notified('weekly', '7', '333'))
     finally:
         rf._motivation_subscriber_ids = orig_subs
         if os.path.exists(rf.REINFORCE_FILE):

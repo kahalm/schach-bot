@@ -107,30 +107,48 @@ def _mark_notified(category: str, key: str, discord_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Neue Empfänger ermitteln
+# Neue Empfänger ermitteln (Claim-Semantik)
 # ---------------------------------------------------------------------------
+# WICHTIG: Ermitteln + Markieren muss EIN atomarer Schritt sein. Wuerde erst
+# der DM-Task am Ende markieren (fetch_user + Claude-Call, bis zu ~30s),
+# koennte ein ueberlappender Webhook denselben Loeser erneut als "neu" sehen
+# und eine Duplikat-DM ausloesen.
+
+def _claim_new(category: str, key: str, candidates: list[dict]) -> list[dict]:
+    """Markiert candidates atomar als benachrichtigt; gibt die vorher unmarkierten zurück."""
+    fresh: list[dict] = []
+    def _u(data):
+        fresh.clear()  # atomic_update koennte _u erneut aufrufen → nicht doppelt sammeln
+        if not isinstance(data, dict):
+            data = _default()
+        cat = data.setdefault(category, {})
+        ids = cat.setdefault(str(key), [])
+        for c in candidates:
+            did = c['discordId']
+            if did not in ids:
+                ids.append(did)
+                fresh.append(c)
+        return data
+    atomic_update(REINFORCE_FILE, _u, _default)
+    return fresh
+
 
 def new_puzzle_solvers(puzzle_id, solvers: list) -> list[dict]:
-    """Solver, die Motivation-Abonnenten sind und noch keine Puzzle-DM erhalten haben."""
-    key = str(puzzle_id)
+    """Solver (Motivation-Abonnenten) ohne bisherige Puzzle-DM — werden dabei
+    atomar als benachrichtigt markiert (Claim), damit überlappende Webhooks
+    keine Duplikat-DMs auslösen."""
     subs = _motivation_subscriber_ids()
-    return [
-        s for s in solvers
-        if s.get('discordId') and s['discordId'] in subs
-        and not _already_notified('puzzle', key, s['discordId'])
-    ]
+    candidates = [s for s in solvers if s.get('discordId') and s['discordId'] in subs]
+    return _claim_new('puzzle', str(puzzle_id), candidates)
 
 
 def new_weekly_completions(weekly_id, players: list) -> list[dict]:
-    """Players, die Motivation-Abonnenten sind, `completed=True` haben und noch keine Weekly-DM."""
-    key = str(weekly_id)
+    """Players (Motivation-Abonnenten) mit `completed=True` ohne bisherige
+    Weekly-DM — werden dabei atomar als benachrichtigt markiert (Claim)."""
     subs = _motivation_subscriber_ids()
-    return [
-        p for p in players
-        if p.get('discordId') and p['discordId'] in subs
-        and p.get('completed')
-        and not _already_notified('weekly', key, p['discordId'])
-    ]
+    candidates = [p for p in players
+                  if p.get('discordId') and p['discordId'] in subs and p.get('completed')]
+    return _claim_new('weekly', str(weekly_id), candidates)
 
 
 def goals_not_yet_notified_today(discord_id: str) -> bool:
@@ -214,7 +232,11 @@ async def _goals_text(cats: list) -> str:
 # ---------------------------------------------------------------------------
 
 async def notify_puzzle_solved(bot, discord_id: str, puzzle_id, time_secs: int = 0) -> None:
-    """Glückwunsch-DM an einen neuen Puzzle-Löser; markiert ihn danach als benachrichtigt."""
+    """Glückwunsch-DM an einen neuen Puzzle-Löser.
+
+    Als benachrichtigt markiert wurde er bereits beim Claim in
+    ``new_puzzle_solvers`` (verhindert Duplikat-DMs bei überlappenden Webhooks).
+    """
     key = str(puzzle_id)
     try:
         text = await _puzzle_text(time_secs)
@@ -224,12 +246,13 @@ async def notify_puzzle_solved(bot, discord_id: str, puzzle_id, time_secs: int =
         log.info('Puzzle-Reinforcement an %s (puzzle=%s)', discord_id, key)
     except Exception:
         log.debug('Puzzle-Reinforcement-DM an %s fehlgeschlagen', discord_id)
-    finally:
-        await asyncio.to_thread(_mark_notified, 'puzzle', key, discord_id)
 
 
 async def notify_weekly_completed(bot, discord_id: str, weekly_id) -> None:
-    """Glückwunsch-DM an einen Spieler, der den Wochenpost fertig hat."""
+    """Glückwunsch-DM an einen Spieler, der den Wochenpost fertig hat.
+
+    Markiert wurde er bereits beim Claim in ``new_weekly_completions``.
+    """
     key = str(weekly_id)
     try:
         text = await _weekly_text()
@@ -239,8 +262,6 @@ async def notify_weekly_completed(bot, discord_id: str, weekly_id) -> None:
         log.info('Weekly-Reinforcement an %s (weekly=%s)', discord_id, key)
     except Exception:
         log.debug('Weekly-Reinforcement-DM an %s fehlgeschlagen', discord_id)
-    finally:
-        await asyncio.to_thread(_mark_notified, 'weekly', key, discord_id)
 
 
 async def notify_goals_met(bot, discord_id: str, cats: list) -> None:
