@@ -23,6 +23,7 @@ import re
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 
 CHANGELOG = 'CHANGELOG.md'
@@ -103,7 +104,17 @@ def main() -> int:
 
     for v in versions:
         date, body = sections[v]
-        _post(webhook, build_message(label, v, date, body))
+        try:
+            _post(webhook, build_message(label, v, date, body))
+        except urllib.error.HTTPError as e:
+            # Toter/gelöschter Webhook (404) o. Ä. darf den Push-Workflow nicht rot machen —
+            # der Announce ist Kür, kein Release-Gate. Als GitHub-Warnung sichtbar lassen.
+            print(f'::warning::Changelog-Announce fehlgeschlagen (HTTP {e.code}) — '
+                  f'DISCORD_CHANGELOG_WEBHOOK prüfen/erneuern. Übersprungen: {label} v{v}')
+            return 0
+        except OSError as e:
+            print(f'::warning::Changelog-Announce fehlgeschlagen ({e}) — übersprungen: {label} v{v}')
+            return 0
         print(f'Gepostet: {label} v{v}')
         time.sleep(1)  # Discord-Rate-Limit schonen
     return 0

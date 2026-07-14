@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.79.1] - 2026-07-14
+### Fixed
+- CI: der Changelog→Discord-Announce macht den Push-Workflow nicht mehr rot, wenn der
+  Discord-Webhook tot/gelöscht ist (HTTP 404 u. Ä.) — stattdessen GitHub-Warnung mit
+  Hinweis, das Secret `DISCORD_CHANGELOG_WEBHOOK` zu erneuern. Der Announce ist Kür,
+  kein Release-Gate (die Docker-Builds von v2.79.0 waren grün, nur der Announce rot).
+
 ## [2.79.0] - 2026-07-14
 ### Added
 - Tagespuzzle-Embed: rotes ❌ je Fehlversuch vor dem ersten Solve hinter der Zeit
