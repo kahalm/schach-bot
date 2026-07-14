@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.79.0] - 2026-07-14
+### Added
+- Tagespuzzle-Embed: rotes ❌ je Fehlversuch vor dem ersten Solve hinter der Zeit
+  (`@kahalm (1:46 ❌❌)`, auf 10 gedeckelt) — Feld `wrongAttempts` im rookhub-Webhook
+  (ab rookhub v0.309.0). Löser-Liste enthält serverseitig jetzt auch Spätlöser
+  (irgendwann gelöst statt nur Erstversuch); Zeit = Summe aller Versuche bis zum Solve.
+
 ## [2.78.20] - 2026-07-13
 ### Fixed
 - Changelog→Discord-Workflow: der Webhook-POST wurde von Discords Cloudflare mit

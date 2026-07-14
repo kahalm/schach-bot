@@ -200,5 +200,25 @@ def main():
     print('Alle daily_results-Tests bestanden.')
 
 
+def test_wrong_attempts_render_as_x():
+    # Je Fehlversuch vor dem ersten Solve ein rotes X hinter der Zeit: "@kahalm (1:46 XX)".
+    res = {'solvedCount': 2, 'attemptCount': 3, 'solvers': [
+        {'name': 'Anna', 'discordId': '111', 'timeSeconds': 106, 'wrongAttempts': 2},
+        {'name': 'Bert', 'timeSeconds': 50, 'wrongAttempts': 0},
+    ]}
+    line = dr.format_solver_line(res)
+    check('2 Fehlversuche → 2 rote X in Klammer', '(1:46 \u274c\u274c)' in line)
+    check('ohne Fehlversuch → nur Zeit', '(50s)' in line)
+    check('kein X ohne Fehlversuch', 'Bert (50s \u274c' not in line)
+
+
+def test_wrong_attempts_capped():
+    res = {'solvedCount': 1, 'attemptCount': 1, 'solvers': [
+        {'name': 'Anna', 'timeSeconds': 10, 'wrongAttempts': 25},
+    ]}
+    line = dr.format_solver_line(res)
+    check('Fehlversuch-X auf 10 gedeckelt', '\u274c' * 10 in line and '\u274c' * 11 not in line)
+
+
 if __name__ == '__main__':
     main()

@@ -140,9 +140,13 @@ def format_solver_line(results: dict, max_names: int = MAX_NAMES, lang: str = 'd
         did = s.get('discordId')
         name = f'<@{did}>' if did else (s.get('name') or '—')
         tm = _fmt_time(s.get('timeSeconds', 0))
-        # Mit Tipps gelöst (HintsUsed > 0 im wertungsrelevanten Erstversuch) → Glühbirne in Klammern.
+        # Mit Tipps gelöst (HintsUsed > 0 bis einschließlich des ersten Solves) → Glühbirne in Klammern.
         hint = ' (💡)' if s.get('hintsUsed', 0) > 0 else ''
-        shown.append((f'{name} ({tm})' if tm else name) + hint)
+        # Je Fehlversuch vor dem ersten Solve ein rotes ❌ hinter der Zeit: "@kahalm (1:46 ❌❌)".
+        # Gegen Ausreißer auf 10 gedeckelt (mehr sagt ohnehin nur „viele").
+        xs = '❌' * min(int(s.get('wrongAttempts', 0) or 0), 10)
+        inner = (f'{tm} {xs}' if tm and xs else (tm or xs))
+        shown.append((f'{name} ({inner})' if inner else name) + hint)
     body = ''
     if shown:
         more = named - len(shown)
