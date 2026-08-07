@@ -92,13 +92,21 @@ def month_key(year: int, month: int) -> str:
     return f'{year:04d}-{month:02d}'
 
 
-def should_post_monthly(state: dict, now: datetime) -> str | None:
-    """Am 1. eines Monats genau einmal den Vormonat posten.
+# Nachhol-Fenster in Tagen ab Monatsanfang (analog zum Weekly-Catch-up): fiel der 1.
+# aus (Bot offline/Deploy/Discord-Störung), ging der Vormonats-Endstand bisher dauerhaft
+# verloren, weil nur `day == 1` gepostet hat. Bewusst NICHT unbegrenzt: ein Bot mit
+# frischem/verlorenem State soll nicht mitten im Monat noch einen alten Endstand posten.
+MONTHLY_CATCHUP_DAYS = 7
+
+
+def should_post_monthly(state: dict, now: datetime, catchup_days: int = MONTHLY_CATCHUP_DAYS) -> str | None:
+    """In den ersten ``catchup_days`` eines Monats genau einmal den Vormonat posten.
 
     Gibt den Monatsschlüssel (``yyyy-MM``) zurück, der gepostet werden soll, oder ``None``
-    (nicht der 1. / bereits gepostet). Dedupe über ``state['last_posted']``.
+    (Fenster vorbei / bereits gepostet). Dedupe über ``state['last_posted']`` — dadurch
+    bleibt es bei genau einem Post pro Monat, auch wenn der 1. verpasst wurde.
     """
-    if now.day != 1:
+    if now.day > catchup_days:
         return None
     key = month_key(*previous_month(now))
     if (state or {}).get('last_posted') == key:

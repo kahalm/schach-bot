@@ -64,7 +64,7 @@ def test_leaderboard_format():
 
 
 def test_leaderboard_monthly_schedule():
-    """should_post_monthly / previous_month: am 1. genau einmal den Vormonat."""
+    """should_post_monthly / previous_month: einmal pro Monat den Vormonat (inkl. Catch-up)."""
     print('[leaderboard schedule]')
     check('previous_month Jan → Vorjahr Dez',
           dlb.previous_month(datetime(2026, 1, 15, tzinfo=timezone.utc)) == (2025, 12))
@@ -75,8 +75,14 @@ def test_leaderboard_monthly_schedule():
     check('am 1. → Mai posten', dlb.should_post_monthly({}, first) == '2026-05')
     check('am 1. + schon gepostet → None',
           dlb.should_post_monthly({'last_posted': '2026-05'}, first) is None)
-    check('nicht der 1. → None',
-          dlb.should_post_monthly({}, datetime(2026, 6, 2, 8, 0, tzinfo=timezone.utc)) is None)
+    # Catch-up: fiel der 1. aus (Bot offline), darf der Endstand nicht dauerhaft verloren gehen.
+    check('1. verpasst, noch im Fenster → immer noch Mai',
+          dlb.should_post_monthly({}, datetime(2026, 6, 3, 8, 0, tzinfo=timezone.utc)) == '2026-05')
+    check('im Fenster + schon gepostet → None',
+          dlb.should_post_monthly({'last_posted': '2026-05'},
+                                  datetime(2026, 6, 3, 8, 0, tzinfo=timezone.utc)) is None)
+    check('Fenster vorbei → None',
+          dlb.should_post_monthly({}, datetime(2026, 6, 12, 8, 0, tzinfo=timezone.utc)) is None)
     print()
 
 

@@ -585,6 +585,79 @@ def test_slacker_text():
     print()
 
 
+def test_progress_unavailable():
+    """RookHub-Ausfall != „nicht verknuepft": kein Registrier-CTA, sondern Retry."""
+    print('[progress unavailable]')
+    import unittest.mock as mock
+    import puzzle.rookhub as rh
+    from core.json_store import atomic_write
+
+    # 1) Client: 404 → None (nicht verknuepft), Netzfehler → PROGRESS_UNAVAILABLE
+    class _Resp404:
+        status_code = 404
+        def raise_for_status(self):
+            pass
+        def json(self):
+            return {}
+
+    # requests ist in den Tests ein MagicMock → echte Exception-Klasse unterschieben,
+    # sonst laesst sich der except-Zweig nicht ausloesen.
+    class _FakeRequestException(Exception):
+        pass
+
+    orig_get, orig_url, orig_secret = rh.requests.get, rh.ROOKHUB_API_URL, rh.ROOKHUB_STATS_SECRET
+    orig_exc = rh.requests.RequestException
+    try:
+        rh.ROOKHUB_API_URL = 'http://rookhub'
+        rh.ROOKHUB_STATS_SECRET = 'topsecret'
+        rh.requests.RequestException = _FakeRequestException
+        rh.requests.get = lambda *a, **kw: _Resp404()
+        check('404 → None (nicht verknuepft)', rh.get_player_progress('1') is None)
+
+        def _boom_get(*a, **kw):
+            raise _FakeRequestException('connection refused')
+        rh.requests.get = _boom_get
+        check('Netzfehler → PROGRESS_UNAVAILABLE',
+              rh.get_player_progress('1') is rh.PROGRESS_UNAVAILABLE)
+        check('Sentinel ist falsy (kein versehentliches "verknuepft")',
+              not rh.PROGRESS_UNAVAILABLE)
+    finally:
+        rh.requests.get, rh.ROOKHUB_API_URL, rh.ROOKHUB_STATS_SECRET = orig_get, orig_url, orig_secret
+        rh.requests.RequestException = orig_exc
+
+    # 2) _send_motivation_to wirft → keine (falsche) Unlinked-DM
+    tmpdir = setup_temp_config()
+    orig_progress = mot.rookhub.get_player_progress
+    orig_bot = mot._bot
+    try:
+        mot.rookhub.get_player_progress = lambda uid: rh.PROGRESS_UNAVAILABLE
+        fake_bot = mock.MagicMock()
+        fake_bot.fetch_user = mock.AsyncMock(side_effect=AssertionError('darf nicht gefetcht werden'))
+        mot._bot = fake_bot
+        raised = False
+        try:
+            run_async(mot._send_motivation_to(777))
+        except mot.RookHubUnavailable:
+            raised = True
+        check('RookHub weg → RookHubUnavailable statt Unlinked-DM', raised)
+
+        # 3) Loop behandelt das als transient (60-min-Retry), nicht als erfolgreichen Versand
+        uid = '777'
+        now = datetime.now(timezone.utc)
+        atomic_write(mot.MOTIVATION_SUB_FILE, {'subscribers': {
+            uid: {'hour': 18, 'minute': 0, 'next': '2000-01-01T00:00:00+00:00'}}})
+        run_async(mot._run_motivation_dms())
+        info = atomic_read(mot.MOTIVATION_SUB_FILE, default=dict).get('subscribers', {}).get(uid, {})
+        delta = mot._parse_utc(info['next']) - now
+        check('RookHub weg → next ~+60min (Retry)', timedelta(minutes=30) < delta < timedelta(hours=2))
+        check('RookHub weg → retries=1', info.get('retries') == 1)
+    finally:
+        mot.rookhub.get_player_progress = orig_progress
+        mot._bot = orig_bot
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_player_progress_signature():
     """get_player_progress signiert über '<ts>.<did>' + sendet X-Bot-Timestamp (Replay-Schutz)."""
     print('[player-progress signature]')

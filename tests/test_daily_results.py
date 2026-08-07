@@ -8,6 +8,7 @@ Formatierungslogik bewusst ohne schwere Importe auskommt.
 import importlib.util
 import os
 import sys
+from datetime import datetime, timezone
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _REPO)
@@ -185,12 +186,32 @@ def test_remember_midnight_rollover():
             os.remove(dr.DAILY_FILE)
 
 
+def test_catchup_due():
+    """catchup_due: fehlender Tagespuzzle-Post wird nach der Post-Zeit nachgeholt."""
+    now = datetime(2026, 6, 10, 9, 30, tzinfo=timezone.utc)
+    check('heute schon gepostet → kein Catch-up',
+          dr.catchup_due({'date': '2026-06-10'}, now, 9, 0) is False)
+    check('gestriger Post + Zeit vorbei → Catch-up',
+          dr.catchup_due({'date': '2026-06-09'}, now, 9, 0) is True)
+    check('gar kein Post → Catch-up',
+          dr.catchup_due(None, now, 9, 0) is True)
+    check('Post-Zeit noch nicht erreicht → kein Catch-up (Loop macht es)',
+          dr.catchup_due({'date': '2026-06-09'}, now, 10, 0) is False)
+    check('exakt zur Post-Zeit → kein Catch-up (Karenz, sonst Doppel-Post)',
+          dr.catchup_due({'date': '2026-06-09'}, datetime(2026, 6, 10, 9, 0, tzinfo=timezone.utc),
+                         9, 0) is False)
+    check('Post-Zeit + Karenz vorbei → Catch-up',
+          dr.catchup_due({'date': '2026-06-09'}, datetime(2026, 6, 10, 9, 2, tzinfo=timezone.utc),
+                         9, 0) is True)
+
+
 def main():
     for t in (test_no_solvers, test_mentions_and_names, test_truncates_long_list,
               test_anonymous_counted, test_only_anonymous, test_all_solved_hides_try_count,
               test_fmt_time, test_time_display, test_time_zero_hidden,
               test_hints_badge, test_hints_badge_without_time,
-              test_remember_current_roundtrip, test_remember_midnight_rollover):
+              test_remember_current_roundtrip, test_remember_midnight_rollover,
+              test_catchup_due):
         print(f'== {t.__name__} ==')
         t()
     print()

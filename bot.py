@@ -272,6 +272,19 @@ async def on_ready():
         await daily_results.refresh(bot)
     except Exception:
         log.warning('Initialer daily_results.refresh fehlgeschlagen')
+    # ...und den Tagespuzzle-POST selbst nachholen, wenn er heute ausgefallen ist (Bot war
+    # zur Loop-Zeit offline). Ohne das gaebe es an dem Tag gar kein Daily — und faellt der
+    # 1. aus, waere der Vormonats-Endstand (haengt am Daily-Post) dauerhaft weg.
+    try:
+        from puzzle import daily_results
+        if DAILY_CHANNEL_IDS and daily_results.catchup_due(
+                daily_results.current(), datetime.now(timezone.utc), PUZZLE_HOUR, PUZZLE_MINUTE):
+            log.warning('Tagespuzzle von heute fehlt (Bot war zur Post-Zeit offline?) — wird nachgeholt.',
+                        extra={'es_fields': {'tags': ['daily', 'puzzle']}})
+            await _post_daily_to_all()
+    except Exception:
+        log.exception('Daily-Catch-up beim Start fehlgeschlagen',
+                      extra={'es_fields': {'tags': ['daily', 'puzzle']}})
     # Linien-Cache im Hintergrund vorwaermen, damit der erste /puzzle-Aufruf
     # nach einem Neustart nicht auf das PGN-Parsing warten muss.
     try:

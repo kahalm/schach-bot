@@ -4,6 +4,22 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.79.2] - 2026-08-07
+### Fixed
+- Motivations-DM: ein RookHub-Ausfall (Timeout/5xx/Neustart) wurde als „nicht verknüpft"
+  gewertet — verknüpfte Abonnenten bekamen dann die allgemeine Motivation samt
+  „Registrier dich auf RookHub"-CTA, und weil der Versand als erfolgreich zählte, griff
+  auch der Retry nie. `get_player_progress` unterscheidet jetzt 404 (nicht verknüpft,
+  `None`) von transienten Fehlern (`PROGRESS_UNAVAILABLE`): der tägliche Versand
+  verschiebt sich um 60 min, der Activity-Watcher überspringt den User in dem Durchlauf.
+- Tagespuzzle wird beim Bot-Start nachgeholt, wenn es an dem Tag ausgefallen ist (Bot war
+  zur Post-Zeit offline/im Deploy) — bisher gab es dann gar kein Daily und nur `/daily`
+  half. Damit ist auch der Vormonats-Endstand nicht mehr verlierbar, der am
+  Tagespuzzle-Post hängt.
+- Monats-Endstand: Nachhol-Fenster von 7 Tagen statt nur am 1. eines Monats (Dedupe über
+  `last_posted` bleibt, also weiterhin genau ein Post pro Monat) — fiel der 1. aus, war
+  der Endstand des Vormonats bisher dauerhaft weg.
+
 ## [2.79.1] - 2026-07-14
 ### Fixed
 - CI: der Changelog→Discord-Announce macht den Push-Workflow nicht mehr rot, wenn der

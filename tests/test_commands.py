@@ -47,6 +47,7 @@ from test_cmd_motivation import (
     test_motivation_command, test_motivation_builder, test_motivation_random_spruch,
     test_parse_zeit, test_activity_watcher, test_slacker_text,
     test_motivation_dm_retry, test_motivation_tournaments, test_player_progress_signature,
+    test_progress_unavailable,
 )
 from test_cmd_library import (
     test_bibliothek, test_tag, test_autor, test_reindex, test_reindex_requires_admin,
@@ -150,6 +151,7 @@ def main():
     test_activity_watcher()
     test_slacker_text()
     test_player_progress_signature()
+    test_progress_unavailable()
     test_motivation_dm_retry()
     test_healthcheck()
     test_build_puzzle_embed()

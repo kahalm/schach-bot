@@ -49,6 +49,17 @@ _MAX_UNREACHABLE_DAYS = 5    # Tage in Folge unzustellbar (DMs gesperrt) → Abo
 _bot = None
 
 
+class RookHubUnavailable(RuntimeError):
+    """RookHub war beim Bauen der DM nicht erreichbar → Versand verschieben, NICHT
+    ersatzweise die „nicht verknuepft"-DM schicken (die waere fuer verknuepfte User falsch
+    und wuerde als erfolgreich gesendet gelten)."""
+
+
+def _unavailable(progress) -> bool:
+    """True, wenn ``progress`` ein transienter RookHub-Fehler ist (≠ „nicht verknuepft")."""
+    return progress is rookhub.PROGRESS_UNAVAILABLE
+
+
 def _sub_default():
     return {"subscribers": {}}
 
@@ -130,7 +141,7 @@ async def _check_goals_completed():
         if not reinforcement.goals_not_yet_notified_today(uid_str):
             continue
         progress = await asyncio.to_thread(rookhub.get_player_progress, uid_int)
-        if progress is None:
+        if progress is None or _unavailable(progress):
             continue
         cats, has_goal, all_met = _analyze_progress(progress)
         if not has_goal or not all_met:
@@ -205,6 +216,12 @@ async def _check_activities():
 
         # Tagesziele pruefen
         progress = await asyncio.to_thread(rookhub.get_player_progress, uid_int)
+        if _unavailable(progress):
+            # RookHub gerade weg: Verknuepfungs-Status unbekannt → diesen Durchlauf
+            # ueberspringen (dm_sent bleibt ungesetzt, beim naechsten Loop-Durchlauf in 10 min neuer Versuch),
+            # statt einem verknuepften User faelschlich den Registrier-Nudge zu schicken.
+            log.debug('Activity-Watch: RookHub fuer User %s nicht erreichbar — uebersprungen.', uid_str)
+            continue
 
         try:
             user_obj = member or await _bot.fetch_user(uid_int)
@@ -249,8 +266,11 @@ async def _send_motivation_to(uid_int: int, user_obj=None) -> bool:
     """Schickt EINEM User die passende Motivations-DM (verknuepft → persoenlich, sonst allgemein + CTA).
 
     ``user_obj`` optional (spart das fetch_user); sonst wird er ueber den Bot geholt. Gibt True bei Versand.
+    Wirft ``RookHubUnavailable``, wenn der Verknuepfungs-Status wegen eines RookHub-Ausfalls unbekannt ist.
     """
     progress = await asyncio.to_thread(rookhub.get_player_progress, uid_int)
+    if _unavailable(progress):
+        raise RookHubUnavailable(f'RookHub nicht erreichbar (User {uid_int})')
     if user_obj is None:
         user_obj = await _bot.fetch_user(uid_int)
     if progress is not None:
@@ -293,7 +313,8 @@ async def _run_motivation_dms():
         hour = info.get('hour', _DEFAULT_HOUR)
         minute = info.get('minute', _DEFAULT_MINUTE)
 
-        # 'sent' | 'unreachable' (DMs gesperrt/Account weg) | 'transient' (voruebergehend)
+        # 'sent' | 'unreachable' (DMs gesperrt/Account weg) | 'transient' (voruebergehend,
+        # inkl. RookHubUnavailable → 60-min-Retry statt falscher Unlinked-DM)
         outcome = 'sent'
         try:
             await _send_motivation_to(int(uid_str))
@@ -506,11 +527,15 @@ def setup(bot):
         updated = await asyncio.to_thread(_subscribe, uid, h, m)
         # Verknuepfungs-Status nur fuer den Hinweis im Bestaetigungstext.
         progress = await asyncio.to_thread(rookhub.get_player_progress, target.id)
-        linked = progress is not None
+        linked = progress is not None and not _unavailable(progress)
         verb = 'aktualisiert' if updated else 'abonniert'
         wer = f'**{target.display_name}**: ' if for_other else ''
         zeit_txt = f'taeglich um **{h}:{m:02d} MEZ/MESZ**'
-        if linked:
+        if _unavailable(progress):
+            # RookHub gerade nicht erreichbar → Verknuepfungs-Status offen lassen statt
+            # faelschlich „nicht verknuepft" zu behaupten. Das Abo steht trotzdem.
+            note = 'RookHub ist gerade nicht erreichbar — der Verknuepfungs-Status wird beim Versand geprueft.'
+        elif linked:
             note = ('Es kommt eine persoenliche Nachricht zum Fortschritt.' if for_other
                     else 'Du bekommst taeglich eine kurze, persoenliche Nachricht zu deinem Fortschritt.')
         else:
@@ -545,14 +570,18 @@ def setup(bot):
         await interaction.response.defer(ephemeral=True)
 
         sent_ok = True
+        fail_msg = '⚠️ Sofort-DM fehlgeschlagen (DMs deaktiviert?).'
         try:
             await _send_motivation_to(user.id, user)
+        except RookHubUnavailable:
+            sent_ok = False
+            fail_msg = '⚠️ RookHub nicht erreichbar — nichts gesendet (spaeter erneut versuchen).'
+            log.warning('Manuelle Motivations-DM an %s: RookHub nicht erreichbar', user.id)
         except Exception:
             sent_ok = False
             log.warning('Manuelle Motivations-DM an %s fehlgeschlagen', user.id)
 
-        parts = ['✅ Motivations-DM gesendet.' if sent_ok
-                 else '⚠️ Sofort-DM fehlgeschlagen (DMs deaktiviert?).']
+        parts = ['✅ Motivations-DM gesendet.' if sent_ok else fail_msg]
         if sub_time is not None:
             h, m = sub_time
             await asyncio.to_thread(_subscribe, str(user.id), h, m)

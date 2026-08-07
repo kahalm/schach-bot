@@ -208,16 +208,43 @@ def get_weekly_results(weekly_id, timeout: int = _TIMEOUT) -> dict | None:
         return None
 
 
-def get_player_progress(discord_id, timeout: int = _TIMEOUT) -> dict | None:
+class _ProgressUnavailable:
+    """Sentinel-Typ fuer ``PROGRESS_UNAVAILABLE`` (siehe dort)."""
+
+    __slots__ = ()
+
+    def __repr__(self):  # nur fuer Logs/Tests
+        return '<PROGRESS_UNAVAILABLE>'
+
+    def __bool__(self):
+        # Falsy, damit ein `if progress:`-Aufrufer den Sentinel nie faelschlich als
+        # „verknuepft + Daten da" behandelt.
+        return False
+
+
+# Rueckgabe von get_player_progress bei TRANSIENTEM Fehler (Timeout, 5xx, RookHub-Neustart).
+# Bewusst NICHT None: None heisst „nicht verknuepft" und loest beim Aufrufer den
+# Registrier-CTA aus — bei einem RookHub-Ausfall bekaemen sonst ALLE verknuepften
+# Abonnenten die falsche „Registrier dich"-DM (und der Retry greift nicht, weil der
+# Versand als erfolgreich zaehlt).
+PROGRESS_UNAVAILABLE = _ProgressUnavailable()
+
+
+def get_player_progress(discord_id, timeout: int = _TIMEOUT):
     """Holt den Trainings-/Puzzle-Fortschritt eines mit RookHub verknuepften Spielers.
 
     Authentifiziert ueber eine HMAC-Signatur (``X-Bot-Signature: sha256=<hex>``) ueber die Discord-ID
     mit dem geteilten ``ROOKHUB_STATS_SECRET`` (== RookHubs ``SchachBot__StatsSecret``).
 
-    Rueckgabe: ``BotPlayerProgressDto`` als dict (``username``, ``displayName``, ``today`` mit
-    ``goal``/``puzzles``/``book``/``play``/``status``/``weekDaysMet``/``weeklyDaysTarget``, ``puzzles``-Stats)
-    — oder ``None``, wenn der Spieler NICHT verknuepft ist (404), das Feature/Secret fehlt oder ein
-    Fehler auftritt. ``None`` heisst fuer den Aufrufer: keine Motivation, stattdessen Verknuepfungs-Hinweis.
+    Rueckgabe:
+
+    * ``BotPlayerProgressDto`` als dict (``username``, ``displayName``, ``today`` mit
+      ``goal``/``puzzles``/``book``/``play``/``status``/``weekDaysMet``/``weeklyDaysTarget``,
+      ``puzzles``-Stats) — Spieler ist verknuepft.
+    * ``None`` — Spieler NICHT verknuepft (404) oder Feature/Secret nicht konfiguriert.
+      Fuer den Aufrufer: keine persoenliche Motivation, stattdessen Verknuepfungs-Hinweis.
+    * ``PROGRESS_UNAVAILABLE`` — RookHub voruebergehend nicht erreichbar/kaputte Antwort.
+      Fuer den Aufrufer: NICHTS senden, spaeter erneut versuchen.
     """
     if not ROOKHUB_API_URL or not ROOKHUB_STATS_SECRET or discord_id is None:
         return None
@@ -237,9 +264,10 @@ def get_player_progress(discord_id, timeout: int = _TIMEOUT) -> dict | None:
             return None
         r.raise_for_status()
         return r.json()
-    except requests.RequestException as e:
+    except (requests.RequestException, ValueError) as e:
+        # Transient (Netz/5xx/Nicht-JSON-Body): darf NICHT als „nicht verknuepft" durchgehen.
         log.warning('RookHub get_player_progress(%s) fehlgeschlagen: %s', did, e)
-        return None
+        return PROGRESS_UNAVAILABLE
 
 
 def get_daily_leaderboard(month: str | None = None, timeout: int = _TIMEOUT) -> dict | None:

@@ -98,6 +98,28 @@ def remember(channel_id, message_id, puzzle_id, lang: str = 'de') -> None:
     })
 
 
+# Karenz nach der Post-Zeit, bevor nachgeholt wird: startet der Bot kurz VOR der
+# Post-Zeit, ist der Loop fuer heute schon eingeplant und feuert gleich — ohne Karenz
+# wuerde das Tagespuzzle doppelt gepostet.
+CATCHUP_GRACE_MINUTES = 2
+
+
+def catchup_due(data: dict | None, now: datetime, hour: int, minute: int) -> bool:
+    """True, wenn das Tagespuzzle von heute fehlt und die Post-Zeit (+Karenz) vorbei ist.
+
+    ``tasks.loop(time=…)`` feuert NUR exakt zur konfigurierten Minute — war der Bot da
+    offline (Deploy/Neustart/Discord-Stoerung), gab es an dem Tag gar kein Tagespuzzle.
+    Beim Start wird damit entschieden, ob der Post nachgeholt wird (Reminder/Weekly
+    machen das laengst; der Daily war der einzige ohne Nachhol-Pfad).
+
+    ``data`` ist ``current()`` (bzw. None); verglichen wird dessen ``date`` (UTC-Tag des
+    ersten Posts) mit ``now`` — beide in UTC.
+    """
+    if now.hour * 60 + now.minute < hour * 60 + minute + CATCHUP_GRACE_MINUTES:
+        return False  # Post-Zeit (noch) nicht sicher verpasst → der Loop erledigt es
+    return (data or {}).get('date') != now.strftime('%Y-%m-%d')
+
+
 def current() -> dict | None:
     """Aktueller (zuletzt gemerkter) Daily-Post inkl. aller gespiegelten Channels.
 
