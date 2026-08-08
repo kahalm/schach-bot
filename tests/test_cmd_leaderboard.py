@@ -1,5 +1,7 @@
 """Tests fuer die Tagespuzzle-Bestenlisten (commands/leaderboard.py + puzzle/daily_leaderboard.py)."""
 
+import inspect
+import os
 from datetime import datetime, timezone
 
 from test_helpers import (
@@ -121,6 +123,33 @@ def test_leaderboard_command():
     finally:
         lb.rookhub.get_daily_leaderboard, lb.rookhub.get_daily_hall_of_fame = orig_lb, orig_hof
         teardown_temp_config(tmpdir)
+    print()
+
+
+def test_leaderboard_docs_describe_catchup():
+    """Doku-Kommentare beschreiben das echte Verhalten (Nachhol-Fenster statt „nur am 1.")."""
+    print('[endstand docs]')
+    lb_src = inspect.getsource(lb)
+    stale = [s for s in ('am 1. jedes Monats', 'nur am 1.', 'Postet am 1. eines Monats',
+                         'heute (1. UTC)', 'am 1. ZUSAMMEN') if s in lb_src]
+    check(f'leaderboard.py ohne veraltete „nur am 1."-Aussagen ({stale})', not stale)
+    check('Fenster-Konstante existiert', isinstance(dlb.MONTHLY_CATCHUP_DAYS, int))
+    check('Modul-Docstring nennt Nachhol-Fenster + Tagespuzzle-Thread',
+          'MONTHLY_CATCHUP_DAYS' in (lb.__doc__ or '') and 'Thread' in (lb.__doc__ or ''))
+    check('monthly_due-Docstring nennt das Fenster',
+          'MONTHLY_CATCHUP_DAYS' in (lb.monthly_due.__doc__ or ''))
+    check('run_monthly_post-Docstring: nicht mehr geplant + Nachhol-Fenster',
+          'Nachhol-Fenster' in (lb.run_monthly_post.__doc__ or '')
+          and 'nicht' in (lb.run_monthly_post.__doc__ or '').lower())
+
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(repo, 'bot.py'), encoding='utf-8') as f:
+        bot_src = f.read()
+    idx = bot_src.index('endstand_month = _lb.monthly_due()')
+    comment = bot_src[bot_src.index('# ', idx - 600):idx]
+    check('bot.py-Kommentar ohne „Am 1. eines Monats"', 'Am 1. eines Monats' not in comment)
+    check('bot.py-Kommentar nennt Monatsanfang/Nachhol-Fenster',
+          'Monatsanfang' in comment and 'Nachhol-Fenster' in comment)
     print()
 
 

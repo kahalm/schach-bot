@@ -4,6 +4,20 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.80.1] - 2026-08-08
+### Fixed
+- Daily-Catch-up: das ~2-Minuten-Karenzloch um die Post-Zeit ist zu. Bisher entschied eine
+  feste Wartezeit nach der Post-Zeit, ob nachgeholt wird — startete der Bot innerhalb dieses
+  Fensters, postete weder der Loop noch das Catch-up, und an dem Tag gab es kein Tagespuzzle.
+  Jetzt wird geprüft, ob der gestartete `tasks.loop(time=…)` heute selbst noch feuert; nur wenn
+  nicht, wird nachgeholt. Der Grenzfall „exakt zur Post-Zeit gestartet" gilt bewusst als
+  „Loop postet" — lieber in dieser einen Sekunde kein Catch-up als ein Doppel-Post.
+
+### Changed
+- Doku-Kommentare zum Monats-Endstand in `commands/leaderboard.py` und `bot.py` beschreiben
+  wieder, was der Code tut: sie sprachen noch von „nur am 1.", seit dem v0.340.0-Durchgang gilt
+  ein Catch-up-Fenster.
+
 ## [2.80.0] - 2026-08-08
 ### Added
 - Wochenpost-Bestenliste weist den Spielmodus aus: RookHub zählt je Spieler `trainingCount`

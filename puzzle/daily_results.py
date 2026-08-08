@@ -98,25 +98,47 @@ def remember(channel_id, message_id, puzzle_id, lang: str = 'de') -> None:
     })
 
 
-# Karenz nach der Post-Zeit, bevor nachgeholt wird: startet der Bot kurz VOR der
-# Post-Zeit, ist der Loop fuer heute schon eingeplant und feuert gleich — ohne Karenz
-# wuerde das Tagespuzzle doppelt gepostet.
-CATCHUP_GRACE_MINUTES = 2
+def _loop_posts_today(loop_started: datetime, hour: int, minute: int, now: datetime) -> bool:
+    """True, wenn der gestartete ``tasks.loop(time=…)`` heute noch selbst postet.
+
+    discord.py plant beim Start die naechste Ausfuehrung: liegt die Post-Zeit zum
+    Startzeitpunkt noch in der Zukunft (sekundengenauer Vergleich ``time >= time_now``),
+    feuert der Loop heute — sonst erst morgen. Genau daran haengt, ob nachgeholt
+    werden muss. Der Grenzfall „exakt zur Post-Zeit gestartet" wird bewusst als
+    „Loop postet" gewertet: lieber einmal in dieser einen Sekunde kein Catch-up als
+    ein Doppel-Post.
+    """
+    if loop_started.date() != now.date():
+        return False  # Loop lief seit gestern → heutiger Termin ist laengst durch
+    return (loop_started.hour, loop_started.minute, loop_started.second) <= (hour, minute, 0)
 
 
-def catchup_due(data: dict | None, now: datetime, hour: int, minute: int) -> bool:
-    """True, wenn das Tagespuzzle von heute fehlt und die Post-Zeit (+Karenz) vorbei ist.
+def catchup_due(data: dict | None, now: datetime, hour: int, minute: int,
+                loop_started: datetime | None = None) -> bool:
+    """True, wenn das Tagespuzzle von heute fehlt und der Daily-Loop es nicht mehr postet.
 
     ``tasks.loop(time=…)`` feuert NUR exakt zur konfigurierten Minute — war der Bot da
     offline (Deploy/Neustart/Discord-Stoerung), gab es an dem Tag gar kein Tagespuzzle.
     Beim Start wird damit entschieden, ob der Post nachgeholt wird (Reminder/Weekly
     machen das laengst; der Daily war der einzige ohne Nachhol-Pfad).
 
+    Entscheidend ist NICHT eine Wartezeit nach der Post-Zeit, sondern wann der Loop
+    gestartet wurde (``loop_started``, Default: ``now``):
+
+    * Start vor/zur Post-Zeit → der Loop postet heute selbst; hier darf nicht
+      nachgeholt werden, sonst gibt es rund um die Post-Zeit einen Doppel-Post
+      (der Loop kann gerade mitten im Posten sein, bevor ``current()`` geschrieben ist).
+    * Start nach der Post-Zeit → heute kommt vom Loop nichts mehr → sofort nachholen.
+      (Eine feste Karenzminute wuerde hier ein Loch reissen: ein Start kurz nach der
+      Post-Zeit faende weder Loop-Post noch Catch-up.)
+
     ``data`` ist ``current()`` (bzw. None); verglichen wird dessen ``date`` (UTC-Tag des
     ersten Posts) mit ``now`` — beide in UTC.
     """
-    if now.hour * 60 + now.minute < hour * 60 + minute + CATCHUP_GRACE_MINUTES:
-        return False  # Post-Zeit (noch) nicht sicher verpasst → der Loop erledigt es
+    if now.hour * 60 + now.minute < hour * 60 + minute:
+        return False  # Post-Zeit heute noch nicht erreicht → der Loop erledigt es
+    if _loop_posts_today(loop_started or now, hour, minute, now):
+        return False
     return (data or {}).get('date') != now.strftime('%Y-%m-%d')
 
 

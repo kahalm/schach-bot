@@ -254,6 +254,9 @@ async def on_ready():
     except Exception:
         log.warning('health.json schreiben fehlgeschlagen (on_ready)')
     puzzle_task.start()
+    # Startzeitpunkt merken: davon haengt ab, ob der Loop heute noch selbst postet
+    # (discord.py plant einen nach der Post-Zeit gestarteten time-Loop auf morgen).
+    puzzle_loop_started = datetime.now(timezone.utc)
     _health_loop.start()
     bot._task_loops['puzzle_task'] = puzzle_task
     bot._task_loops['health_loop'] = _health_loop
@@ -274,11 +277,13 @@ async def on_ready():
         log.warning('Initialer daily_results.refresh fehlgeschlagen')
     # ...und den Tagespuzzle-POST selbst nachholen, wenn er heute ausgefallen ist (Bot war
     # zur Loop-Zeit offline). Ohne das gaebe es an dem Tag gar kein Daily — und faellt der
-    # 1. aus, waere der Vormonats-Endstand (haengt am Daily-Post) dauerhaft weg.
+    # 1. aus, verzoegert sich der Vormonats-Endstand (haengt am Daily-Post).
+    # `puzzle_loop_started` entscheidet ueber Doppel-Post vs. Catch-up (siehe catchup_due).
     try:
         from puzzle import daily_results
         if DAILY_CHANNEL_IDS and daily_results.catchup_due(
-                daily_results.current(), datetime.now(timezone.utc), PUZZLE_HOUR, PUZZLE_MINUTE):
+                daily_results.current(), datetime.now(timezone.utc), PUZZLE_HOUR, PUZZLE_MINUTE,
+                loop_started=puzzle_loop_started):
             log.warning('Tagespuzzle von heute fehlt (Bot war zur Post-Zeit offline?) — wird nachgeholt.',
                         extra={'es_fields': {'tags': ['daily', 'puzzle']}})
             await _post_daily_to_all()
@@ -787,8 +792,10 @@ async def _post_daily_to_all() -> list[tuple[int, bool]]:
     Dasselbe Puzzle ueberall: RookHubs ``daily``-Pool ist pro Tag deterministisch, also
     liefert jeder Aufruf dieselbe Puzzle-ID. Das Solver-Tracking sammelt die Posts via
     ``daily_results.remember()`` (Upsert pro Channel unter einem Puzzle)."""
-    # Am 1. eines Monats: Vormonats-Endstand vorbereiten, um ihn in JEDEN Tagespuzzle-Thread
-    # nachzulegen (statt eines eigenständigen Posts). Einmal je Monat (Dedupe via leaderboard-State).
+    # Am Monatsanfang: Vormonats-Endstand vorbereiten, um ihn in JEDEN Tagespuzzle-Thread
+    # nachzulegen (statt eines eigenstaendigen Posts). Faellig in den ersten Tagen des Monats
+    # (leaderboard.monthly_due → Nachhol-Fenster, falls der 1. ausfiel), aber genau einmal je
+    # Monat: Dedupe via leaderboard-State, markiert erst nach erfolgreichem Post.
     from commands import leaderboard as _lb
     endstand_month = _lb.monthly_due()
     endstand_embed = None

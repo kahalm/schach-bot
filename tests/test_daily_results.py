@@ -197,12 +197,56 @@ def test_catchup_due():
           dr.catchup_due(None, now, 9, 0) is True)
     check('Post-Zeit noch nicht erreicht → kein Catch-up (Loop macht es)',
           dr.catchup_due({'date': '2026-06-09'}, now, 10, 0) is False)
-    check('exakt zur Post-Zeit → kein Catch-up (Karenz, sonst Doppel-Post)',
+    check('exakt zur Post-Zeit gestartet → kein Catch-up (Loop feuert, sonst Doppel-Post)',
           dr.catchup_due({'date': '2026-06-09'}, datetime(2026, 6, 10, 9, 0, tzinfo=timezone.utc),
                          9, 0) is False)
-    check('Post-Zeit + Karenz vorbei → Catch-up',
+    check('deutlich nach der Post-Zeit → Catch-up',
           dr.catchup_due({'date': '2026-06-09'}, datetime(2026, 6, 10, 9, 2, tzinfo=timezone.utc),
                          9, 0) is True)
+
+
+def test_catchup_no_grace_hole():
+    """Kein Loch direkt nach der Post-Zeit: entscheidend ist der Loop-Start, keine Karenzminute.
+
+    Startete der Bot NACH der Post-Zeit, plant discord.py den time-Loop auf morgen — dann muss
+    sofort nachgeholt werden, auch in der ersten Minute danach.
+    """
+    def due(loop_started, now, data={'date': '2026-06-09'}):
+        return dr.catchup_due(data, now, 9, 0, loop_started=loop_started)
+
+    d = lambda h, m, s=0: datetime(2026, 6, 10, h, m, s, tzinfo=timezone.utc)
+
+    check('Start 30 s nach Post-Zeit → Catch-up (frueher Karenz-Loch)',
+          due(d(9, 0, 30), d(9, 0, 45)) is True)
+    check('Start 09:01 (2. Karenzminute) → Catch-up (frueher Karenz-Loch)',
+          due(d(9, 1, 10), d(9, 1, 12)) is True)
+    check('Start 1 s nach Post-Zeit → Catch-up',
+          due(d(9, 0, 1), d(9, 0, 5)) is True)
+    check('Start kurz VOR Post-Zeit → kein Catch-up (Loop postet gerade selbst)',
+          due(d(8, 59, 58), d(9, 0, 3)) is False)
+    check('Start exakt zur Post-Zeit → kein Catch-up (Loop feuert)',
+          due(d(9, 0, 0), d(9, 0, 2)) is False)
+    check('Start nach Post-Zeit, aber heute schon gepostet → kein Catch-up',
+          due(d(9, 0, 30), d(9, 0, 45), data={'date': '2026-06-10'}) is False)
+    check('Start vor Post-Zeit, Post-Zeit noch nicht erreicht → kein Catch-up',
+          due(d(8, 30, 0), d(8, 31, 0)) is False)
+    check('Loop seit gestern, heutiger Post fehlt → Catch-up',
+          due(datetime(2026, 6, 9, 8, 0, tzinfo=timezone.utc), d(9, 30)) is True)
+
+
+def test_bot_passes_loop_start_to_catchup():
+    """bot.py reicht den Loop-Startzeitpunkt an catchup_due weiter (sonst greift der Fix nicht).
+
+    bot.py laesst sich hier nicht importieren (braucht discord + Token), darum Quelltext-Check.
+    """
+    with open(os.path.join(_REPO, 'bot.py'), encoding='utf-8') as f:
+        src = f.read()
+    start_idx = src.index('puzzle_task.start()')
+    call_idx = src.index('daily_results.catchup_due(')
+    call = src[call_idx:src.index('):', call_idx)]
+    check('Loop-Start wird nach puzzle_task.start() gemerkt',
+          'puzzle_loop_started = datetime.now(timezone.utc)' in src[start_idx:call_idx])
+    check('catchup_due bekommt loop_started', 'loop_started=puzzle_loop_started' in call)
 
 
 def main():
@@ -211,7 +255,8 @@ def main():
               test_fmt_time, test_time_display, test_time_zero_hidden,
               test_hints_badge, test_hints_badge_without_time,
               test_remember_current_roundtrip, test_remember_midnight_rollover,
-              test_catchup_due):
+              test_catchup_due, test_catchup_no_grace_hole,
+              test_bot_passes_loop_start_to_catchup):
         print(f'== {t.__name__} ==')
         t()
     print()

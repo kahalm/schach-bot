@@ -1,8 +1,12 @@
 """Tagespuzzle-Bestenlisten auf Discord: Monats-Ladder + all-time Hall of Fame.
 
 `/bestenliste [monat]` zeigt die aktuelle (oder gewählte) Monats-Wertung + Hall of Fame.
-Zusätzlich postet ein täglicher Loop am 1. jedes Monats automatisch die Endabrechnung des
-Vormonats in den Puzzle-Channel (einmalig, dedupliziert via `config/leaderboard_state.json`).
+Zusätzlich wird die Endabrechnung des Vormonats automatisch gepostet — nicht von einem
+eigenen Loop, sondern vom Tagespuzzle-Flow (`bot._post_daily_to_all`), der den Endstand in
+DEN Thread des Tagespuzzles nachlegt. Fällig ist sie im Nachhol-Fenster der ersten
+`daily_leaderboard.MONTHLY_CATCHUP_DAYS` Tage eines Monats (der 1. ist der Normalfall; fiel
+er aus, wird nachgeholt), aber genau einmal pro Monat — dedupliziert via
+`config/leaderboard_state.json`.
 
 RookHub ist Source of Truth (Wertung serverseitig berechnet); der Bot holt sie via
 `puzzle.rookhub.get_daily_leaderboard` / `get_daily_hall_of_fame` und rendert sie. Reine
@@ -11,7 +15,7 @@ Formatierungs-/Termin-Logik liegt in `puzzle.daily_leaderboard` (eigenständig t
 
 import logging
 import os
-from datetime import datetime, time, timezone
+from datetime import datetime, timezone
 
 import discord
 
@@ -24,8 +28,7 @@ from puzzle import rookhub
 log = logging.getLogger('schach-bot')
 
 STATE_FILE = os.path.join(CONFIG_DIR, 'leaderboard_state.json')
-# Täglicher Check; postet nur am 1. UTC (Vormonats-Abrechnung). Uhrzeit unkritisch.
-_POST_TIME = time(hour=8, minute=0)
+# (Kein eigener Post-Zeitpunkt mehr: der Endstand hängt am Tagespuzzle-Post, s. Modul-Docstring.)
 
 _bot = None
 _channel_id = 0
@@ -72,9 +75,13 @@ def _mark_posted(month_key: str) -> None:
 
 
 def monthly_due() -> str | None:
-    """Monatsschlüssel (``yyyy-MM``) der Vormonats-Abrechnung, falls sie heute (1. UTC) fällig und
-    noch nicht gepostet ist — sonst ``None``. Dedupe via ``STATE_FILE``. Für die Einbettung in den
-    Tagespuzzle-Thread (der Daily-Flow ruft das am Monatsanfang auf)."""
+    """Monatsschlüssel (``yyyy-MM``) der Vormonats-Abrechnung, falls sie heute fällig und noch
+    nicht gepostet ist — sonst ``None``.
+
+    Fällig ist sie an jedem der ersten ``dlb.MONTHLY_CATCHUP_DAYS`` Tage eines Monats (UTC):
+    normalerweise greift der 1., fiel der aus (Bot offline), holt einer der Folgetage nach.
+    Dedupe via ``STATE_FILE`` → trotzdem genau ein Post pro Monat. Für die Einbettung in den
+    Tagespuzzle-Thread (der Daily-Flow ruft das bei jedem Tagespuzzle auf)."""
     state = atomic_read(STATE_FILE, default=dict)
     return dlb.should_post_monthly(state if isinstance(state, dict) else {}, datetime.now(timezone.utc))
 
@@ -95,7 +102,11 @@ def mark_monthly_posted(month: str) -> None:
 
 
 async def run_monthly_post() -> None:
-    """Postet am 1. eines Monats die Endabrechnung des Vormonats (einmalig)."""
+    """Postet die Vormonats-Endabrechnung eigenständig in ``_channel_id`` (einmalig pro Monat).
+
+    Fälligkeit wie bei :func:`monthly_due` (Nachhol-Fenster am Monatsanfang, nicht nur der 1.).
+    Wird NICHT mehr geplant — der produktive Weg ist der Endstand im Tagespuzzle-Thread
+    (siehe HINWEIS in :func:`setup`); bleibt für Tests/Ad-hoc-Aufrufe."""
     if not _bot or not _channel_id:
         return
     import asyncio
@@ -153,6 +164,7 @@ def setup(bot, channel_id: int = 0):
         await interaction.followup.send(embed=_build_embed(ladder, hof))
 
     # HINWEIS: Der frühere eigenständige 08:00-Loop (run_monthly_post → dedizierter Channel) ist
-    # abgeschaltet. Die Vormonats-Abrechnung wird stattdessen am 1. ZUSAMMEN mit dem Tagespuzzle in
-    # DESSEN Thread gepostet (siehe bot._post_daily_to_all → leaderboard.monthly_due/build_endstand_embed/
-    # mark_monthly_posted). `run_monthly_post` bleibt für Tests/Ad-hoc erhalten, wird aber nicht mehr geplant.
+    # abgeschaltet. Die Vormonats-Abrechnung wird stattdessen ZUSAMMEN mit dem Tagespuzzle in DESSEN
+    # Thread gepostet — beim ersten Tagespuzzle im Nachhol-Fenster am Monatsanfang (siehe
+    # bot._post_daily_to_all → leaderboard.monthly_due/build_endstand_embed/mark_monthly_posted).
+    # `run_monthly_post` bleibt für Tests/Ad-hoc erhalten, wird aber nicht mehr geplant.
