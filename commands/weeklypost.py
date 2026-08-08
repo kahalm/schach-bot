@@ -155,6 +155,28 @@ def _fmt_secs(s) -> str:
     return fmt_mmss(s, hours=True) or '0:00'
 
 
+def _count(value) -> int:
+    """Zaehlwert aus der Webhook-Payload robust nach int (fehlend/None/Muell → 0)."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _mode_suffix(p: dict) -> str:
+    """Kurz-Markierung des Spielmodus je Spieler.
+
+    RookHub kennt zwei Modi: „training" (Brett eingefroren, Standard/Altbestand) und „easy"
+    (Figuren ziehbar). Markiert wird nur die Abweichung vom Standard — reines Training bekommt
+    nichts, damit die Bestenliste kurz und scannbar bleibt. Fehlen die Felder (aeltere
+    RookHub-Version), ist die Ausgabe identisch zu vorher.
+    """
+    easy = _count(p.get('easyCount'))
+    if easy <= 0:
+        return ''
+    return f' · {easy}× einfach'
+
+
 def format_weekly_results(results: dict) -> str:
     """Baut den Embed-Feld-Text: wer erledigt + gelöst/total + Gesamtzeit je User (rein, testbar)."""
     players = results.get('players') or []
@@ -168,7 +190,8 @@ def format_weekly_results(results: dict) -> str:
         name = f'<@{did}>' if did else (p.get('name') or '—')
         mark = '✅ ' if p.get('completed') else ''   # ✅ bei erledigt
         hint = ' (💡)' if p.get('hintsUsed', 0) > 0 else ''   # 💡 wenn (bei mind. 1 Puzzle) mit Tipps gelöst
-        lines.append(f"{mark}{name} — {p.get('solvedCount', 0)}/{total} · {_fmt_secs(p.get('totalSeconds', 0))}{hint}")
+        mode = _mode_suffix(p)   # z.B. „· 2× einfach" (Figuren ziehbar); reines Training bleibt leer
+        lines.append(f"{mark}{name} — {p.get('solvedCount', 0)}/{total} · {_fmt_secs(p.get('totalSeconds', 0))}{hint}{mode}")
     more = len(players) - len(lines)
     body = '\n'.join(lines)
     if more > 0:

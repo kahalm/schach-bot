@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.80.0] - 2026-08-08
+### Added
+- Wochenpost-Bestenliste weist den Spielmodus aus: RookHub zählt je Spieler `trainingCount`
+  (Brett eingefroren, Standard) und `easyCount` (Figuren ziehbar) und schickt beides im
+  Weekly-Webhook mit. Im Embed hängt hinter der Zeile eines Spielers `· N× einfach`, sobald
+  er mindestens ein Puzzle im einfachen Modus gespielt hat; reines Training bleibt
+  unmarkiert. Ältere RookHub-Instanzen ohne die Felder ergeben unverändert die alte Zeile.
+
 ## [2.79.2] - 2026-08-07
 ### Fixed
 - Motivations-DM: ein RookHub-Ausfall (Timeout/5xx/Neustart) wurde als „nicht verknüpft"

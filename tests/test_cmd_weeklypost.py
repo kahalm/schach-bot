@@ -164,3 +164,49 @@ def test_weekly_results_format():
     check('💡 bei Alice (mit Tipps)', '💡' in alice_line)
     check('kein 💡 bei Bob (ohne Tipps)', '💡' not in bob_line)
     print()
+
+
+def test_weekly_results_modes():
+    """Modus-Anzeige: 'einfach' (Figuren ziehbar) wird ausgewiesen, reines Training bleibt unmarkiert;
+    fehlende Felder (aeltere RookHub-Version) aendern die Ausgabe nicht."""
+    print('[weekly results modes]')
+    res = {
+        'total': 5, 'completedCount': 0,
+        'players': [
+            # nur Training → keine Modus-Markierung (Standardfall, haelt die Liste ruhig)
+            {'name': 'Trainer', 'solvedCount': 5, 'playedCount': 5, 'totalSeconds': 60,
+             'trainingCount': 5, 'easyCount': 0},
+            # gemischt → Anzahl der einfachen Puzzles
+            {'name': 'Mixi', 'solvedCount': 4, 'playedCount': 5, 'totalSeconds': 60,
+             'trainingCount': 3, 'easyCount': 2},
+            # nur einfach
+            {'name': 'Easy', 'solvedCount': 3, 'playedCount': 3, 'totalSeconds': 60,
+             'trainingCount': 0, 'easyCount': 3},
+        ],
+    }
+    out = wp.format_weekly_results(res)
+    trainer = [l for l in out.splitlines() if 'Trainer' in l][0]
+    mixi = [l for l in out.splitlines() if 'Mixi' in l][0]
+    easy = [l for l in out.splitlines() if 'Easy' in l][0]
+    check('reines Training ohne Zusatz', 'einfach' not in trainer)
+    check('gemischt zeigt einfache Anzahl', '2× einfach' in mixi)
+    check('nur einfach zeigt Anzahl', '3× einfach' in easy)
+
+    # Abwaertskompatibel: alte RookHub-Instanz schickt die Felder nicht → nichts Zusaetzliches.
+    legacy = {
+        'total': 5, 'completedCount': 1,
+        'players': [
+            {'name': 'Alt', 'discordId': 'd9', 'solvedCount': 5, 'playedCount': 5,
+             'totalSeconds': 90, 'completed': True, 'hintsUsed': 1},
+        ],
+    }
+    out_legacy = wp.format_weekly_results(legacy)
+    check('ohne Modus-Felder kein Zusatz', 'einfach' not in out_legacy)
+    check('ohne Modus-Felder Rest unveraendert', '<@d9> — 5/5 · 1:30 (💡)' in out_legacy)
+
+    # Robust gegen Muell-Werte (None/Strings) aus der Payload.
+    junk = {'total': 2, 'completedCount': 0,
+            'players': [{'name': 'Junk', 'solvedCount': 1, 'totalSeconds': 10,
+                         'trainingCount': None, 'easyCount': 'zwei'}]}
+    check('Muell-Werte kippen das Format nicht', 'einfach' not in wp.format_weekly_results(junk))
+    print()

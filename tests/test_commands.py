@@ -34,7 +34,7 @@ from test_cmd_events import (
     test_turnier_review, test_turnier_approve_modal,
 )
 from test_cmd_weeklypost import (
-    test_weekly_announcer, test_weekly_results_format,
+    test_weekly_announcer, test_weekly_results_format, test_weekly_results_modes,
     test_weekly_announcement_prefills_progress,
     test_weekly_announcement_includes_description,
 )
@@ -136,6 +136,7 @@ def main():
     test_posted_reset_per_pool()
     test_weekly_announcer()
     test_weekly_results_format()
+    test_weekly_results_modes()
     test_weekly_announcement_prefills_progress()
     test_weekly_announcement_includes_description()
     test_leaderboard_format()
