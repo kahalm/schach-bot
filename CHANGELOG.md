@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.81.0] - 2026-08-09
+### Security
+- `GET /webhook/build-info` verlangt jetzt `X-Bot-Timestamp` + `X-Bot-Signature`
+  (`sha256=` + HMAC_SHA256(`ROOKHUB_STATS_SECRET`, `<ts>`), Toleranz ±300 s,
+  constant-time-Vergleich). Der Webhook-Port ist host-published — die laufende
+  Commit-SHA war bisher unauthentifiziert abrufbar. Die rookhub-Abrufseite
+  sendet die Header ab v0.355.0; bis deren Deploy zeigt der Admin-CI-Tab fuer
+  den Bot keine laufende Version (bewusst: fail-closed).
+- Abgewiesene build-info-Zugriffe werden geloggt (Konfig-Drift vs. Port-Abklopfen).
+
 ## [2.80.1] - 2026-08-08
 ### Fixed
 - Daily-Catch-up: das ~2-Minuten-Karenzloch um die Post-Zeit ist zu. Bisher entschied eine

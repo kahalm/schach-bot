@@ -22,6 +22,9 @@ Sicherheit:
 - 401 bei fehlender/falscher Signatur, 400 bei kaputtem JSON, 200 sonst (auch
   wenn der Daily-Post nicht zur gelieferten puzzleId passt — vermeidet
   Retry-Loops auf RookHub-Seite, dort steht das schliesslich nur als „Info").
+- ``GET /webhook/build-info`` ist separat abgesichert (der Port ist host-published,
+  die Commit-SHA soll nicht oeffentlich lesbar sein): ``X-Bot-Timestamp`` +
+  ``X-Bot-Signature`` mit ``ROOKHUB_STATS_SECRET``, s. :func:`_verify_build_info_auth`.
 """
 
 import hashlib
@@ -259,12 +262,63 @@ def _make_weekly_handler(bot, secret: str):
     return handle
 
 
-async def _build_info_handler(request: web.Request) -> web.Response:
-    """GET /webhook/build-info → {sha, ref} des laufenden Images (aus GIT_SHA/GIT_REF-ENV)."""
-    return web.json_response({
-        'sha': os.environ.get('GIT_SHA', ''),
-        'ref': os.environ.get('GIT_REF', ''),
-    })
+# Header-Namen fuer die Build-Info-Authentifizierung (fester Vertrag mit der
+# rookhub-Abrufseite — beide Enden werden synchron gehalten).
+_BUILD_INFO_TS_HEADER = 'X-Bot-Timestamp'
+_BUILD_INFO_SIG_HEADER = 'X-Bot-Signature'
+
+
+def _verify_build_info_auth(secret: str, ts_header: str | None, sig_header: str | None,
+                            now: float | None = None) -> bool:
+    """Prueft das feste Header-Schema fuer ``GET /webhook/build-info``.
+
+    Vertrag (die rookhub-Seite baut die Header exakt so): ``X-Bot-Timestamp`` traegt
+    Unix-Sekunden, ``X-Bot-Signature`` = ``"sha256=" + HMAC_SHA256(ROOKHUB_STATS_SECRET,
+    "<ts>")`` hex. Der Timestamp muss innerhalb ±``_TIMESTAMP_TOLERANCE`` liegen
+    (Replay-Schutz), verglichen wird via ``hmac.compare_digest``. Leeres Secret
+    (ENV nicht gesetzt) deaktiviert den Endpoint → immer ``False``.
+    """
+    if not secret or not ts_header or not sig_header:
+        return False
+    ts_raw = ts_header.strip()
+    try:
+        ts = int(ts_raw)
+    except ValueError:
+        return False
+    if now is None:
+        now = time.time()
+    if abs(now - ts) > _TIMESTAMP_TOLERANCE:
+        return False
+    # HMAC ueber den Header-Wert wie gesendet (keine Re-Kanonisierung — sonst wuerde
+    # z. B. eine fuehrende Null die vom Client korrekt gebildete Signatur invalidieren).
+    expected = 'sha256=' + hmac.new(secret.encode('utf-8'), ts_raw.encode('utf-8'),
+                                    hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected.encode('utf-8'), sig_header.strip().encode('utf-8'))
+
+
+def _make_build_info_handler(stats_secret: str):
+    """Handler fuer ``GET /webhook/build-info`` → {sha, ref} des laufenden Images
+    (aus GIT_SHA/GIT_REF-ENV).
+
+    Nur mit gueltigem ``X-Bot-Timestamp``/``X-Bot-Signature``-Paar (s.
+    :func:`_verify_build_info_auth`) — der Webhook-Port ist host-published, die
+    Commit-SHA soll nicht unauthentifiziert abrufbar sein.
+    """
+    async def handle(request: web.Request) -> web.Response:
+        if not _verify_build_info_auth(stats_secret,
+                                       request.headers.get(_BUILD_INFO_TS_HEADER),
+                                       request.headers.get(_BUILD_INFO_SIG_HEADER)):
+            # Sichtbar machen statt still abweisen: ein 401 hier ist entweder ein
+            # Konfig-Drift (Secret ungleich) oder jemand klopft den Port ab.
+            log.warning('build-info: unauthentifizierter Zugriff abgewiesen (remote=%s)',
+                        getattr(request, 'remote', '?'))
+            return web.Response(status=401, text='unauthorized')
+        return web.json_response({
+            'sha': os.environ.get('GIT_SHA', ''),
+            'ref': os.environ.get('GIT_REF', ''),
+        })
+
+    return handle
 
 
 async def start(bot, host: str, port: int, secret: str, daily_channels=None) -> web.AppRunner | None:
@@ -286,7 +340,11 @@ async def start(bot, host: str, port: int, secret: str, daily_channels=None) -> 
     app.router.add_get('/webhook/health', lambda r: web.Response(status=200, text='ok'))
     # Build-Herkunft (CI setzt GIT_SHA/GIT_REF als Build-Arg → ENV). RookHubs Admin-CI-Seite
     # ruft das ab, um den GitHub-Actions-Run des laufenden Bot-Images zu markieren.
-    app.router.add_get('/webhook/build-info', _build_info_handler)
+    # Authentifiziert via ROOKHUB_STATS_SECRET (dasselbe Shared-Secret wie puzzle/rookhub.py,
+    # rookhub-seitig ``SchachBot__StatsSecret``) — nicht via WEBHOOK_SECRET, weil der Abrufer
+    # RookHubs Stats-/Admin-Pfad ist, nicht der Solver-Webhook-Sender.
+    app.router.add_get('/webhook/build-info',
+                       _make_build_info_handler(os.environ.get('ROOKHUB_STATS_SECRET', '')))
 
     runner = web.AppRunner(app)
     await runner.setup()
