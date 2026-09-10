@@ -4,6 +4,27 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.82.0] - 2026-09-10
+### Changed
+- **Motivations-Abo: wer dauerhaft kein RookHub-Konto verknuepft hat, wird abgemeldet.**
+  Nach `_MAX_UNLINKED_DAYS` = 5 Tagen in Folge ohne Verknuepfung endet das Abo automatisch —
+  dieselbe Karenz wie bei dauerhaft unzustellbaren DMs. Anlass: auf Prod fragte der Bot alle
+  zehn Minuten den Fortschritt eines Discord-Kontos ab, das nie verknuepft war, und bekam
+  jedes Mal korrekt 404 — gemessen 1012 vergebliche Abrufe in sieben Tagen (145 am Tag), und
+  taeglich ging ein Registrier-Hinweis raus, der offensichtlich nicht ankommt.
+- Der Zehn-Minuten-Lauf (Tagesziele erfuellt?) ueberspringt Abonnenten, die als nicht
+  verknuepft gelten. Sie koennen keine Tagesziele erfuellen; der Abruf war reine Last. Der
+  Zaehler faellt auf 0, sobald der taegliche Lauf sie wieder als verknuepft sieht.
+
+### Security
+- Zwei Bremsen gegen eine Massen-Abmeldung, weil `/api/bot/player-progress` mit **404** zwei
+  voellig verschiedene Dinge sagt: „dieser Account hat kein RookHub-Konto" (Aussage ueber den
+  User) und „das Feature ist serverseitig aus" (Aussage ueber den Server). Der Bot kann sie am
+  Statuscode nicht unterscheiden, deshalb wird ein Fehlschlag nur gezaehlt, wenn (1) der Bot
+  ueberhaupt RookHub-Zugangsdaten hat und (2) mindestens ein ANDERER Abonnent gerade als
+  verknuepft gilt. Faellt das Feature aus, laufen alle Zaehler gleichzeitig hoch — und genau
+  dann zaehlt keiner. Preis: bei genau einem Abonnenten wird nie abgemeldet, bewusst so.
+
 ## [2.81.0] - 2026-08-09
 ### Security
 - `GET /webhook/build-info` verlangt jetzt `X-Bot-Timestamp` + `X-Bot-Signature`

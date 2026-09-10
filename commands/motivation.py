@@ -45,6 +45,7 @@ _DEFAULT_MINUTE = 0
 # stuendlich angepingt wird (und die Logs flutet).
 _MAX_TRANSIENT_RETRIES = 3   # 60-min-Retries bei voruebergehenden Fehlern, dann erst morgen wieder
 _MAX_UNREACHABLE_DAYS = 5    # Tage in Folge unzustellbar (DMs gesperrt) → Abo automatisch beenden
+_MAX_UNLINKED_DAYS = 5       # Tage in Folge ohne verknuepftes RookHub-Konto → Abo automatisch beenden
 
 _bot = None
 
@@ -138,6 +139,13 @@ async def _check_goals_completed():
 
     for uid_str in list(subscribers.keys()):
         uid_int = int(uid_str)
+        # Wer als NICHT verknuepft gilt, kann keine Tagesziele erfuellen — ihn alle zehn Minuten
+        # zu fragen kostete 145 vergebliche API-Abrufe am Tag. Der Zaehler faellt auf 0, sobald
+        # der taegliche Lauf ihn wieder als verknuepft sieht (dann greift das hier am naechsten
+        # Tag nicht mehr).
+        info = subscribers.get(uid_str)
+        if isinstance(info, dict) and int(info.get('unlinked', 0) or 0) > 0:
+            continue
         if not reinforcement.goals_not_yet_notified_today(uid_str):
             continue
         progress = await asyncio.to_thread(rookhub.get_player_progress, uid_int)
@@ -262,15 +270,21 @@ async def _check_activities():
 # Senden (Loop + manuell + /test)
 # ---------------------------------------------------------------------------
 
-async def _send_motivation_to(uid_int: int, user_obj=None) -> bool:
+async def _send_motivation_to(uid_int: int, user_obj=None, link_box: dict | None = None) -> bool:
     """Schickt EINEM User die passende Motivations-DM (verknuepft → persoenlich, sonst allgemein + CTA).
 
     ``user_obj`` optional (spart das fetch_user); sonst wird er ueber den Bot geholt. Gibt True bei Versand.
     Wirft ``RookHubUnavailable``, wenn der Verknuepfungs-Status wegen eines RookHub-Ausfalls unbekannt ist.
+
+    ``link_box`` optional: bekommt ``{'linked': True|False}`` gesetzt, damit der Aufrufer die
+    Abmelde-Karenz fuehren kann (siehe ``_MAX_UNLINKED_DAYS``). Bleibt die Box leer, weiss der
+    Aufrufer nichts und zaehlt NICHTS — das ist die sichere Richtung.
     """
     progress = await asyncio.to_thread(rookhub.get_player_progress, uid_int)
     if _unavailable(progress):
         raise RookHubUnavailable(f'RookHub nicht erreichbar (User {uid_int})')
+    if link_box is not None:
+        link_box['linked'] = progress is not None
     if user_obj is None:
         user_obj = await _bot.fetch_user(uid_int)
     if progress is not None:
@@ -285,6 +299,32 @@ async def _send_motivation_to(uid_int: int, user_obj=None) -> bool:
 # ---------------------------------------------------------------------------
 # Reminder-Loop
 # ---------------------------------------------------------------------------
+
+def _unlinked_strike_allowed(subscribers: dict, uid_str: str) -> bool:
+    """Darf fuer diesen User ein „nicht verknuepft"-Fehlschlag gezaehlt werden?
+
+    Zwei Schranken, damit aus einem SYSTEMISCHEN Problem keine Massen-Abmeldung wird. Der
+    Endpunkt ``/api/bot/player-progress`` antwortet mit 404 in zwei voellig verschiedenen Faellen:
+    „dieser Discord-Account hat kein RookHub-Konto" (eine Aussage ueber den User) und
+    „das Feature ist serverseitig nicht konfiguriert" (eine Aussage ueber den Server). Der Bot
+    kann die zwei am Statuscode nicht unterscheiden.
+
+    1. **Kein RookHub-Zugang im Bot** → ``get_player_progress`` gibt ohne jeden Aufruf ``None``
+       zurueck. Das sagt nichts ueber den User.
+    2. **Kein anderer Abonnent gilt als verknuepft** → dann ist die 404-Antwort mit hoher
+       Wahrscheinlichkeit serverseitig. Ohne diese Schranke waeren nach
+       ``_MAX_UNLINKED_DAYS`` Tagen ALLE Abos weg, weil jeder Zaehler gleichzeitig hochlaeuft.
+
+    Preis der zweiten Schranke: bei genau EINEM Abonnenten wird nie abgemeldet. Bewusst so —
+    ein Abo zu viel ist billiger als alle Abos zu verlieren.
+    """
+    if not getattr(rookhub, 'ROOKHUB_API_URL', '') or not getattr(rookhub, 'ROOKHUB_STATS_SECRET', ''):
+        return False
+    return any(
+        uid != uid_str and isinstance(info, dict) and int(info.get('unlinked', 0) or 0) == 0
+        for uid, info in (subscribers or {}).items()
+    )
+
 
 async def _run_motivation_dms():
     """Sendet faellige Motivations-DMs an Abonnenten (taeglich zur Wunschzeit)."""
@@ -316,8 +356,9 @@ async def _run_motivation_dms():
         # 'sent' | 'unreachable' (DMs gesperrt/Account weg) | 'transient' (voruebergehend,
         # inkl. RookHubUnavailable → 60-min-Retry statt falscher Unlinked-DM)
         outcome = 'sent'
+        link_box: dict = {}
         try:
-            await _send_motivation_to(int(uid_str))
+            await _send_motivation_to(int(uid_str), link_box=link_box)
             log.info('Motivations-DM an User %s gesendet.', uid_str,
                      extra={'es_fields': {'tags': ['motivation']}})
         except (discord.Forbidden, discord.NotFound):
@@ -330,9 +371,27 @@ async def _run_motivation_dms():
             hour=hour, minute=minute, second=0, microsecond=0)
         new_retries = 0
         new_unreachable = 0
+        new_unlinked = int(info.get('unlinked', 0) or 0)
 
         if outcome == 'sent':
             next_dt = next_day
+            # Die DM ist raus (bei fehlender Verknuepfung mit Registrier-Hinweis). Wer aber
+            # dauerhaft kein RookHub-Konto verknuepft, wird abgemeldet: der Bot fragte fuer ihn
+            # sonst weiter alle zehn Minuten den Fortschritt ab (gemessen 145 vergebliche
+            # Abrufe am Tag) und schickte taeglich einen Hinweis, der offensichtlich nicht
+            # ankommt.
+            linked = link_box.get('linked')
+            if linked is True:
+                new_unlinked = 0
+            elif linked is False and _unlinked_strike_allowed(subscribers, uid_str):
+                new_unlinked += 1
+                if new_unlinked >= _MAX_UNLINKED_DAYS:
+                    log.info('Motivations-DM: User %s seit %d Tagen ohne verknuepftes '
+                             'RookHub-Konto — Abo automatisch beendet.', uid_str, new_unlinked)
+                    to_remove.append(uid_str)
+                    continue
+                log.info('Motivations-DM: User %s ohne verknuepftes RookHub-Konto '
+                         '(Tag %d/%d).', uid_str, new_unlinked, _MAX_UNLINKED_DAYS)
         elif outcome == 'unreachable':
             # User kann keine DM empfangen (gesperrt) → NICHT stuendlich haemmern,
             # erst morgen erneut; nach _MAX_UNREACHABLE_DAYS Tagen Abo automatisch beenden.
@@ -360,7 +419,8 @@ async def _run_motivation_dms():
 
         next_iso = next_dt.astimezone(timezone.utc).isoformat()
 
-        def _advance_one(data, _uid=uid_str, _iso=next_iso, _r=new_retries, _u=new_unreachable):
+        def _advance_one(data, _uid=uid_str, _iso=next_iso, _r=new_retries, _u=new_unreachable,
+                         _ul=new_unlinked):
             if not isinstance(data, dict):
                 data = _sub_default()
             subs = data.setdefault('subscribers', {})
@@ -368,6 +428,7 @@ async def _run_motivation_dms():
                 subs[_uid]['next'] = _iso
                 subs[_uid]['retries'] = _r
                 subs[_uid]['unreachable'] = _u
+                subs[_uid]['unlinked'] = _ul
             return data
 
         await asyncio.to_thread(atomic_update, MOTIVATION_SUB_FILE, _advance_one, _sub_default)

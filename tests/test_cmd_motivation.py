@@ -528,7 +528,7 @@ def test_motivation_dm_retry():
         check('Erfolg → unreachable=0', info.get('unreachable', 0) == 0)
 
         # B) transienter Fehler → Retry in ~60min, retries hochgezaehlt
-        async def _boom(uid_int, user_obj=None):
+        async def _boom(uid_int, user_obj=None, link_box=None):
             raise RuntimeError('boom')
         mot._send_motivation_to = _boom
         _set_sub()
@@ -547,7 +547,7 @@ def test_motivation_dm_retry():
         check('transient Cap → retries zurueckgesetzt', info.get('retries') == 0)
 
         # D) Forbidden (DMs gesperrt) → KEIN 60-min-Retry, sondern morgen; unreachable hoch
-        async def _forbidden(uid_int, user_obj=None):
+        async def _forbidden(uid_int, user_obj=None, link_box=None):
             raise mot.discord.Forbidden(_FakeResp(), 'blocked')
         mot._send_motivation_to = _forbidden
         _set_sub()
@@ -564,6 +564,88 @@ def test_motivation_dm_retry():
     finally:
         mot._send_motivation_to = orig_send
         mot._bot = orig_bot
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_motivation_unlinked_removal():
+    """_run_motivation_dms: wer mehrfach nicht gefunden wird, wird abgemeldet — mit Bremsen."""
+    print('[motivation unlinked-removal]')
+    import unittest.mock as mock
+    from core.json_store import atomic_write
+    tmpdir = setup_temp_config()
+    orig_bot = mot._bot
+    orig_progress = mot.rookhub.get_player_progress
+    orig_url = mot.rookhub.ROOKHUB_API_URL
+    orig_secret = mot.rookhub.ROOKHUB_STATS_SECRET
+    try:
+        mot._bot = mock.MagicMock()
+        mot._bot.fetch_user = mock.AsyncMock(return_value=FakeUser(777, 'Tester'))
+        mot.rookhub.ROOKHUB_API_URL = 'http://rookhub.test'
+        mot.rookhub.ROOKHUB_STATS_SECRET = 'geheim'
+        uid, other = '777', '888'
+
+        def _set(info_extra=None, other_extra=None):
+            """Zwei Abonnenten: der gepruefte und ein verknuepfter (fuer die Bremse)."""
+            info = {'hour': 18, 'minute': 0, 'next': '2000-01-01T00:00:00+00:00'}
+            info.update(info_extra or {})
+            oth = {'hour': 18, 'minute': 0, 'next': '2999-01-01T00:00:00+00:00', 'unlinked': 0}
+            oth.update(other_extra or {})
+            atomic_write(mot.MOTIVATION_SUB_FILE, {'subscribers': {uid: info, other: oth}})
+
+        def _info(u=uid):
+            d = atomic_read(mot.MOTIVATION_SUB_FILE, default=dict)
+            return d.get('subscribers', {}).get(u)
+
+        # A) nicht verknuepft (404 → None) → Zaehler hoch, Abo bleibt
+        mot.rookhub.get_player_progress = lambda u: None
+        _set()
+        run_async(mot._run_motivation_dms())
+        check('nicht gefunden → unlinked=1', (_info() or {}).get('unlinked') == 1)
+        check('nicht gefunden → Abo bleibt', _info() is not None)
+
+        # B) am Limit → Abo automatisch beendet
+        _set({'unlinked': mot._MAX_UNLINKED_DAYS - 1})
+        run_async(mot._run_motivation_dms())
+        check('am Limit → Abo beendet', _info() is None)
+        check('am Limit → anderer Abonnent bleibt', _info(other) is not None)
+
+        # C) wieder verknuepft → Zaehler zurueck
+        mot.rookhub.get_player_progress = lambda u: _progress(puzzle_min=10, puzzle_done_min=10)
+        _set({'unlinked': 3})
+        run_async(mot._run_motivation_dms())
+        check('verknuepft → unlinked=0', (_info() or {}).get('unlinked') == 0)
+
+        # D) BREMSE 1: kein anderer Abonnent gilt als verknuepft → gar kein Zaehler.
+        #    Das ist der Fall „Feature serverseitig aus": dann antwortet der Endpunkt fuer
+        #    ALLE mit 404, und ohne diese Bremse waeren nach fuenf Tagen alle Abos weg.
+        mot.rookhub.get_player_progress = lambda u: None
+        _set({'unlinked': mot._MAX_UNLINKED_DAYS - 1}, other_extra={'unlinked': 2})
+        run_async(mot._run_motivation_dms())
+        check('kein verknuepfter Zweiter → Abo bleibt', _info() is not None)
+        check('kein verknuepfter Zweiter → Zaehler unveraendert',
+              (_info() or {}).get('unlinked') == mot._MAX_UNLINKED_DAYS - 1)
+
+        # E) BREMSE 2: Bot ohne RookHub-Zugang → None sagt nichts ueber den User
+        mot.rookhub.ROOKHUB_STATS_SECRET = ''
+        _set({'unlinked': mot._MAX_UNLINKED_DAYS - 1})
+        run_async(mot._run_motivation_dms())
+        check('ohne RookHub-Zugang → Abo bleibt', _info() is not None)
+        mot.rookhub.ROOKHUB_STATS_SECRET = 'geheim'
+
+        # F) Der 10-Minuten-Lauf fragt einen als nicht-verknuepft bekannten User NICHT mehr ab.
+        #    Er koennte ohnehin keine Tagesziele erfuellen — das war die Quelle von 145
+        #    vergeblichen API-Aufrufen am Tag.
+        gefragt = []
+        mot.rookhub.get_player_progress = lambda u: gefragt.append(u) or None
+        _set({'unlinked': 2})
+        run_async(mot._check_goals_completed())
+        check('Ziel-Lauf ueberspringt nicht-verknuepften User', int(uid) not in gefragt)
+    finally:
+        mot._bot = orig_bot
+        mot.rookhub.get_player_progress = orig_progress
+        mot.rookhub.ROOKHUB_API_URL = orig_url
+        mot.rookhub.ROOKHUB_STATS_SECRET = orig_secret
         teardown_temp_config(tmpdir)
     print()
 
