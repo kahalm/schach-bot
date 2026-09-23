@@ -4,6 +4,20 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.0] - 2026-09-23
+### Added
+- **Befehls-Protokoll: jeder Slash-Befehl eines Nutzers landet in Elasticsearch.** Bisher
+  loggte der Bot nur, was er selbst tat (Tagespuzzle, DMs), nicht was Nutzer aufriefen — eine
+  Wochenauswertung konnte deshalb keine Befehle zeigen. Neues Modul `core/command_log.py`:
+  ein Info-Log mit Tag `command` je Aufruf (`schach-bot-logs-*`), Felder unter `labels.*`:
+  `command` (voller Name, z.B. `turnier sub`), `user_id`/`user_name`, `location` (`guild`/`dm`),
+  `guild_*`/`channel_*`, `options` (ein String `name=wert …`, Werte auf 100 Zeichen gekuerzt,
+  Discord-Objekte als `name (id)`), `outcome` (`ok`/`cooldown`/`denied`/`error`), `error`
+  (Exception-Typ) und `duration_ms`. IDs als String (Snowflakes > 2^53).
+- Erfolgreiche Befehle kommen ueber den Listener `on_app_command_completion`, fehlgeschlagene
+  ueber den bestehenden Tree-Error-Handler. Das Protokoll wirft nie — ein kaputtes Logging darf
+  keinen Befehl stoeren.
+
 ## [2.82.0] - 2026-09-10
 ### Changed
 - **Motivations-Abo: wer dauerhaft kein RookHub-Konto verknuepft hat, wird abgemeldet.**

@@ -18,7 +18,7 @@ import json
 import os
 from datetime import datetime, time, timezone
 
-from core import stats, dm_log
+from core import stats, dm_log, command_log
 from core import discord_link
 from core import i18n as _i18n
 from core.json_store import atomic_read, atomic_update
@@ -857,10 +857,17 @@ async def puzzle_task():
     except Exception as e:
         log.warning('Reaction-Log Rotation fehlgeschlagen: %s', e)
 
+# --- Befehls-Protokoll: jeder Slash-Befehl landet in ES (Tag "command") ---
+
+@bot.listen('on_app_command_completion')
+async def _log_app_command(interaction: discord.Interaction, command):
+    command_log.log_command(interaction, command)
+
 # --- Cooldown-Error-Handler ---
 
 @tree.error
 async def on_app_command_error(interaction: discord.Interaction, error):
+    command_log.log_command(interaction, outcome=command_log.outcome_for(error), error=error)
     if isinstance(error, discord.app_commands.CommandOnCooldown):
         await interaction.response.send_message(
             f'⏳ Bitte warte {error.retry_after:.0f}s.', ephemeral=True)

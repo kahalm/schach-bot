@@ -62,6 +62,7 @@ from test_cmd_admin import (
     test_dm_log_internals, test_dm_log_incoming, test_dm_permissions,
     test_suppress_empty_fen, test_es_tags,
 )
+from test_cmd_commandlog import test_command_log
 from test_cmd_chat import (
     test_chat_whitelist, test_chat_clear, test_chat_routing,
     test_chat_history_prune, test_chat_history_sanitize,
@@ -175,6 +176,7 @@ def main():
     test_dm_permissions()
     test_suppress_empty_fen()
     test_es_tags()
+    test_command_log()
     test_chat_whitelist()
     test_chat_clear()
     test_chat_routing()
