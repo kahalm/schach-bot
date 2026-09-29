@@ -4,6 +4,23 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.3] - 2026-09-29
+### Security
+- **Die vier Ergebnis-Abrufe bei RookHub sind jetzt signiert.** Tagespuzzle-Loeser
+  (`/api/book-puzzles/{id}/results`), Wochenpost-Fortschritt (`/api/weekly-posts/{id}/results`),
+  Monatswertung (`/api/book-puzzles/daily/leaderboard`) und Hall of Fame
+  (`/api/book-puzzles/daily/hall-of-fame`) waren anonym und lieferten Discord-ID/-Name aller
+  Loeser an jeden. RookHub gibt diese Felder kuenftig nur noch an den Bot heraus; der Bot
+  schickt dafuer `X-Bot-Timestamp` + `X-Bot-Signature` = `sha256=HMAC(ROOKHUB_STATS_SECRET,
+  "<ts>.<pfad>")` mit — dasselbe Secret und Schema wie beim Fortschritts-Abruf fuer `/motivation`.
+- Uebergang ohne Ausfall: Aeltere RookHub-Versionen ignorieren die Header. Lehnt RookHub die
+  Signatur ab (401/403, z. B. Secret passt nicht), holt der Bot die Ergebnisse einmal unsigniert
+  nach und warnt einmal im Log — die Embeds zeigen dann RookHub-Namen statt @-Erwaehnungen,
+  bleiben aber aktuell. Ohne `ROOKHUB_STATS_SECRET` bleibt alles unsigniert wie bisher.
+- Reihenfolge beim Ausrollen: zuerst RookHub (signiert = mit, anonym = ohne Discord-Felder),
+  dann diesen Bot; `ROOKHUB_STATS_SECRET` muss in beiden Bot-Stacks zu RookHubs
+  `SchachBot__StatsSecret` passen.
+
 ## [2.83.2] - 2026-09-29
 ### Security
 - **Persoenliche RookHub-Verknuepfungstokens (`?dl=`) landen nicht mehr im Klartext im DM-Log

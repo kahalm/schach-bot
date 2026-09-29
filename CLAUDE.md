@@ -24,10 +24,10 @@ python tests/test_commands.py    # Slash-command tests (all 27 commands)
 
 Copy `.env.example` to `.env` and fill in:
 - `DISCORD_TOKEN` – Discord bot token
-- `ROOKHUB_API_URL` – RookHub-API (intern, kein Token) – Quelle für Daily/Random/Blind-Puzzle
+- `ROOKHUB_API_URL` – RookHub-API (intern, kein Token) – Quelle für Daily/Random/Blind-Puzzle; die Ergebnis-GETs (Löser, Wochenpost, Daily-Leaderboard, Hall of Fame) signiert der Bot mit `ROOKHUB_STATS_SECRET`
 - `ROOKHUB_WEB_URL` – öffentliche RookHub-Frontend-URL für den anklickbaren Puzzle-Link
 - `ROOKHUB_LINK_SECRET` – HMAC-Secret für die RookHub-Verknüpfung (`/link`, Begrüßungs-DM, private Puzzle-Links); MUSS == RookHubs `Discord__LinkSecret` sein, leer → Feature inaktiv
-- `ROOKHUB_STATS_SECRET` – HMAC-Secret für den stats-basierten Motivations-DM (`/motivation`); liest den Trainings-/Puzzle-Fortschritt verknüpfter Spieler via `GET /api/bot/player-progress`; MUSS == RookHubs `SchachBot__StatsSecret` sein, leer → `/motivation` inaktiv
+- `ROOKHUB_STATS_SECRET` – HMAC-Secret für den stats-basierten Motivations-DM (`/motivation`); liest den Trainings-/Puzzle-Fortschritt verknüpfter Spieler via `GET /api/bot/player-progress`; signiert außerdem die vier Ergebnis-GETs (`X-Bot-Timestamp` + `X-Bot-Signature` = `sha256=HMAC(secret, "<ts>.<pfad>")`), nur dann liefert RookHub Discord-ID/-Name der Löser; MUSS == RookHubs `SchachBot__StatsSecret` sein, leer → `/motivation` inaktiv und Namen statt @-Erwähnungen
 - `LICHESS_TOKEN` – nur noch für die `/test`-Diagnose / Cloud-Eval (nicht mehr fürs Posten)
 - `CHANNEL_ID` – Discord channel for daily posts
 - `PUZZLE_HOUR` / `PUZZLE_MINUTE` – Daily post time (UTC)

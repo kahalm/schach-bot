@@ -376,6 +376,96 @@ def test_get_books_cached():
     rh._books_cache_ts = 0.0
 
 
+# --- S4-001 (Bot-Seite): die vier Ergebnis-GETs tragen eine Bot-Signatur ---------------
+
+_RESULT_CALLS = (
+    # (Aufruf, erwarteter API-Pfad = signierter Pfad, erwartete Query)
+    (lambda: rh.get_daily_results(123, since='2026-09-29T00:00:00Z'),
+     '/api/book-puzzles/123/results', {'since': '2026-09-29T00:00:00Z'}),
+    (lambda: rh.get_weekly_results(7), '/api/weekly-posts/7/results', None),
+    (lambda: rh.get_daily_leaderboard('2026-06'), '/api/book-puzzles/daily/leaderboard',
+     {'month': '2026-06'}),
+    (lambda: rh.get_daily_hall_of_fame(top=3), '/api/book-puzzles/daily/hall-of-fame', {'top': 3}),
+)
+
+
+def test_result_gets_signed():
+    """Mit ROOKHUB_STATS_SECRET: X-Bot-Timestamp + X-Bot-Signature = sha256=HMAC(secret, "<ts>.<pfad>")."""
+    import hashlib
+    import hmac
+    import time
+    orig_secret = rh.ROOKHUB_STATS_SECRET
+    rh.ROOKHUB_API_URL = 'http://rookhub:5001'
+    rh.ROOKHUB_STATS_SECRET = 'geheim'
+    try:
+        for call, path, query in _RESULT_CALLS:
+            captured = {}
+
+            def fake_get(url, params=None, timeout=None, headers=None):
+                captured.update(url=url, params=params, headers=headers)
+                return _FakeResp(200, {'ok': True})
+
+            _patch_get(fake_get)
+            data = call()
+            h = captured.get('headers') or {}
+            ts = h.get('X-Bot-Timestamp', '')
+            want = 'sha256=' + hmac.new(b'geheim', f'{ts}.{path}'.encode('utf-8'),
+                                        hashlib.sha256).hexdigest()
+            check(f'{path}: Antwort durchgereicht', data == {'ok': True})
+            check(f'{path}: URL unveraendert', captured.get('url') == 'http://rookhub:5001' + path)
+            check(f'{path}: Query unveraendert', captured.get('params') == query)
+            check(f'{path}: Timestamp aktuell', ts.isdigit() and abs(int(ts) - time.time()) < 10)
+            check(f'{path}: Signatur ueber "<ts>.<pfad>"', h.get('X-Bot-Signature') == want)
+    finally:
+        rh.ROOKHUB_STATS_SECRET = orig_secret
+
+
+def test_result_gets_unsigned_without_secret():
+    """Ohne Secret: Aufruf wie bisher (kein headers-Argument) — alte Konfiguration laeuft unveraendert."""
+    orig_secret = rh.ROOKHUB_STATS_SECRET
+    rh.ROOKHUB_API_URL = 'http://rookhub:5001'
+    rh.ROOKHUB_STATS_SECRET = ''
+    try:
+        for call, path, _query in _RESULT_CALLS:
+            # Alte Mock-Signatur ohne headers: wuerde bei einem headers-Argument TypeError werfen.
+            _patch_get(lambda url, params=None, timeout=None: _FakeResp(200, {'ok': True}))
+            check(f'{path}: ohne Secret unsigniert', call() == {'ok': True})
+    finally:
+        rh.ROOKHUB_STATS_SECRET = orig_secret
+
+
+def test_result_gets_signature_rejected_falls_back():
+    """Lehnt RookHub die Signatur ab (401/403: falsches Secret, abweichender Vertrag), holt der Bot
+    die Ergebnisse unsigniert (anonym: Namen statt Erwaehnungen) statt den Post nicht zu aktualisieren."""
+    orig_secret = rh.ROOKHUB_STATS_SECRET
+    rh.ROOKHUB_API_URL = 'http://rookhub:5001'
+    rh.ROOKHUB_STATS_SECRET = 'geheim'
+    try:
+        for status in (401, 403):
+            for call, path, _query in _RESULT_CALLS:
+                calls = []
+
+                def fake_get(url, params=None, timeout=None, headers=None):
+                    calls.append(headers)
+                    return _FakeResp(status) if headers else _FakeResp(200, {'anon': True})
+
+                _patch_get(fake_get)
+                data = call()
+                check(f'{path}: {status} → unsigniert nachgeholt',
+                      data == {'anon': True} and len(calls) == 2 and calls[0] and not calls[1])
+        # Andere Fehler (z. B. 500) werden NICHT unsigniert wiederholt.
+        calls = []
+
+        def fake_500(url, params=None, timeout=None, headers=None):
+            calls.append(headers)
+            return _FakeResp(500)
+
+        _patch_get(fake_500)
+        check('500 → kein unsignierter Zweitversuch', rh.get_daily_results(1) is None and len(calls) == 1)
+    finally:
+        rh.ROOKHUB_STATS_SECRET = orig_secret
+
+
 def main():
     for t in (test_get_puzzle_ok, test_get_puzzle_404, test_get_puzzle_no_url,
               test_get_books_cached,
@@ -387,7 +477,9 @@ def main():
               test_game_from_puzzle_illegal_raises, test_game_from_puzzle,
               test_game_from_puzzle_startply_minus1, test_game_from_puzzle_startply_midline,
               test_get_daily_leaderboard_ok, test_get_daily_leaderboard_no_month,
-              test_get_daily_leaderboard_no_url, test_get_daily_hall_of_fame_ok):
+              test_get_daily_leaderboard_no_url, test_get_daily_hall_of_fame_ok,
+              test_result_gets_signed, test_result_gets_unsigned_without_secret,
+              test_result_gets_signature_rejected_falls_back):
         print(f'== {t.__name__} ==')
         t()
     print()

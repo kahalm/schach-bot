@@ -54,6 +54,50 @@ def _api(path: str) -> str:
     return f'{ROOKHUB_API_URL}{path}'
 
 
+# Einmal pro Prozess warnen, wenn RookHub die Bot-Signatur der Ergebnis-GETs ablehnt.
+_sig_rejected_warned = False
+
+
+def _bot_auth_headers(path: str) -> dict:
+    """Bot-Signatur fuer die Ergebnis-GETs (Daily-Results, Wochenpost-Results, Daily-Leaderboard,
+    Hall of Fame): RookHub liefert Discord-ID/-Name der Loeser nur noch an den Bot, anonyme Aufrufer
+    bekommen die Loeser ohne Discord-Felder.
+
+    Vertrag (== rookhub): ``X-Bot-Timestamp`` = Unix-Sekunden, ``X-Bot-Signature`` =
+    ``"sha256=" + hex(HMAC_SHA256(ROOKHUB_STATS_SECRET, "<ts>.<path>"))`` mit ``path`` = API-Pfad
+    wie angefragt, ohne Query (z. B. ``/api/book-puzzles/123/results``); rookhub prueft ±300 s.
+    Gleiches Schema wie ``get_player_progress`` (dort ist die Discord-ID das signierte Objekt).
+    Ohne Secret → ``{}`` (unsignierter Aufruf wie bisher).
+    """
+    if not ROOKHUB_STATS_SECRET:
+        return {}
+    ts = str(int(datetime.now(timezone.utc).timestamp()))
+    sig = hmac.new(ROOKHUB_STATS_SECRET.encode('utf-8'), f'{ts}.{path}'.encode('utf-8'),
+                   hashlib.sha256).hexdigest()
+    return {'X-Bot-Signature': f'sha256={sig}', 'X-Bot-Timestamp': ts}
+
+
+def _get_results(path: str, params=None, timeout: int = _TIMEOUT):
+    """GET auf einen Ergebnis-Endpunkt, mit Bot-Signatur sofern ``ROOKHUB_STATS_SECRET`` gesetzt ist.
+
+    Lehnt RookHub die Signatur ab (401/403: Secret passt nicht / abweichender Stand), wird EINMAL
+    unsigniert wiederholt — der Post zeigt dann RookHub-Namen statt Erwaehnungen, bleibt aber
+    aktuell. Aeltere RookHub-Versionen ignorieren die Header (Antwort wie bisher).
+    """
+    global _sig_rejected_warned
+    headers = _bot_auth_headers(path)
+    if not headers:
+        return requests.get(_api(path), params=params, timeout=timeout)
+    r = requests.get(_api(path), params=params, timeout=timeout, headers=headers)
+    if r.status_code in (401, 403):
+        if not _sig_rejected_warned:
+            _sig_rejected_warned = True
+            log.warning('RookHub lehnt die Bot-Signatur ab (HTTP %s, %s) — ROOKHUB_STATS_SECRET '
+                        'pruefen; Ergebnisse vorerst ohne Discord-Felder.', r.status_code, path)
+        r = requests.get(_api(path), params=params, timeout=timeout)
+    return r
+
+
 def send_heartbeat(timeout: int = _LOOKUP_TIMEOUT) -> bool:
     """Sendet ein Lebenszeichen an RookHubs ``/api/client-log`` (landet in ``rookhub-logs-*`` in
     Elasticsearch), damit der log-watcher einen toten/hängenden Bot an AUSBLEIBENDEN Heartbeats
@@ -181,7 +225,7 @@ def get_daily_results(puzzle_id, since: str | None = None, timeout: int = _TIMEO
     if since:
         params['since'] = since
     try:
-        r = requests.get(_api(f'/api/book-puzzles/{puzzle_id}/results'), params=params, timeout=timeout)
+        r = _get_results(f'/api/book-puzzles/{puzzle_id}/results', params=params, timeout=timeout)
         r.raise_for_status()
         return r.json()
     except requests.RequestException as e:
@@ -200,7 +244,7 @@ def get_weekly_results(weekly_id, timeout: int = _TIMEOUT) -> dict | None:
     if not ROOKHUB_API_URL or weekly_id is None:
         return None
     try:
-        r = requests.get(_api(f'/api/weekly-posts/{weekly_id}/results'), timeout=timeout)
+        r = _get_results(f'/api/weekly-posts/{weekly_id}/results', timeout=timeout)
         r.raise_for_status()
         return r.json()
     except requests.RequestException as e:
@@ -282,7 +326,7 @@ def get_daily_leaderboard(month: str | None = None, timeout: int = _TIMEOUT) -> 
         return None
     params = {'month': month} if month else None
     try:
-        r = requests.get(_api('/api/book-puzzles/daily/leaderboard'), params=params, timeout=timeout)
+        r = _get_results('/api/book-puzzles/daily/leaderboard', params=params, timeout=timeout)
         r.raise_for_status()
         return r.json()
     except (requests.RequestException, ValueError) as e:
@@ -300,8 +344,7 @@ def get_daily_hall_of_fame(top: int = 5, timeout: int = _TIMEOUT) -> dict | None
         log.warning('ROOKHUB_API_URL nicht gesetzt – kann keine Tagespuzzle-Hall-of-Fame holen.')
         return None
     try:
-        r = requests.get(_api('/api/book-puzzles/daily/hall-of-fame'),
-                         params={'top': top}, timeout=timeout)
+        r = _get_results('/api/book-puzzles/daily/hall-of-fame', params={'top': top}, timeout=timeout)
         r.raise_for_status()
         return r.json()
     except (requests.RequestException, ValueError) as e:
