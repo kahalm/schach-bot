@@ -222,7 +222,7 @@ schach-bot/
 │   └── datetime_utils.py      # Datums-Helfer
 ├── books/                      # PGN-Dateien + books.json
 ├── assets/                     # Icons, SVG-Figuren, Sprueche
-├── tests/                      # test_trim.py, test_commands.py
+├── tests/                      # run_all.py (alle Tests), test_trim.py, test_commands.py, …
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
@@ -442,9 +442,11 @@ Durchsuchbare Schachbuch-Sammlung basierend auf einer `index.txt`-Datei (Pfad vi
 ## Tests
 
 ```bash
-python tests/test_trim.py       # 171 Snapshot-Regressionstests
-python tests/test_commands.py   # 631 Command-Tests
+python tests/run_all.py         # alle Offline-Tests (jede tests/test_*.py mit __main__), -v = volle Ausgabe
 ```
+
+Derselbe Befehl laeuft in `.github/workflows/release.yml` als Job `test` vor dem Image-Build.
+Ausgenommen sind nur die Lichess-Netz-Tests (`test_puzzle.py`, `test_upload.py`, `test_study_create.py`).
 
 ### Regeln
 

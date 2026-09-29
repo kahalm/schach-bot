@@ -15,9 +15,8 @@ pip install -r requirements.txt
 # Run the bot
 python bot.py
 
-# Run tests
-python tests/test_trim.py       # Trim-snapshot regression tests
-python tests/test_commands.py    # Slash-command tests (all 27 commands)
+# Run tests (the ONE test command — same as the CI gate in release.yml)
+python tests/run_all.py          # every offline test file, each in its own process (-v = full output)
 ```
 
 ## Configuration
@@ -47,7 +46,7 @@ Runtime state lives in `config/` (gitignored, auto-created).
 | `library.py` | Books library (/bibliothek, /tag, /autor, /reindex) |
 | `books/` | PGN files + `books.json` metadata |
 | `assets/` | Bot icons |
-| `tests/` | `test_trim.py` (Snapshot-Regression), `test_commands.py` (Command-Tests) |
+| `tests/` | `run_all.py` (Sammel-Runner = einziger Testbefehl), `test_trim.py` (Snapshot-Regression), `test_commands.py` (Command-Tests), weitere `test_*.py` |
 
 ### Key patterns
 
@@ -58,11 +57,16 @@ Runtime state lives in `config/` (gitignored, auto-created).
 
 ## Test-Regeln (PFLICHT!)
 
-1. **Nach jeder Änderung** müssen ALLE Tests erfolgreich laufen:
+1. **Nach jeder Änderung** müssen ALLE Tests erfolgreich laufen — einziger Testbefehl:
    ```bash
-   python tests/test_trim.py      # 171 Snapshot-Tests
-   python tests/test_commands.py   # 131 Command-Tests
+   python tests/run_all.py
    ```
+   Er startet jede `tests/test_*.py` mit eigenem `__main__` (u. a. `test_trim.py`, `test_commands.py`
+   mit allen `test_cmd_*`, `test_rendering.py`, `test_rookhub.py`, `test_discord_link.py`) in einem
+   eigenen Prozess. Ausgenommen sind nur die Lichess-Netz-Tests (`NETWORK_TESTS` in `run_all.py`).
+   Derselbe Befehl ist in `.github/workflows/release.yml` der Job `test`; ohne ihn wird kein
+   `:dev`/`:latest`-Image gebaut. Neue Testdatei → eigenes `__main__` mit Exit-Code != 0 bei Fehler
+   (oder als `test_cmd_*` in `test_commands.py` importieren); `tests/test_ci_gate.py` wacht darüber.
 2. **Test-First**: Für jedes neue Feature ZUERST einen Test schreiben, dann die Implementierung.
 3. **Bug-First-Test**: Wenn der User einen Bug meldet, ZUERST einen Test schreiben der den Fehler reproduziert (Test muss fehlschlagen), DANN den Bug fixen (Test muss bestehen). So wird sichergestellt, dass der Fehler nie wieder auftreten kann.
 

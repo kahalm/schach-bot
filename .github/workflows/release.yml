@@ -12,7 +12,35 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # Kein Image ohne gruene Tests: :dev (main) und :latest (Tag) zieht
+  # Watchtower nachts auf Dev/Prod. Gleicher Befehl wie lokal (CLAUDE.md).
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      # rlPyCairo/pycairo bauen gegen libcairo (wie im Dockerfile)
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libcairo2-dev pkg-config
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run all offline tests
+        run: python tests/run_all.py
+
   build-and-push:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read

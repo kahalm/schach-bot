@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.4] - 2026-09-29
+### Changed
+- **Kein Image mehr ohne Testlauf.** `.github/workflows/release.yml` hat einen Job `test`, von dem
+  `build-and-push` abhaengt (`needs: test`): schlaegt ein Test fehl, entsteht weder `:dev` (main-Push)
+  noch `:latest` (Tag) — vorher lief ausser dem Render-Smoke-Test im Dockerfile gar nichts, und
+  Watchtower zog das Image nachts trotzdem auf Dev bzw. Prod.
+- **Ein Testbefehl fuer alles: `python tests/run_all.py`.** Startet jede `tests/test_*.py` mit eigenem
+  `__main__` in einem eigenen Prozess (21 Dateien, u. a. `test_rookhub`, `test_discord_link`,
+  `test_webhook_build_info`, `test_json_store`, `test_state`, `test_selection`, die bisher ueber keinen
+  dokumentierten Runner liefen); ausgenommen nur die Lichess-Netz-Tests. CLAUDE.md und README nennen
+  ihn als einzigen Testbefehl; `tests/test_ci_gate.py` prueft Workflow-Gate und dass jede Testdatei
+  einen Runner hat.
+
 ## [2.83.3] - 2026-09-29
 ### Security
 - **Die vier Ergebnis-Abrufe bei RookHub sind jetzt signiert.** Tagespuzzle-Loeser
