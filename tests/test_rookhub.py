@@ -466,6 +466,52 @@ def test_result_gets_signature_rejected_falls_back():
         rh.ROOKHUB_STATS_SECRET = orig_secret
 
 
+def test_player_progress_503_not_configured_warns_once():
+    """Review W2 I2-002: 503 not-configured (RookHubs StatsSecret leer) ist keine Aussage ueber den
+    Spieler → PROGRESS_UNAVAILABLE; gewarnt wird einmal statt je Abonnent und Durchlauf, nach einer
+    gueltigen Antwort wieder. 404 not-linked bleibt „nicht verknuepft"."""
+    import json as _json
+
+    class _Resp(_FakeResp):
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise rh.requests.HTTPError(f'status {self.status_code}')
+
+    warnings = []
+
+    class _Log:
+        def warning(self, msg, *args):
+            warnings.append(msg % args if args else msg)
+
+        def __getattr__(self, name):
+            return lambda *a, **kw: None
+
+    orig_secret, orig_log = rh.ROOKHUB_STATS_SECRET, rh.log
+    rh.ROOKHUB_API_URL = 'http://rookhub:5001'
+    rh.ROOKHUB_STATS_SECRET = 'geheim'
+    rh.log = _Log()
+    rh._progress_not_configured_warned = False
+    answer = {}
+    _patch_get(lambda url, headers=None, timeout=None: answer['r'])
+    try:
+        answer['r'] = _Resp(503, {'reason': 'not-configured'})
+        res = [rh.get_player_progress(i) for i in (1, 2, 3)]
+        check('503 not-configured → PROGRESS_UNAVAILABLE',
+              all(r is rh.PROGRESS_UNAVAILABLE for r in res))
+        check('503 not-configured → genau eine Warnung', len(warnings) == 1
+              and 'SchachBot__StatsSecret' in warnings[0])
+        answer['r'] = _Resp(200, {'username': 'x'})
+        check('200 → Fortschritt', rh.get_player_progress(1) == {'username': 'x'})
+        answer['r'] = _Resp(503, {'reason': 'not-configured'})
+        rh.get_player_progress(1)
+        check('nach gueltiger Antwort wird wieder gewarnt', len(warnings) == 2)
+        answer['r'] = _Resp(404, _json.loads('{"reason": "not-linked"}'))
+        check('404 not-linked → None', rh.get_player_progress(1) is None)
+    finally:
+        rh.ROOKHUB_STATS_SECRET, rh.log = orig_secret, orig_log
+        rh._progress_not_configured_warned = False
+
+
 def main():
     for t in (test_get_puzzle_ok, test_get_puzzle_404, test_get_puzzle_no_url,
               test_get_books_cached,
@@ -479,7 +525,8 @@ def main():
               test_get_daily_leaderboard_ok, test_get_daily_leaderboard_no_month,
               test_get_daily_leaderboard_no_url, test_get_daily_hall_of_fame_ok,
               test_result_gets_signed, test_result_gets_unsigned_without_secret,
-              test_result_gets_signature_rejected_falls_back):
+              test_result_gets_signature_rejected_falls_back,
+              test_player_progress_503_not_configured_warns_once):
         print(f'== {t.__name__} ==')
         t()
     print()

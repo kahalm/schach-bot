@@ -4,6 +4,21 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.9] - 2026-09-30
+### Fixed
+- **Motivations-DM: „Registrier dich“ nur noch, wenn RookHub wirklich „nicht verknüpft“ meldet.**
+  Bisher galt jede 404 von `/api/bot/player-progress` als „nicht verknüpft“ – auch „das Feature ist
+  in RookHub nicht konfiguriert“. Fehlte dort `SchachBot__StatsSecret`, bekam jeder verknüpfte
+  Abonnent statt seiner persönlichen Motivation die Registrier-DM und beim Spielen den Slacker-Nudge
+  mit Registrier-Hinweis; über den Abmelde-Zähler (Tag x/5) konnten Abos sogar automatisch enden.
+  Dasselbe passierte, wenn dem Bot selbst `ROOKHUB_STATS_SECRET` fehlte.
+- Jetzt: nur 404 mit `{"reason": "not-linked"}` bzw. 404 ohne `reason` (RookHub-Versionen vor
+  diesem Stand) zählt als „nicht verknüpft“. 503 `{"reason": "not-configured"}`, 404 mit anderem
+  `reason` und ein Bot ohne `ROOKHUB_API_URL`/`ROOKHUB_STATS_SECRET` gelten als „Fortschritt nicht
+  verfügbar“: keine DM, kein Abmelde-Zähler, später neuer Versuch – `/motivation` ist damit ohne
+  Secret wirklich inaktiv, wie dokumentiert. Für 503 not-configured gibt es eine Warnung im Log
+  (einmal, nicht je Abonnent). Mit älterem RookHub verhält sich der Bot wie bisher.
+
 ## [2.83.8] - 2026-09-29
 ### Fixed
 - **Das Test-Gate aus 2.83.4 haette jeden CI-Lauf rot gemacht und damit gar kein Image mehr gebaut.**

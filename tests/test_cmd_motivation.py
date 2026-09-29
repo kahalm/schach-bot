@@ -779,6 +779,131 @@ def test_progress_unavailable():
     print()
 
 
+def test_progress_not_linked_only():
+    """Review W2 I2-002: Registrier-DM, Slacker-Nudge und Abmelde-Zaehler NUR bei „nicht verknuepft".
+
+    RookHub meldet ein leeres StatsSecret jetzt mit 503 ``{"reason": "not-configured"}`` statt 404;
+    dem Bot kann selbst das Secret fehlen. Beides sagt nichts ueber den User: keine DM, kein
+    Zaehler, keine Abmeldung. Auch nicht ueber Tage mit verschiedenen Wunschzeiten, bei denen die
+    Schranke 2 (ein anderer Abonnent mit unlinked=0) je Pass fuer alle anderen aufging.
+    """
+    print('[progress nur bei nicht verknuepft]')
+    import unittest.mock as mock
+    import puzzle.rookhub as rh
+    from core.json_store import atomic_write
+
+    class _FakeRequestException(Exception):
+        pass
+
+    class _Resp:
+        def __init__(self, status, payload=None):
+            self.status_code = status
+            self._payload = payload
+
+        def json(self):
+            if self._payload is None:
+                raise ValueError('kein JSON')
+            return self._payload
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise _FakeRequestException(f'HTTP {self.status_code}')
+
+    calls = []
+    answer = {'resp': None}
+
+    def fake_get(url, headers=None, timeout=None):
+        calls.append(url)
+        return answer['resp']
+
+    tmpdir = setup_temp_config()
+    orig = (rh.requests.get, rh.requests.RequestException, rh.ROOKHUB_API_URL,
+            rh.ROOKHUB_STATS_SECRET, mot._bot, mot._get_member, mot._get_current_game)
+    try:
+        rh.requests.get = fake_get
+        rh.requests.RequestException = _FakeRequestException
+        rh.ROOKHUB_API_URL = 'http://rookhub.test'
+        rh.ROOKHUB_STATS_SECRET = 'geheim'
+        unavailable = rh.PROGRESS_UNAVAILABLE
+
+        # 1) Client: nur 404 not-linked bzw. 404 ohne reason (RookHub vor W2) = nicht verknuepft
+        answer['resp'] = _Resp(404, {'reason': 'not-linked', 'message': 'No RookHub account linked.'})
+        check('404 not-linked → None', rh.get_player_progress(1) is None)
+        answer['resp'] = _Resp(404, {'message': 'No RookHub account linked to this Discord ID.'})
+        check('404 ohne reason (alte RookHub) → None', rh.get_player_progress(1) is None)
+        answer['resp'] = _Resp(404, None)
+        check('404 ohne JSON-Koerper → None', rh.get_player_progress(1) is None)
+        answer['resp'] = _Resp(404, {'reason': 'not-configured'})
+        check('404 mit anderem reason → PROGRESS_UNAVAILABLE', rh.get_player_progress(1) is unavailable)
+        answer['resp'] = _Resp(503, {'reason': 'not-configured'})
+        check('503 not-configured → PROGRESS_UNAVAILABLE', rh.get_player_progress(1) is unavailable)
+        answer['resp'] = _Resp(503, None)
+        check('503 ohne reason → PROGRESS_UNAVAILABLE', rh.get_player_progress(1) is unavailable)
+        rh.ROOKHUB_STATS_SECRET = ''
+        n = len(calls)
+        check('Bot ohne ROOKHUB_STATS_SECRET → PROGRESS_UNAVAILABLE, kein Aufruf',
+              rh.get_player_progress(1) is unavailable and len(calls) == n)
+        rh.ROOKHUB_STATS_SECRET = 'geheim'
+
+        # 2) Taeglicher Lauf ueber mehr als _MAX_UNLINKED_DAYS Tage, drei Wunschzeiten → je Pass
+        #    nur einer faellig (Schnappschuss wie im Betrieb), alle starten mit unlinked=0.
+        fake_bot = mock.MagicMock()
+        fake_bot.fetch_user = mock.AsyncMock(return_value=FakeUser(701, 'Tester'))
+        mot._bot = fake_bot
+        hours = {'701': 18, '702': 19, '703': 20}
+
+        def _only_due(uid):
+            data = atomic_read(mot.MOTIVATION_SUB_FILE, default=dict)
+            for u, info in data.get('subscribers', {}).items():
+                info['next'] = ('2000-01-01T00:00:00+00:00' if u == uid
+                                else '2999-01-01T00:00:00+00:00')
+            atomic_write(mot.MOTIVATION_SUB_FILE, data)
+
+        for label, secret, resp in (
+                ('RookHub 503 not-configured', 'geheim', _Resp(503, {'reason': 'not-configured'})),
+                ('Bot ohne ROOKHUB_STATS_SECRET', '', None)):
+            rh.ROOKHUB_STATS_SECRET = secret
+            answer['resp'] = resp
+            atomic_write(mot.MOTIVATION_SUB_FILE, {'subscribers': {
+                u: {'hour': h, 'minute': 0, 'next': '2999-01-01T00:00:00+00:00', 'unlinked': 0}
+                for u, h in hours.items()}})
+            fake_bot.fetch_user.reset_mock()
+            for _day in range(mot._MAX_UNLINKED_DAYS + 1):
+                for u in hours:
+                    _only_due(u)
+                    run_async(mot._run_motivation_dms())
+            final = atomic_read(mot.MOTIVATION_SUB_FILE, default=dict).get('subscribers', {})
+            check(f'{label}: keine DM (auch keine Registrier-DM)', fake_bot.fetch_user.await_count == 0)
+            check(f'{label}: niemand abgemeldet', set(final) == set(hours))
+            check(f'{label}: kein Abmelde-Zaehler',
+                  all(int(i.get('unlinked', 0) or 0) == 0 for i in final.values()))
+
+            # Activity-Watch: spielt seit 90 min → kein Slacker-Nudge mit Registrier-CTA
+            member = mock.MagicMock()
+            member.create_dm = mock.AsyncMock()
+            mot._get_member = lambda uid, _m=member: _m
+            mot._get_current_game = lambda m: ('Valorant', None)
+            since = (datetime.now(timezone.utc) - timedelta(minutes=90)).isoformat()
+            atomic_write(mot.ACTIVITY_WATCH_FILE, {'watching': {
+                u: {'name': 'Valorant', 'since': since, 'dm_sent': False} for u in hours}})
+            run_async(mot._check_activities())
+            check(f'{label}: kein Slacker-Nudge', member.create_dm.await_count == 0)
+            mot._get_member, mot._get_current_game = orig[5], orig[6]
+
+        # 3) Gegenprobe: RookHub meldet not-linked → Registrier-DM wie bisher
+        rh.ROOKHUB_STATS_SECRET = 'geheim'
+        answer['resp'] = _Resp(404, {'reason': 'not-linked'})
+        fake_bot.fetch_user.reset_mock()
+        _only_due('701')
+        run_async(mot._run_motivation_dms())
+        check('404 not-linked → Registrier-DM wie bisher', fake_bot.fetch_user.await_count == 1)
+    finally:
+        (rh.requests.get, rh.requests.RequestException, rh.ROOKHUB_API_URL,
+         rh.ROOKHUB_STATS_SECRET, mot._bot, mot._get_member, mot._get_current_game) = orig
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_player_progress_signature():
     """get_player_progress signiert über '<ts>.<did>' + sendet X-Bot-Timestamp (Replay-Schutz)."""
     print('[player-progress signature]')

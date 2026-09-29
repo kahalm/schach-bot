@@ -25,7 +25,7 @@ log = logging.getLogger('schach-bot')
 ROOKHUB_API_URL = os.getenv('ROOKHUB_API_URL', '').rstrip('/')
 ROOKHUB_WEB_URL = os.getenv('ROOKHUB_WEB_URL', '').rstrip('/')
 # Geteiltes HMAC-Secret fuer den Bot-Stats-Endpoint (== RookHubs SchachBot__StatsSecret).
-# Leer → get_player_progress liefert immer None (Feature inaktiv).
+# Leer → get_player_progress liefert immer PROGRESS_UNAVAILABLE (Feature inaktiv, keine DMs).
 ROOKHUB_STATS_SECRET = os.getenv('ROOKHUB_STATS_SECRET', '')
 
 _TIMEOUT = 15
@@ -273,6 +273,19 @@ class _ProgressUnavailable:
 # Versand als erfolgreich zaehlt).
 PROGRESS_UNAVAILABLE = _ProgressUnavailable()
 
+# Einmal warnen (bis zur naechsten gueltigen Antwort), wenn player-progress 503 not-configured liefert.
+_progress_not_configured_warned = False
+
+
+def _error_reason(r):
+    """``reason`` aus einem JSON-Fehlerkoerper (``{"reason": "not-linked"}``) oder ``None``."""
+    try:
+        data = r.json()
+    except ValueError:
+        return None
+    reason = data.get('reason') if isinstance(data, dict) else None
+    return reason if isinstance(reason, str) and reason else None
+
 
 def get_player_progress(discord_id, timeout: int = _TIMEOUT):
     """Holt den Trainings-/Puzzle-Fortschritt eines mit RookHub verknuepften Spielers.
@@ -285,13 +298,22 @@ def get_player_progress(discord_id, timeout: int = _TIMEOUT):
     * ``BotPlayerProgressDto`` als dict (``username``, ``displayName``, ``today`` mit
       ``goal``/``puzzles``/``book``/``play``/``status``/``weekDaysMet``/``weeklyDaysTarget``,
       ``puzzles``-Stats) — Spieler ist verknuepft.
-    * ``None`` — Spieler NICHT verknuepft (404) oder Feature/Secret nicht konfiguriert.
+    * ``None`` — Spieler NICHT verknuepft: 404 mit ``{"reason": "not-linked"}``, oder 404 ohne
+      ``reason`` (RookHub vor W2 — dort heisst 404 auch „Feature aus", nicht unterscheidbar).
       Fuer den Aufrufer: keine persoenliche Motivation, stattdessen Verknuepfungs-Hinweis.
-    * ``PROGRESS_UNAVAILABLE`` — RookHub voruebergehend nicht erreichbar/kaputte Antwort.
+    * ``PROGRESS_UNAVAILABLE`` — keine Aussage ueber den Spieler: RookHub voruebergehend nicht
+      erreichbar/kaputte Antwort, 503 (``{"reason": "not-configured"}``: RookHubs
+      ``SchachBot__StatsSecret`` leer), 404 mit unbekanntem ``reason``, oder dem Bot selbst fehlt
+      ``ROOKHUB_API_URL``/``ROOKHUB_STATS_SECRET`` (dann /motivation inaktiv).
       Fuer den Aufrufer: NICHTS senden, spaeter erneut versuchen.
     """
-    if not ROOKHUB_API_URL or not ROOKHUB_STATS_SECRET or discord_id is None:
+    global _progress_not_configured_warned
+    if discord_id is None:
         return None
+    if not ROOKHUB_API_URL or not ROOKHUB_STATS_SECRET:
+        # Aussage ueber den Bot, nicht ueber den Spieler → nie „nicht verknuepft" (sonst
+        # bekaeme jeder verknuepfte Abonnent die Registrier-DM).
+        return PROGRESS_UNAVAILABLE
     did = str(discord_id)
     # Replay-Schutz: Signatur ueber "<ts>.<did>" + X-Bot-Timestamp-Header (rookhub prueft ±300s).
     # rookhub akzeptiert weiterhin auch die alte body-only-Signatur, sobald ein Timestamp
@@ -304,10 +326,25 @@ def get_player_progress(discord_id, timeout: int = _TIMEOUT):
                          headers={'X-Bot-Signature': f'sha256={sig}', 'X-Bot-Timestamp': ts},
                          timeout=timeout)
         if r.status_code == 404:
-            # Nicht verknuepft (oder Feature serverseitig aus) → kein Fortschritt.
-            return None
+            reason = _error_reason(r)
+            if reason in (None, 'not-linked'):
+                # Nicht verknuepft (ohne reason: aeltere RookHub-Version, Verhalten wie bisher).
+                return None
+            log.warning('RookHub get_player_progress(%s): 404 mit unbekanntem reason %r '
+                        '— nicht als „nicht verknuepft" gewertet.', did, reason)
+            return PROGRESS_UNAVAILABLE
+        if r.status_code == 503 and _error_reason(r) == 'not-configured':
+            # RookHubs SchachBot__StatsSecret ist leer: Aussage ueber den Server, nicht ueber den
+            # Spieler. Einmal warnen statt je Abonnent und Durchlauf (andere 5xx: wie bisher unten).
+            if not _progress_not_configured_warned:
+                _progress_not_configured_warned = True
+                log.warning('RookHub: SchachBot__StatsSecret nicht konfiguriert (player-progress 503) '
+                            '— Motivations-DMs pausiert, bis es gesetzt ist.')
+            return PROGRESS_UNAVAILABLE
         r.raise_for_status()
-        return r.json()
+        data = r.json()
+        _progress_not_configured_warned = False
+        return data
     except (requests.RequestException, ValueError) as e:
         # Transient (Netz/5xx/Nicht-JSON-Body): darf NICHT als „nicht verknuepft" durchgehen.
         log.warning('RookHub get_player_progress(%s) fehlgeschlagen: %s', did, e)

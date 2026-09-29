@@ -304,16 +304,17 @@ async def _send_motivation_to(uid_int: int, user_obj=None, link_box: dict | None
 def _unlinked_strike_allowed(subscribers: dict, uid_str: str) -> bool:
     """Darf fuer diesen User ein „nicht verknuepft"-Fehlschlag gezaehlt werden?
 
-    Zwei Schranken, damit aus einem SYSTEMISCHEN Problem keine Massen-Abmeldung wird. Der
-    Endpunkt ``/api/bot/player-progress`` antwortet mit 404 in zwei voellig verschiedenen Faellen:
-    „dieser Discord-Account hat kein RookHub-Konto" (eine Aussage ueber den User) und
-    „das Feature ist serverseitig nicht konfiguriert" (eine Aussage ueber den Server). Der Bot
-    kann die zwei am Statuscode nicht unterscheiden.
+    Aufgerufen wird das nur, wenn ``get_player_progress`` ``None`` lieferte, also RookHub
+    „nicht verknuepft" meldete (404 mit ``reason: not-linked``). Aussagen ueber den Server
+    (503 ``not-configured``: RookHubs StatsSecret leer) oder den Bot (kein
+    ``ROOKHUB_STATS_SECRET``) kommen als ``PROGRESS_UNAVAILABLE`` und zaehlen nie. Zwei
+    Schranken bleiben, damit aus einem SYSTEMISCHEN Problem keine Massen-Abmeldung wird:
 
-    1. **Kein RookHub-Zugang im Bot** → ``get_player_progress`` gibt ohne jeden Aufruf ``None``
-       zurueck. Das sagt nichts ueber den User.
-    2. **Kein anderer Abonnent gilt als verknuepft** → dann ist die 404-Antwort mit hoher
-       Wahrscheinlichkeit serverseitig. Ohne diese Schranke waeren nach
+    1. **Kein RookHub-Zugang im Bot** → sagt nichts ueber den User (``get_player_progress``
+       liefert dann ohnehin ``PROGRESS_UNAVAILABLE``; die Schranke bleibt als Netz).
+    2. **Kein anderer Abonnent gilt als verknuepft** → RookHub-Versionen vor W2 antworten auch
+       bei „Feature serverseitig aus" mit 404 ohne ``reason``, das ist vom echten „nicht
+       verknuepft" nicht zu unterscheiden. Ohne diese Schranke waeren dort nach
        ``_MAX_UNLINKED_DAYS`` Tagen ALLE Abos weg, weil jeder Zaehler gleichzeitig hochlaeuft.
 
     Preis der zweiten Schranke: bei genau EINEM Abonnenten wird nie abgemeldet. Bewusst so —
