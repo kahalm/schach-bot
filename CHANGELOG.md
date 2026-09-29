@@ -4,6 +4,21 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.5] - 2026-09-29
+### Fixed
+- **`buch` bei `/endless`, `/reminder` und `/ignore_kapitel` verweist nicht mehr auf `/kurs`.** Diese
+  drei Befehle arbeiten weiter auf den lokalen PGN-Büchern; `buch` ist dort deren Nummer
+  (alphabetisch, 1–N) — `/kurs` zeigt aber die RookHub-Buch-IDs (die `/puzzle buch:` nimmt).
+  Beschreibung, `/help` und Fehlertexte sagten trotzdem „Nummer aus /kurs“: `/endless buch:17`
+  scheiterte mit „`/kurs` zeigt die verfügbaren Bücher“, `/reminder buch:17` speicherte die ID
+  ungeprüft und schickte danach in jedem Intervall eine Fehler-DM.
+- Jetzt: `buch` hat bei den drei Befehlen eine **Vorschlagsliste mit den lokalen Buchnamen**
+  („2 · The Checkmate Patterns Manual“), Beschreibung und `/help` sagen „lokales Buch, nicht die
+  /kurs-ID“, Fehlertexte nennen den gültigen Bereich. `/reminder` lehnt eine ungültige Nummer
+  gleich beim Einrichten ab und zeigt in Bestätigung und Status den Buchnamen statt „Buch 7“.
+  Das Chat-Werkzeug `send_puzzle` beschreibt `buch` als Nummer aus `list_books`.
+- Bestehende Reminder bleiben unverändert (gleiche Nummerierung wie bisher).
+
 ## [2.83.4] - 2026-09-29
 ### Changed
 - **Kein Image mehr ohne Testlauf.** `.github/workflows/release.yml` hat einen Job `test`, von dem

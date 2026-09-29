@@ -421,11 +421,13 @@ def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str
              'Nur Bücher mit `blind: true` nutzbar (siehe `/kurs`).'),
             ('/endless [buch]',
              'Endlos-Modus: nach jeder ✅/❌ kommt sofort das nächste Puzzle per DM.\n'
-             'Nochmal `/endless` zum Stoppen.'),
+             'Nochmal `/endless` zum Stoppen.\n'
+             '`buch` — lokales Buch aus der Vorschlagsliste (nicht die `/kurs`-ID)'),
             ('/reminder [hours] [puzzle_count] [buch]',
              'Wiederkehrende Puzzle-DMs einstellen.\n'
              '`/reminder hours:4 puzzle_count:3` — Alle 4h 3 Puzzles\n'
-             '`/reminder hours:0` — Stoppen · `/reminder` — Status anzeigen'),
+             '`/reminder hours:0` — Stoppen · `/reminder` — Status anzeigen\n'
+             '`buch` — lokales Buch aus der Vorschlagsliste (nicht die `/kurs`-ID)'),
         ]
     if bereich == 'bibliothek':
         return '📚 Bibliothek', [
@@ -490,7 +492,8 @@ def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str
              'Ein ganzes Kapitel ignorieren.\n'
              '`/ignore_kapitel buch:2 kapitel:3` — ignorieren\n'
              '`/ignore_kapitel buch:2 kapitel:3 aktion:unignore` — reaktivieren\n'
-             '`/ignore_kapitel` — alle ignorierten Kapitel anzeigen'),
+             '`/ignore_kapitel` — alle ignorierten Kapitel anzeigen\n'
+             '`buch` — lokales Buch aus der Vorschlagsliste (nicht die `/kurs`-ID)'),
             ('/log [zeilen]', 'Letzte Log-Zeilen anzeigen (Standard: 50).'),
             ('/dm-log [user]', 'DM-Log anzeigen (alle oder ein bestimmter User).'),
             ('/test', 'Snapshot-Regressionstests ausführen.'),

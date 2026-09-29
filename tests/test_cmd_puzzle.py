@@ -381,6 +381,164 @@ def test_endless():
     print()
 
 
+def _capture_registrations(setup_fn):
+    """Fuehrt ``setup_fn(bot)`` mit eigenem Tree aus (globale _captured_commands bleiben
+    unberuehrt) und liefert je Befehl die ``describe``-Texte und die Parameter mit
+    Autocomplete: ``{name: {'describe': {...}, 'autocomplete': {...}}}``."""
+    import discord
+    info = {}
+
+    def describe(**kw):
+        def deco(fn):
+            fn._describe = dict(kw)
+            return fn
+        return deco
+
+    class _Tree:
+        def command(self, **kw):
+            def deco(fn):
+                entry = info.setdefault(kw.get('name'), {
+                    'describe': getattr(fn, '_describe', {}), 'autocomplete': set()})
+
+                def autocomplete(param):
+                    entry['autocomplete'].add(param)
+                    return lambda f: f
+                fn.autocomplete = autocomplete
+                return fn
+            return deco
+
+        def __getattr__(self, name):
+            return MagicMock()
+
+    class _Bot:
+        tree = _Tree()
+
+        def listen(self, *a, **kw):
+            return lambda f: f
+
+    orig = discord.app_commands.describe
+    discord.app_commands.describe = describe
+    try:
+        setup_fn(_Bot())
+    finally:
+        discord.app_commands.describe = orig
+    return info
+
+
+def test_local_book_param():
+    """W1 S4-012: `buch` bei /endless, /reminder, /ignore_kapitel ist das LOKALE Buch (Index in
+    _list_pgn_files), nicht die RookHub-ID aus /kurs (die /puzzle nimmt). Vorher verwiesen
+    Beschreibung und Fehlertexte auf /kurs, /reminder speicherte eine /kurs-ID ungeprueft und
+    schickte danach in jedem Intervall eine Fehler-DM."""
+    print('[buch = lokales Buch bei /endless, /reminder, /ignore_kapitel]')
+    tmpdir = setup_temp_config()
+    import puzzle as leg
+    import puzzle.commands as pc
+    import puzzle.posting as posting
+    import puzzle.processing as processing
+    import commands.reminder as reminder_mod
+    from core.json_store import atomic_read
+    orig = (leg._list_pgn_files, leg._clean_book_name, posting._list_pgn_files, reminder_mod._bot)
+    books3 = ['Basic Endgames_firstkey.pgn', 'The Checkmate Patterns Manual_firstkey.pgn', 'x.pgn']
+    try:
+        leg._clean_book_name = processing._clean_book_name
+        leg._list_pgn_files = lambda: list(books3)
+
+        # 1) Autocomplete: Nummer + Name, Wert = lokaler Index
+        ch = pc.local_book_choices('')
+        check('Autocomplete: alle lokalen Buecher', [c.value for c in ch] == [1, 2, 3])
+        check('Autocomplete: Name = Nummer + Buchname',
+              ch[1].name == '2 · The Checkmate Patterns Manual', ch[1].name if ch[1:] else ch)
+        check('Autocomplete: Filter nach Name',
+              [c.value for c in pc.local_book_choices('checkmate')] == [2])
+        check('Autocomplete: Filter nach Nummer', [c.value for c in pc.local_book_choices('3')] == [3])
+        leg._list_pgn_files = lambda: [f'b{i:02d}.pgn' for i in range(40)]
+        check('Autocomplete: hoechstens 25 (Discord-Limit)', len(pc.local_book_choices('')) == 25)
+        leg._list_pgn_files = lambda: list(books3)
+
+        # 2) Registrierung: Beschreibung verweist nicht auf /kurs, Autocomplete auf buch
+        info = _capture_registrations(pc.setup)
+        info.update(_capture_registrations(reminder_mod.setup))
+        for name in ('endless', 'reminder', 'ignore_kapitel'):
+            d = info.get(name, {}).get('describe', {}).get('buch', '')
+            check(f'/{name}: buch-Beschreibung = lokales Buch, nicht /kurs-ID',
+                  'lokal' in d.lower() and 'nicht die /kurs-id' in d.lower(), d)
+            check(f'/{name}: Autocomplete auf buch',
+                  'buch' in info.get(name, {}).get('autocomplete', set()))
+        check('/puzzle: buch bleibt die /kurs-ID',
+              'aus /kurs' in info.get('puzzle', {}).get('describe', {}).get('buch', ''))
+
+        def _no_kurs_source(text):
+            # Fehlertext darf /kurs nicht als Quelle der Nummer nennen
+            return 'lokal' in text.lower() and '/kurs` zeigt' not in text
+
+        # 3) /endless mit /kurs-ID → ehrlicher Fehler, kein Start
+        cmd = _captured_commands.get('endless')
+        orig_is, orig_start = leg.is_endless, leg.start_endless
+        started = []
+        leg.is_endless = lambda uid: False
+        leg.start_endless = lambda uid, book: started.append(book)
+        try:
+            ia = make_interaction()
+            run_async(cmd(ia, buch=17))
+            content = ia.response.calls[0].get('content') or ''
+            check('/endless buch:17 → Fehler nennt lokale Buecher statt /kurs',
+                  _no_kurs_source(content) and '1–3' in content, content)
+            check('/endless buch:17 → kein Start', not started)
+        finally:
+            leg.is_endless, leg.start_endless = orig_is, orig_start
+
+        # 4) /ignore_kapitel mit /kurs-ID → ehrlicher Fehler
+        cmd = _captured_commands.get('ignore_kapitel')
+        ia = make_interaction(admin=True)
+        run_async(cmd(ia, buch=17, kapitel=3, aktion=None))
+        content = ia.followup.calls[0].get('content') or ''
+        check('/ignore_kapitel buch:17 → Fehler nennt lokale Buecher statt /kurs',
+              _no_kurs_source(content), content)
+
+        # 5) /reminder: /kurs-ID wird beim Einrichten abgelehnt, gueltige Nummer zeigt den Namen
+        cmd = _captured_commands.get('reminder')
+        ia = make_interaction()
+        run_async(cmd(ia, hours=4, puzzle_count=1, buch=17))
+        content = ia.response.calls[0].get('content') or ''
+        check('/reminder buch:17 → abgelehnt mit Hinweis auf lokale Buecher',
+              _no_kurs_source(content) and '1–3' in content, content)
+        check('/reminder buch:17 → nichts gespeichert',
+              str(ia.user.id) not in atomic_read(reminder_mod.REMINDER_FILE, dict))
+        ia = make_interaction()
+        run_async(cmd(ia, hours=4, puzzle_count=1, buch=2))
+        content = ia.response.calls[0].get('content') or ''
+        check('/reminder buch:2 → Bestaetigung nennt den Buchnamen',
+              'The Checkmate Patterns Manual' in content, content)
+        ia2 = make_interaction(user=ia.user)
+        run_async(cmd(ia2, hours=None, puzzle_count=1, buch=0))
+        content = ia2.response.calls[0].get('content') or ''
+        check('/reminder Status nennt den Buchnamen', 'The Checkmate Patterns Manual' in content,
+              content)
+
+        # 6) post_puzzle (Reminder-DM, Chat-Werkzeug) mit ungueltiger Nummer
+        posting._list_pgn_files = lambda: list(books3)
+        ch_dm = h.FakeChannel()
+        n = run_async(posting.post_puzzle(ch_dm, count=1, book_idx=17))
+        text = ch_dm.sent[0].content if ch_dm.sent else ''
+        check('post_puzzle buch 17 → 0 Puzzles', n == 0)
+        check('post_puzzle buch 17 → Text nennt lokale Buecher statt /kurs',
+              _no_kurs_source(text) and '1–3' in text, text)
+
+        # 7) /help erklaert die lokale Nummerierung
+        fields = dict(h._help_fields_fn('puzzle', False)[1])
+        fields.update(dict(h._help_fields_fn('admin', True)[1]))
+        for key in ('/endless [buch]', '/reminder [hours] [puzzle_count] [buch]',
+                    '/ignore_kapitel [buch] [kapitel] [aktion]'):
+            check(f'/help {key.split()[0]}: buch = lokales Buch',
+                  'lokales Buch' in fields.get(key, ''), fields.get(key, '<fehlt>'))
+    finally:
+        (leg._list_pgn_files, leg._clean_book_name, posting._list_pgn_files,
+         reminder_mod._bot) = orig
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_blind():
     """/blind ist abgelöst (Discord-Blind entfällt) → verweist auf /puzzle bzw. RookHub."""
     print('[/blind]')

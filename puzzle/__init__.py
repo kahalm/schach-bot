@@ -44,7 +44,7 @@ from .selection import (  # noqa: F401
     _books_fingerprint, clear_lines_cache, load_all_lines, _parse_all_lines,
     book_training_lines, pick_sequential_lines, get_random_books,
     pick_random_lines, pick_random_line, find_line_by_id,
-    get_blind_books,
+    get_blind_books, local_book_not_found,
 )
 
 # --- Lichess-API ---
@@ -76,7 +76,7 @@ from . import rookhub  # noqa: F401
 from .commands import (  # noqa: F401
     _cmd_puzzle, _cmd_buecher, _cmd_train, _cmd_next,
     _cmd_endless, _cmd_ignore_kapitel, _cmd_randompuzzle, _cmd_blindpuzzle, setup,
-    send_next_training,
+    send_next_training, LOCAL_BOOK_DESCRIBE, local_book_choices, local_book_label,
 )
 
 # Button-View fuer persistente Registrierung in bot.on_ready()

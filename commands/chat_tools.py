@@ -99,7 +99,8 @@ TOOLS = [
                 },
                 'buch': {
                     'type': 'integer',
-                    'description': 'Buchnummer (1-basiert, 0 = alle Buecher)',
+                    'description': ('Buchnummer aus list_books (lokale Buecher, 1-basiert, '
+                                    '0 = alle Buecher) - nicht die RookHub-ID aus /kurs'),
                     'default': 0,
                 },
             },

@@ -30,7 +30,7 @@ Copy `.env.example` to `.env` and fill in:
 - `LICHESS_TOKEN` – nur noch für die `/test`-Diagnose / Cloud-Eval (nicht mehr fürs Posten)
 - `CHANNEL_ID` – Discord channel for daily posts
 - `PUZZLE_HOUR` / `PUZZLE_MINUTE` – Daily post time (UTC)
-- `BOOKS_DIR` – Directory containing PGN files (default: `books/`) – für lokale Commands (/puzzle, /kurs, /train, /blind, /endless)
+- `BOOKS_DIR` – Directory containing PGN files (default: `books/`) – für die lokalen Commands (/endless, /reminder, /ignore_kapitel, Chat-Werkzeug); deren `buch` ist der 1-basierte Index dieser alphabetischen Liste (Autocomplete zeigt die Namen), NICHT die RookHub-Buch-ID aus /kurs, die /puzzle nimmt
 - `LIBRARY_ENFORCE_PD` – Gemeinfreiheits-Sperre der Bibliothek durchsetzen (`1`/`true`/`yes`/`on`). Default **aus**: das pro-Buch-Sidecar-Feld `publicDomainFrom` (ISO-Datum, ab wann gemeinfrei) wird gespeichert, sperrt aber nichts. Aktiviert → noch nicht freie Bücher werden in `/bibliothek` mit 🔒 markiert und nicht zum Download/SFTPGo freigegeben
 
 Runtime state lives in `config/` (gitignored, auto-created).

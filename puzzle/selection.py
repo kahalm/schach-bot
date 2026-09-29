@@ -74,6 +74,17 @@ def _list_pgn_files() -> list[str]:
     return sorted(f for f in os.listdir(BOOKS_DIR) if f.endswith('.pgn'))
 
 
+def local_book_not_found(buch: int, n_books: int) -> str:
+    """Fehlertext für eine Buchnummer außerhalb von ``_list_pgn_files()``.
+
+    /endless, /reminder, /ignore_kapitel (und das Chat-Werkzeug) nummerieren die LOKALEN
+    PGN-Bücher (1-basiert, alphabetisch) — NICHT die RookHub-Buch-ID, die /kurs anzeigt und
+    /puzzle nimmt. Der Text sagt das, statt auf /kurs zu verweisen.
+    """
+    return (f'⚠️ Buch {buch} gibt es hier nicht: `buch` meint die lokalen Bücher 1–{n_books} '
+            f'(Vorschlagsliste beim Tippen), nicht die RookHub-ID aus `/kurs`.')
+
+
 # ---------------------------------------------------------------------------
 # Linien-Cache
 # ---------------------------------------------------------------------------

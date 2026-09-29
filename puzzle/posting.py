@@ -21,7 +21,7 @@ from puzzle.processing import (
     _solution_pgn, _prelude_pgn, _trim_to_training_position, _final_turn,
 )
 from puzzle.rendering import safe_render_board
-from puzzle.selection import _list_pgn_files, pick_random_lines
+from puzzle.selection import _list_pgn_files, local_book_not_found, pick_random_lines
 from puzzle.state import (
     _register_puzzle_msg, _endless_sessions, stop_endless,
     _load_books_config, _get_user_puzzle_count,
@@ -235,7 +235,8 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0,
     """Puzzles auswählen, rendern und posten.
 
     count      – Anzahl Puzzles (1–20).
-    book_idx   – 1-basierte Buchnummer aus /kurs (0 = alle Bücher).
+    book_idx   – 1-basierte Nummer der LOKALEN Bücher (_list_pgn_files, 0 = alle) –
+                 nicht die RookHub-Buch-ID aus /kurs.
     user_id    – Discord-User-ID; wenn gesetzt, wird die Tages-Studie wiederverwendet.
     show_board – False: kein Brettbild, keine Lösung – nur Embed + RookHub-Link.
 
@@ -251,9 +252,7 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0,
             if 1 <= book_idx <= len(books):
                 book_filename = books[book_idx - 1]
             else:
-                await channel.send(
-                    f'⚠️ Buch {book_idx} nicht gefunden. `/kurs` zeigt die verfügbaren Bücher.'
-                )
+                await channel.send(local_book_not_found(book_idx, len(books)))
                 return 0
 
     results = await asyncio.to_thread(pick_random_lines, count, book_filename)

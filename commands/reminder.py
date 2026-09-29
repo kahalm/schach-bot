@@ -106,7 +106,7 @@ def setup(bot):
     @discord.app_commands.describe(
         hours='Intervall in Stunden (1–168). 0 = Reminder stoppen.',
         puzzle_count='Anzahl Puzzles pro Erinnerung (1–20, Standard: 1)',
-        buch='Nur aus diesem Buch (Nummer aus /kurs, Standard: alle)',
+        buch=f'{puzzle.LOCAL_BOOK_DESCRIBE} (Standard: alle)',
     )
     async def cmd_reminder(
         interaction: discord.Interaction,
@@ -128,7 +128,7 @@ def setup(bot):
                 )
                 return
             next_ts = _parse_utc(entry['next'])
-            buch_txt = f"Buch {entry['buch']}" if entry.get('buch') else 'alle Bücher'
+            buch_txt = puzzle.local_book_label(entry.get('buch', 0))
             await interaction.response.send_message(
                 f"**Dein Reminder:**\n"
                 f"Alle **{entry['hours']}h** — **{entry['puzzle']}** Puzzle(s) — {buch_txt}\n"
@@ -166,6 +166,13 @@ def setup(bot):
             await interaction.response.send_message(
                 '⚠️ `buch` darf nicht negativ sein.', ephemeral=True)
             return
+        # `buch` = lokales Buch (Index in _list_pgn_files), nicht die /kurs-ID — sonst
+        # speichert der Reminder eine ungueltige Nummer und schickt jedes Intervall eine Fehler-DM.
+        books = puzzle._list_pgn_files()
+        if buch > len(books) and books:
+            await interaction.response.send_message(
+                puzzle.local_book_not_found(buch, len(books)), ephemeral=True)
+            return
 
         # Reminder aktivieren
         next_time = datetime.now(timezone.utc) + timedelta(hours=hours)
@@ -181,12 +188,16 @@ def setup(bot):
             return data
         atomic_update(REMINDER_FILE, _set)
 
-        buch_txt = f"Buch {buch}" if buch else 'alle Bücher'
+        buch_txt = puzzle.local_book_label(buch)
         await interaction.response.send_message(
             f"Reminder aktiviert: alle **{hours}h** — **{puzzle_count}** Puzzle(s) — {buch_txt}\n"
             f"Nächster: <t:{int(next_time.timestamp())}:R>",
             ephemeral=True,
         )
+
+    @cmd_reminder.autocomplete('buch')
+    async def reminder_buch_autocomplete(interaction: discord.Interaction, current: str):
+        return puzzle.local_book_choices(current)
 
     # Loop starten wenn Bot ready
     @bot.listen('on_ready')

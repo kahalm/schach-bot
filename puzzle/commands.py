@@ -18,6 +18,37 @@ import puzzle as _pkg
 
 log = logging.getLogger('schach-bot')
 
+# /endless, /reminder und /ignore_kapitel arbeiten auf den LOKALEN PGN-Büchern: `buch` ist dort
+# der 1-basierte Index in _list_pgn_files() — NICHT die RookHub-Buch-ID, die /kurs anzeigt und
+# /puzzle nimmt. Beschreibung, Autocomplete (Buchnamen) und Fehlertexte machen das sichtbar.
+LOCAL_BOOK_DESCRIBE = 'Lokales Buch – aus der Vorschlagsliste wählen, nicht die /kurs-ID'
+
+
+def local_book_choices(current: str = '') -> list:
+    """Autocomplete für `buch` der lokalen Befehle: ``Choice(name='2 · Buchname', value=2)``,
+    gefiltert nach Buchname oder Nummer, höchstens 25 (Discord-Limit)."""
+    cur = str(current or '').strip().lower()
+    out = []
+    for i, fn in enumerate(_pkg._list_pgn_files(), 1):
+        name = _pkg._clean_book_name(fn)
+        if cur and cur not in name.lower() and not str(i).startswith(cur):
+            continue
+        out.append(discord.app_commands.Choice(name=f'{i} · {name}'[:100], value=i))
+        if len(out) == 25:
+            break
+    return out
+
+
+def local_book_label(buch: int) -> str:
+    """Anzeige einer lokalen Buchnummer: Buchname statt nackter Nummer (0 = alle Bücher)."""
+    if not buch:
+        return 'alle Bücher'
+    books = _pkg._list_pgn_files()
+    if 1 <= buch <= len(books):
+        return f'Buch {buch} (**{_pkg._clean_book_name(books[buch - 1])}**)'
+    return f'Buch {buch} (nicht mehr vorhanden)'
+
+
 async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: int = 0,
                       id: str = '', user: discord.Member | None = None,
                       option: discord.app_commands.Choice[str] | None = None):
@@ -425,8 +456,7 @@ async def _cmd_endless(bot, interaction: discord.Interaction, buch: int = 0):
                 book_filename = books[buch - 1]
             else:
                 await interaction.response.send_message(
-                    f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die verfügbaren Bücher.',
-                    ephemeral=True)
+                    _pkg.local_book_not_found(buch, len(books)), ephemeral=True)
                 return
 
     await interaction.response.defer(ephemeral=True)
@@ -489,8 +519,7 @@ async def _cmd_ignore_kapitel(
         return
     if not 1 <= buch <= len(books):
         await interaction.followup.send(
-            f'⚠️ Buch {buch} nicht gefunden. `/kurs` zeigt die verfügbaren Bücher.',
-            ephemeral=True)
+            _pkg.local_book_not_found(buch, len(books)), ephemeral=True)
         return
     book_filename = books[buch - 1]
     book_name = _pkg._clean_book_name(book_filename)
@@ -601,11 +630,15 @@ def setup(bot: discord.ext.commands.Bot):
 
     @tree.command(name='endless', description='Endlos-Puzzle-Modus starten/stoppen')
     @discord.app_commands.describe(
-        buch='Buchnummer aus /kurs (Standard: alle Bücher)',
+        buch=f'{LOCAL_BOOK_DESCRIBE} (Standard: alle)',
     )
     @discord.app_commands.checks.cooldown(1, 10.0)
     async def cmd_endless(interaction: discord.Interaction, buch: int = 0):
         await _cmd_endless(bot, interaction, buch)
+
+    @cmd_endless.autocomplete('buch')
+    async def endless_buch_autocomplete(interaction: discord.Interaction, current: str):
+        return local_book_choices(current)
 
     @tree.command(name='randompuzzle', description='Zufälliges Puzzle von RookHub posten')
     @discord.app_commands.checks.cooldown(1, 10.0)
@@ -620,7 +653,7 @@ def setup(bot: discord.ext.commands.Bot):
     @tree.command(name='ignore_kapitel',
                   description='Ein ganzes Kapitel ignorieren oder Liste anzeigen (Admin)')
     @discord.app_commands.describe(
-        buch='Buchnummer aus /kurs',
+        buch=LOCAL_BOOK_DESCRIBE,
         kapitel='Kapitel-Nummer (z.B. 3)',
         aktion='ignore = ignorieren · unignore = wieder aktivieren · list = ohne Parameter zeigen',
     )
@@ -636,3 +669,7 @@ def setup(bot: discord.ext.commands.Bot):
         aktion: discord.app_commands.Choice[str] = None,
     ):
         await _cmd_ignore_kapitel(interaction, buch, kapitel, aktion)
+
+    @cmd_ignore_kapitel.autocomplete('buch')
+    async def ignore_kapitel_buch_autocomplete(interaction: discord.Interaction, current: str):
+        return local_book_choices(current)
