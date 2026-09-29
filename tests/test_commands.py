@@ -56,6 +56,7 @@ from test_cmd_library import (
     test_parse_index_entry, test_auto_tag, test_build_library_catalog,
     test_sftpgo_password_separated, test_public_domain_from,
     test_library_cache_threadsafe, test_format_view_missing_file,
+    test_library_catalog_golden,
 )
 from test_cmd_admin import (
     test_daily, test_ignore_kapitel, test_test_cmd, test_announce,
@@ -121,6 +122,7 @@ def main():
     test_parse_index_entry()
     test_auto_tag()
     test_build_library_catalog()
+    test_library_catalog_golden()
     test_library_cache_threadsafe()
     test_format_view_missing_file()
     test_sftpgo_password_separated()

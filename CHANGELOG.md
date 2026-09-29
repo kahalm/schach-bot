@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.7] - 2026-09-29
+### Changed
+- **Intern, kein sichtbarer Unterschied: Golden-Test fuer die Bibliothek als Netz fuer die spaetere
+  Aufteilung von `library.py`.** `test_library_catalog_golden` baut aus einer festen `index.txt`
+  (Formate einer Gruppe, Disc-Teile, Jahr in Klammern, gleicher Dateiname in zwei Autor-Ordnern,
+  Sidecar-JSON, ungueltige Zeilen, Duplikat) samt altem Katalog den Katalog neu und vergleicht
+  `library.json` byte-genau; dazu Ausblenden per `ignore.json`, Tag-/Autorenliste und Suche
+  (Rangfolge, alle Woerter, Autor). Die Aufteilung in ein Paket `library/` (Review W1 S4-017) ist
+  bewusst verschoben: > 300 geaenderte Zeilen, gehoert in eine eigene Welle.
+
 ## [2.83.6] - 2026-09-29
 ### Changed
 - **Intern, kein sichtbarer Unterschied: Testnetz fuer die spaetere Aufteilung von

@@ -497,3 +497,138 @@ def test_format_view_missing_file():
     except OSError as e:
         check('View-Bau ohne Datei crasht nicht', False, f'OSError: {e}')
     print()
+
+
+# ---------------------------------------------------------------------------
+# Charakterisierung (Vorarbeit Zerlegung library.py, Review W1 S4-017)
+# ---------------------------------------------------------------------------
+# Golden fuer die Katalog-Seite (index.txt-Parsing, Gruppierung, Sidecar,
+# Auto-Tags, Update/Entfernen, ignore.json, Suche): library.json muss bei der
+# spaeteren Aufteilung in library/catalog.py & Co. byte-gleich bleiben.
+
+_GOLDEN_INDEX = [
+    '/data/schach/Kasparov, Garry/My Great Predecessors (2003).epub',
+    '/data/schach/Kasparov, Garry/My Great Predecessors (2003).pdf',
+    '/data/schach/Silman/Complete Endgame Course [Siles Press, 2007].djvu',
+    '/data/schach/Mueller/Sicilian Attack - Disc 2.mp4',
+    '/data/schach/Mueller/Sicilian Attack - Disc 1.mp4',
+    '/data/schach/Tartakower/Some Book.pdf',
+    '/data/schach/Unknown/Chess Tactics for Kids 1999.pdf',
+    '/data/schach/Murray Chandler/Chess Tactics for Kids 1999.pdf',
+    '/data/schach/Privat/secret.pgn',
+    '/data/schach/Nunn/Understanding Chess Endgames (German).pdf',
+    '/data/other/Fremd/x.pdf',                                              # kein /schach/
+    '/data/schach/NoExt/README',                                            # ohne Endung
+    '/data/schach/toplevel.pdf',                                            # ohne Autor-Ordner
+    '/data/schach/Silman/Complete Endgame Course [Siles Press, 2007].djvu',  # Duplikat
+    '',
+]
+
+_GOLDEN_LIBRARY = [
+    {'id': 'kasparov garry--my great predecessors', 'title': 'My Great Predecessors',
+     'author': 'Kasparov, Garry', 'year': 2003, 'tags': ['eBook'], 'note': 'bleibt',
+     'manual_tags': [], 'file_type': 'pdf', 'publicDomainFrom': None,
+     'files': ['/data/schach/Kasparov, Garry/My Great Predecessors (2003).pdf',
+               '/data/schach/Kasparov, Garry/My Great Predecessors (2003).epub']},
+    {'id': 'mueller--sicilian attack', 'title': 'Sicilian Attack', 'author': 'Mueller',
+     'year': None, 'tags': ['Sizilianisch', 'Angriff', 'Video'], 'manual_tags': [],
+     'file_type': 'mp4', 'publicDomainFrom': None,
+     'files': ['/data/schach/Mueller/Sicilian Attack - Disc 2.mp4',
+               '/data/schach/Mueller/Sicilian Attack - Disc 1.mp4']},
+    {'id': 'nunn--understanding chess endgames german',
+     'title': 'Understanding Chess Endgames (German)', 'author': 'Nunn', 'year': None,
+     'tags': ['eBook', 'Deutsch'], 'manual_tags': [], 'file_type': 'pdf',
+     'publicDomainFrom': None,
+     'files': ['/data/schach/Nunn/Understanding Chess Endgames (German).pdf']},
+    {'id': 'privat--secret', 'title': 'secret', 'author': 'Privat', 'year': None,
+     'tags': ['PGN'], 'manual_tags': [], 'file_type': 'pgn', 'publicDomainFrom': None,
+     'files': ['/data/schach/Privat/secret.pgn']},
+    {'id': 'savielly tartakower julius du mont--some book', 'title': 'Best Games',
+     'author': 'Savielly Tartakower, Julius du Mont', 'year': 1950,
+     'tags': ['Klassiker', 'eBook'], 'manual_tags': ['Klassiker'], 'file_type': 'pdf',
+     'targetMinElo': 1600, 'favorite': [42], 'size': 123, 'publicDomainFrom': '2027-01-01',
+     'files': ['/data/schach/Tartakower/Some Book.pdf']},
+    {'id': 'silman--complete endgame course', 'title': 'Complete Endgame Course',
+     'author': 'Silman', 'year': 2007, 'tags': ['Endspiel', 'eBook'], 'manual_tags': [],
+     'file_type': 'djvu', 'publicDomainFrom': None,
+     'files': ['/data/schach/Silman/Complete Endgame Course [Siles Press, 2007].djvu']},
+    {'id': 'unknown--chess tactics for kids 1999', 'title': 'Chess Tactics for Kids 1999',
+     'author': 'Unknown', 'year': 1999, 'tags': ['Taktik', 'eBook'], 'manual_tags': [],
+     'file_type': 'pdf', 'publicDomainFrom': None,
+     'files': ['/data/schach/Unknown/Chess Tactics for Kids 1999.pdf',
+               '/data/schach/Murray Chandler/Chess Tactics for Kids 1999.pdf']},
+]
+
+
+def test_library_catalog_golden():
+    """Golden: library.json aus fester index.txt + Sidecar + ignore.json, danach Suche."""
+    print('[library_catalog_golden]')
+    import library
+
+    tmpdir = tempfile.mkdtemp(prefix='lib_golden_')
+    orig = (library.LIBRARY_INDEX, library.LIBRARY_FILE, library._LOCAL_BASE)
+    try:
+        library.LIBRARY_INDEX = os.path.join(tmpdir, 'index.txt')
+        library.LIBRARY_FILE = os.path.join(tmpdir, 'library.json')
+        library._LOCAL_BASE = tmpdir
+        os.makedirs(os.path.join(tmpdir, 'Tartakower'))
+        with open(os.path.join(tmpdir, 'Tartakower', 'Some Book.json'), 'w', encoding='utf-8') as f:
+            json.dump({'title': 'Best Games', 'author': ['Savielly Tartakower', 'Julius du Mont'],
+                       'year': 1950, 'tags': ['Klassiker'], 'targetMinElo': 1600,
+                       'favorite': [42], 'size': 123, 'publicDomainFrom': '2027-01-01'}, f)
+        os.makedirs(os.path.join(tmpdir, 'Privat'))
+        with open(os.path.join(tmpdir, 'Privat', 'ignore.json'), 'w', encoding='utf-8') as f:
+            json.dump(['*.pgn'], f)
+        with open(library.LIBRARY_INDEX, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(_GOLDEN_INDEX) + '\n')
+        # Alter Katalog: ein Eintrag wird aktualisiert (Zusatzfeld bleibt), einer entfernt
+        with open(library.LIBRARY_FILE, 'w', encoding='utf-8') as f:
+            json.dump([
+                {'id': 'kasparov garry--my great predecessors', 'title': 'alt',
+                 'author': 'Kasparov, Garry', 'year': 1999, 'tags': ['alt'], 'note': 'bleibt'},
+                {'id': 'weg--nicht mehr da', 'title': 'Weg', 'author': 'Weg',
+                 'files': ['/data/schach/Weg/x.pdf']},
+            ], f)
+        library._reload_library()
+
+        result = library.build_library_catalog()
+        check('golden: (dateien, buecher, neu, aktualisiert, entfernt)',
+              result == (13, 7, 6, 1, 1), detail=str(result))
+        with open(library.LIBRARY_FILE, encoding='utf-8') as f:
+            written = f.read()
+        check('golden: library.json byte-gleich',
+              written == json.dumps(_GOLDEN_LIBRARY, ensure_ascii=False, indent=2),
+              detail=written[:400])
+
+        # ignore.json blendet aus der Suche aus, library.json bleibt vollstaendig
+        library._reload_library()
+        ids = [e['id'] for e in library._ensure_library()]
+        check('ignore.json: *.pgn im Ordner Privat ausgeblendet',
+              'privat--secret' not in ids and len(ids) == 6, detail=str(ids))
+        check('Tags ohne ausgeblendete Eintraege',
+              library._all_tags() == ['Angriff', 'Deutsch', 'Endspiel', 'Klassiker',
+                                      'Sizilianisch', 'Taktik', 'Video', 'eBook'],
+              detail=str(library._all_tags()))
+        check('Autoren sortiert',
+              library._all_authors() == ['Kasparov, Garry', 'Mueller', 'Nunn',
+                                         'Savielly Tartakower, Julius du Mont', 'Silman',
+                                         'Unknown'],
+              detail=str(library._all_authors()))
+
+        def _ids(q):
+            return [e['id'] for e in library._search_library(q)]
+
+        check('Suche: sicilian', _ids('sicilian') == ['mueller--sicilian attack'])
+        check('Suche: endgame (Gleichstand → Autor)',
+              _ids('endgame') == ['nunn--understanding chess endgames german',
+                                  'silman--complete endgame course'], detail=str(_ids('endgame')))
+        check('Suche: alle Woerter muessen passen',
+              _ids('chess tactics') == ['unknown--chess tactics for kids 1999'])
+        check('Suche: ueber Autor', _ids('kasparov') == ['kasparov garry--my great predecessors'])
+        check('Suche: ausgeblendet → nichts', _ids('secret') == [])
+        check('Suche: nur Satzzeichen → nichts', _ids('!!') == [])
+    finally:
+        library.LIBRARY_INDEX, library.LIBRARY_FILE, library._LOCAL_BASE = orig
+        library._reload_library()
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    print()
