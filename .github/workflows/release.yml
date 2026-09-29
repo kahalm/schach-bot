@@ -4,14 +4,51 @@ on:
   push:
     branches:
       - main
+    # Nur Release-Marken vX.Y.Z (Review W2 I1-004): ein Sicherungs-Tag wie
+    # vorher-umbau oder v-test baut kein Image. Job release-guard prueft das
+    # noch einmal und verlangt, dass der markierte Commit auf main liegt.
     tags:
-      - 'v*'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # :latest zieht Watchtower nachts auf Prod. Ein Tag gibt nur frei, wenn er
+  # genau vX.Y.Z heisst und sein Commit auf main liegt (kein ungemergter
+  # Branch-Stand nach Prod); main-Pushes bauen weiter nur :dev.
+  release-guard:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      latest: ${{ steps.tag-check.outputs.latest }}
+
+    steps:
+      - uses: actions/checkout@v4
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          fetch-depth: 0
+
+      - name: Tag ist vX.Y.Z und liegt auf main
+        id: tag-check
+        run: |
+          if [[ "$GITHUB_REF" != refs/tags/* ]]; then
+            echo "latest=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME ist keine Release-Marke vX.Y.Z - kein Image."
+            exit 1
+          fi
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME ($GITHUB_SHA) liegt nicht auf main - kein Image."
+            exit 1
+          fi
+          echo "latest=true" >> "$GITHUB_OUTPUT"
+
   # Kein Image ohne gruene Tests: :dev (main) und :latest (Tag) zieht
   # Watchtower nachts auf Dev/Prod. Gleicher Befehl wie lokal (CLAUDE.md).
   test:
@@ -42,7 +79,7 @@ jobs:
         run: python tests/run_all.py
 
   build-and-push:
-    needs: test
+    needs: [release-guard, test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -67,7 +104,7 @@ jobs:
             type=raw,value=dev,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=raw,value=latest,enable=${{ needs.release-guard.outputs.latest == 'true' }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6

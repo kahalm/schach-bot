@@ -16,6 +16,8 @@ import io
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -67,9 +69,112 @@ def test_release_workflow_gated():
     build = jobs.get('build-and-push', '')
     check('build-and-push existiert', bool(build))
     check('build-and-push wartet auf "test" (needs)',
-          re.search(r'^    needs:\s*(test|\[\s*test\s*\])\s*$', build, re.M) is not None)
+          re.search(r'^    needs:\s*(test|\[[^\]]*\btest\b[^\]]*\])\s*$', build, re.M) is not None)
     check('nur build-and-push pusht Images', all(
         'push: true' not in body for name, body in jobs.items() if name != 'build-and-push'))
+
+
+def _push_tag_patterns(workflow_text):
+    """Eintraege unter ``on: push: tags:`` (Liste mit ``- 'muster'``)."""
+    m = re.search(r'^on:\s*\n(.*?)^\S', workflow_text, re.M | re.S)
+    block = m.group(1) if m else ''
+    t = re.search(r'^    tags:\s*\n((?:\s*(?:#.*|- .*)\n)+)', block, re.M)
+    return re.findall(r"^\s*- '?([^'\n]+?)'?\s*$", t.group(1), re.M) if t else []
+
+
+def _step_run_script(job_text, step_id):
+    """``run: |``-Block des Schritts mit ``id: <step_id>`` (ausgerueckt) oder ''."""
+    lines = job_text.splitlines()
+    for i, line in enumerate(lines):
+        if re.match(rf'^\s+id:\s*{re.escape(step_id)}\s*$', line):
+            for j in range(i + 1, len(lines)):
+                m = re.match(r'^(\s+)run:\s*\|\s*$', lines[j])
+                if not m:
+                    continue
+                indent, body = len(m.group(1)), []
+                for k in range(j + 1, len(lines)):
+                    if lines[k].strip() and len(lines[k]) - len(lines[k].lstrip()) <= indent:
+                        break
+                    body.append(lines[k])
+                pad = min(len(b) - len(b.lstrip()) for b in body if b.strip())
+                return '\n'.join(b[pad:] for b in body) + '\n'
+    return ''
+
+
+_GIT_ENV = dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM='1',
+                GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@example.invalid',
+                GIT_COMMITTER_NAME='t', GIT_COMMITTER_EMAIL='t@example.invalid')
+
+
+def _git(cwd, *args):
+    return subprocess.run(['git', *args], cwd=cwd, env=_GIT_ENV, capture_output=True,
+                          text=True, check=True).stdout.strip()
+
+
+def test_release_tags_guarded():
+    """Review W2 I1-004: nur vX.Y.Z-Tags auf main werden :latest (Watchtower rollt es nachts aus)."""
+    text = _read('.github', 'workflows', 'release.yml')
+    jobs = _jobs(text)
+    check('Tag-Trigger nur vX.Y.Z (kein v*)', _push_tag_patterns(text) == ['v[0-9]+.[0-9]+.[0-9]+'],
+          f'{_push_tag_patterns(text)}')
+    build = jobs.get('build-and-push', '')
+    check('build-and-push wartet auf release-guard',
+          re.search(r'^    needs:\s*\[[^\]]*\brelease-guard\b[^\]]*\]\s*$', build, re.M) is not None)
+    latest = [l for l in build.splitlines() if 'value=latest' in l]
+    check(':latest nur mit Freigabe von release-guard',
+          len(latest) == 1 and "needs.release-guard.outputs.latest == 'true'" in latest[0]
+          and 'startsWith' not in latest[0], f'{latest}')
+    guard = jobs.get('release-guard', '')
+    check('release-guard holt die volle Historie (fetch-depth: 0)', 'fetch-depth: 0' in guard)
+    script = _step_run_script(guard, 'tag-check')
+    check('release-guard hat den Schritt tag-check', bool(script))
+    if not script:
+        return
+    if not (shutil.which('git') and shutil.which('bash')):
+        check('git und bash fuer den Verhaltenstest vorhanden', False)
+        return
+
+    # Verhalten: Skript echt ausfuehren gegen ein Wegwerf-Repo mit origin/main und Feature-Branch.
+    with tempfile.TemporaryDirectory() as tmp:
+        origin, work = os.path.join(tmp, 'origin.git'), os.path.join(tmp, 'work')
+        _git(tmp, 'init', '-q', '--bare', '-b', 'main', origin)
+        _git(tmp, 'init', '-q', '-b', 'main', work)
+        _git(work, 'remote', 'add', 'origin', origin)
+        _git(work, 'commit', '-q', '--allow-empty', '-m', 'A')
+        old_main = _git(work, 'rev-parse', 'HEAD')
+        _git(work, 'commit', '-q', '--allow-empty', '-m', 'C')
+        _git(work, 'push', '-q', 'origin', 'main')
+        _git(work, 'checkout', '-q', '-b', 'feature')
+        _git(work, 'commit', '-q', '--allow-empty', '-m', 'B (nicht gemergt)')
+        feature = _git(work, 'rev-parse', 'HEAD')
+        _git(work, 'update-ref', '-d', 'refs/remotes/origin/main')  # das Skript muss selbst holen
+        script_path = os.path.join(tmp, 'tag-check.sh')
+        with open(script_path, 'w', encoding='utf-8') as f:
+            f.write(script)
+
+        def run(ref, sha):
+            out = os.path.join(tmp, 'github_output')
+            open(out, 'w').close()
+            env = dict(_GIT_ENV, GITHUB_REF=ref, GITHUB_REF_NAME=ref.rsplit('/', 1)[-1],
+                       GITHUB_SHA=sha, GITHUB_OUTPUT=out)
+            rc = subprocess.run(['bash', '--noprofile', '--norc', '-eo', 'pipefail', script_path],
+                                cwd=work, env=env, capture_output=True, text=True).returncode
+            with open(out, encoding='utf-8') as f:
+                return rc, f.read()
+
+        rc, out = run('refs/heads/main', old_main)
+        check('main-Push: laeuft, kein :latest', rc == 0 and 'latest=false' in out, f'rc={rc} {out!r}')
+        rc, out = run('refs/tags/v2.99.0', old_main)
+        check('vX.Y.Z auf (aelterem) main-Commit: :latest frei', rc == 0 and 'latest=true' in out,
+              f'rc={rc} {out!r}')
+        for ref, sha, why in (('refs/tags/v2.99.0', feature, 'vX.Y.Z auf ungemergtem Branch'),
+                              ('refs/tags/vorher-umbau', old_main, 'Sicherungs-Tag vorher-umbau'),
+                              ('refs/tags/v-test', old_main, 'Tag v-test'),
+                              ('refs/tags/v2.99.0-rc1', old_main, 'Tag mit Suffix'),
+                              ('refs/tags/v2.99', old_main, 'Tag ohne Patch-Stelle')):
+            rc, out = run(ref, sha)
+            check(f'{why}: abgebrochen, kein :latest', rc != 0 and 'latest=true' not in out,
+                  f'rc={rc} {out!r}')
 
 
 def test_every_test_file_has_runner():
@@ -173,8 +278,8 @@ def test_docs_name_runner():
 
 
 def main():
-    for t in (test_release_workflow_gated, test_every_test_file_has_runner, test_collect,
-              test_books_exception, test_docs_name_runner):
+    for t in (test_release_workflow_gated, test_release_tags_guarded, test_every_test_file_has_runner,
+              test_collect, test_books_exception, test_docs_name_runner):
         print(f'== {t.__name__} ==')
         t()
     print()

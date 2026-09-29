@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.11] - 2026-09-30
+### Security
+- **`:latest` entsteht nur noch aus einer Release-Marke `vX.Y.Z`, deren Commit auf `main` liegt.**
+  `release.yml` reagierte auf jeden Tag `v*` und hängte bei jedem Tag `:latest` um – auch ein
+  Sicherungs-Tag wie `vorher-umbau` oder `v-test` auf einem ungemergten Branch wäre nach dem
+  Testlauf als `:latest` gebaut und nachts von Watchtower auf Prod ausgerollt worden.
+- Jetzt: Der Tag-Trigger lautet `v[0-9]+.[0-9]+.[0-9]+`; der neue Job `release-guard` prüft den
+  Tag-Namen noch einmal (`^v[0-9]+\.[0-9]+\.[0-9]+$`) und per `git merge-base --is-ancestor`, dass
+  der markierte Commit auf `origin/main` liegt, sonst bricht er ab und es entsteht kein Image.
+  `build-and-push` wartet auf `release-guard` und `test`, `:latest` gibt nur `release-guard` frei.
+  main-Pushes bauen unverändert `:dev`. `tests/test_ci_gate.py` hält Trigger, Abhängigkeit und
+  Freigabe fest und führt das Prüfskript gegen ein Wegwerf-Repo aus.
+
 ## [2.83.10] - 2026-09-30
 ### Security
 - **Platzhalter aus `.env.example` gelten nicht mehr als echte Geheimnisse.** `.env.example` trug für

@@ -146,7 +146,7 @@ docker compose down
 | Tag | Wann |
 |-----|------|
 | `:dev` | Jeder Push auf `main` |
-| `:x.y.z`, `:x.y`, `:latest` | Git-Tag `vx.y.z` |
+| `:x.y.z`, `:x.y`, `:latest` | Git-Tag `vx.y.z`, dessen Commit auf `main` liegt (andere Tags bauen nichts) |
 
 Das Dev-Image traegt den Git-SHA — sichtbar via `/version` (z.B. `v2.22.1 (abc1234)`).
 
@@ -497,7 +497,7 @@ git push origin main --tags
 ### CI/CD
 
 GitHub Actions (`.github/workflows/release.yml`):
-- **Trigger**: Push auf `main` oder Git-Tag `v*`
+- **Trigger**: Push auf `main` oder Git-Tag `vX.Y.Z` (nur diese Form; Job `release-guard` bricht ab, wenn der Tag-Commit nicht auf `main` liegt — kein `:latest` aus einem ungemergten Branch)
 - **Registry**: `ghcr.io`
 - **Dev-Image**: Enthaelt den Git-SHA (sichtbar via `/version`)
 
