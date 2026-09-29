@@ -5,12 +5,19 @@ Nur stdlib, liest release.yml/CLAUDE.md als Text (kein PyYAML im Image).
 
 Hintergrund (Review W1 S4-011): release.yml baute und pushte bei jedem
 main-Push ``:dev`` und bei jedem Tag ``:latest`` ohne einen einzigen Test;
-20 Testdateien liefen ueber keinen dokumentierten Runner.
+20 Testdateien liefen ueber keinen dokumentierten Runner. Nacharbeit: der
+Sammellauf muss auch in einem sauberen Checkout (CI) gruen sein —
+``test_trim.py`` braucht die gitignorten ``books/*_firstkey.pgn`` und wird dort
+sichtbar uebersprungen (``run_all.NEEDS_BOOKS``), nie still.
 """
 
+import contextlib
+import io
+import json
 import os
 import re
 import sys
+import tempfile
 
 _TESTS = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.dirname(_TESTS)
@@ -96,14 +103,78 @@ def test_collect():
           not [f for f in files if f.startswith('test_cmd_')])
 
 
+def _touch(path):
+    with open(path, 'w', encoding='utf-8'):
+        pass
+
+
+def test_books_exception():
+    """test_trim braucht die gitignorten Buch-PGNs: im sauberen Checkout SKIP statt rot."""
+    collected = run_all.collect()
+    check('nur test_trim.py ist Buecher-Ausnahme (NEEDS_BOOKS)',
+          run_all.NEEDS_BOOKS == frozenset({'test_trim.py'}),
+          f'NEEDS_BOOKS={sorted(run_all.NEEDS_BOOKS)}')
+    check('Buecher-Ausnahme wird gesammelt und ist kein Netz-Test',
+          run_all.NEEDS_BOOKS <= set(collected)
+          and not (run_all.NEEDS_BOOKS & run_all.NETWORK_TESTS))
+    with open(os.path.join(_TESTS, 'trim_snapshots.json'), encoding='utf-8') as f:
+        snap_books = sorted({snap['filename'] for snap in json.load(f)})
+    needed = run_all.required_books('test_trim.py')
+    check('Skip haengt an genau den Snapshot-PGNs aus trim_snapshots.json',
+          len(needed) > 1 and needed == snap_books, f'needed={needed}')
+    check('books/*.pgn ist gitignored (Grund der Ausnahme)',
+          re.search(r'^books/\*\.pgn\s*$', _read('.gitignore'), re.M) is not None)
+
+    with tempfile.TemporaryDirectory() as empty:
+        run, skipped = run_all.plan(books_dir=empty)
+        check('sauberer Checkout (keine PGN): nur test_trim uebersprungen, Rest laeuft',
+              set(skipped) == {'test_trim.py'}
+              and run == [f for f in collected if f != 'test_trim.py'],
+              f'skipped={sorted(skipped)}')
+        check('Skip-Grund nennt gitignored', 'gitignored' in skipped.get('test_trim.py', ''))
+    with tempfile.TemporaryDirectory() as full:
+        for b in needed:
+            _touch(os.path.join(full, b))
+        run, skipped = run_all.plan(books_dir=full)
+        check('alle PGNs da: test_trim laeuft', 'test_trim.py' in run and not skipped)
+    with tempfile.TemporaryDirectory() as partial:
+        _touch(os.path.join(partial, needed[0]))
+        run, skipped = run_all.plan(books_dir=partial)
+        check('nur einzelne PGNs da: test_trim laeuft (wird rot), kein Skip',
+              'test_trim.py' in run and not skipped)
+    check('Dateien ohne Buecher-Bedarf werden nie uebersprungen',
+          all(run_all.skip_reason(f, os.devnull) is None
+              for f in collected if f not in run_all.NEEDS_BOOKS))
+
+    # Ende-zu-Ende ohne Unterprozess: Skip ist sichtbar und macht den Lauf nicht rot.
+    orig_collect, orig_books = run_all.collect, run_all.BOOKS_DIR
+    buf = io.StringIO()
+    try:
+        with tempfile.TemporaryDirectory() as empty:
+            run_all.collect = lambda: ['test_trim.py']
+            run_all.BOOKS_DIR = empty
+            with contextlib.redirect_stdout(buf):
+                rc = run_all.main([])
+    finally:
+        run_all.collect, run_all.BOOKS_DIR = orig_collect, orig_books
+    out = buf.getvalue()
+    check('run_all ohne Buecher: rc 0, SKIP-Zeile und Zusammenfassung zeigen test_trim',
+          rc == 0 and 'SKIP test_trim.py (' in out and '1 uebersprungen: test_trim.py' in out,
+          f'rc={rc} out={out!r}')
+
+
 def test_docs_name_runner():
     check('CLAUDE.md nennt python tests/run_all.py',
           'python tests/run_all.py' in _read('CLAUDE.md'))
+    for doc in ('CLAUDE.md', 'README.md'):
+        text = _read(doc)
+        check(f'{doc} sagt, dass test_trim nur lokal laeuft (NEEDS_BOOKS)',
+              'NEEDS_BOOKS' in text and 'test_trim.py' in text)
 
 
 def main():
     for t in (test_release_workflow_gated, test_every_test_file_has_runner, test_collect,
-              test_docs_name_runner):
+              test_books_exception, test_docs_name_runner):
         print(f'== {t.__name__} ==')
         t()
     print()

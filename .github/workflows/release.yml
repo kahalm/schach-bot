@@ -36,6 +36,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # test_trim.py meldet hier SKIP: books/*_firstkey.pgn ist gitignored,
+      # die Snapshot-Regression laeuft nur lokal (NEEDS_BOOKS in run_all.py).
       - name: Run all offline tests
         run: python tests/run_all.py
 

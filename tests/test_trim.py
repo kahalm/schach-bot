@@ -85,6 +85,17 @@ def main():
     snapshots = load_snapshots()
     print(f'Snapshot-Tests fuer _trim_to_training_position ({len(snapshots)} Buecher)\n')
 
+    # books/*.pgn ist gitignored: die Snapshot-PGNs gibt es nur lokal. run_all.py
+    # ueberspringt diese Datei, wenn ALLE fehlen (sauberer Checkout/CI); fehlen
+    # nur einzelne, ist das ein Fehler (klar benannt statt FileNotFoundError).
+    missing = sorted({s['filename'] for s in snapshots
+                      if not os.path.isfile(os.path.join(BOOKS_DIR, s['filename']))})
+    if missing:
+        print(f'{FAIL} {len(missing)} Snapshot-PGN(s) fehlen in books/ (gitignored, nur lokal):')
+        for name in missing:
+            print(f'  - {name}')
+        sys.exit(1)
+
     for snap in snapshots:
         filename = snap['filename']
         round_id = snap['round']

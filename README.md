@@ -447,6 +447,9 @@ python tests/run_all.py         # alle Offline-Tests (jede tests/test_*.py mit _
 
 Derselbe Befehl laeuft in `.github/workflows/release.yml` als Job `test` vor dem Image-Build.
 Ausgenommen sind nur die Lichess-Netz-Tests (`test_puzzle.py`, `test_upload.py`, `test_study_create.py`).
+`test_trim.py` laeuft nur lokal (`NEEDS_BOOKS` in `run_all.py`): Es braucht die Snapshot-PGNs
+`books/*_firstkey.pgn`, und `books/*.pgn` ist gitignored. In einem sauberen Checkout (CI) meldet
+`run_all.py` die Datei deshalb sichtbar als `SKIP`; fehlen nur einzelne PGNs, wird sie rot.
 
 ### Regeln
 

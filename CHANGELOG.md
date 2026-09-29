@@ -4,6 +4,21 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.8] - 2026-09-29
+### Fixed
+- **Das Test-Gate aus 2.83.4 haette jeden CI-Lauf rot gemacht und damit gar kein Image mehr gebaut.**
+  `tests/test_trim.py` liest die Snapshot-PGNs `books/*_firstkey.pgn`, aber `books/*.pgn` ist
+  gitignored: Im CI-Checkout fehlen sie, `run_all.py` endete mit `FileNotFoundError` (20/21), und
+  `build-and-push` (`needs: test`) waere bei jedem main-Push und Tag ausgefallen. Die "21/21 gruen"
+  stammten aus dem lokalen Arbeitsbaum mit den Buechern.
+- Jetzt: `run_all.py` fuehrt `test_trim.py` als einzige Buecher-Ausnahme (`NEEDS_BOOKS`). Fehlen
+  ALLE Snapshot-PGNs (sauberer Checkout, CI), meldet der Lauf sichtbar
+  `SKIP test_trim.py (... gitignored ...)` und nennt die Datei in der Zusammenfassung; fehlen nur
+  einzelne, laeuft sie und wird rot (mit Liste der fehlenden PGNs statt Traceback). Das CI-Gate
+  prueft also alle Offline-Tests ausser der Trim-Snapshot-Regression, die nur lokal mit den
+  Buechern laeuft. CLAUDE.md, README und der Kommentar in `release.yml` sagen das;
+  `tests/test_ci_gate.py` haelt die Ausnahme und die Skip-Bedingung fest.
+
 ## [2.83.7] - 2026-09-29
 ### Changed
 - **Intern, kein sichtbarer Unterschied: Golden-Test fuer die Bibliothek als Netz fuer die spaetere

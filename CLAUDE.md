@@ -16,7 +16,7 @@ pip install -r requirements.txt
 python bot.py
 
 # Run tests (the ONE test command — same as the CI gate in release.yml)
-python tests/run_all.py          # every offline test file, each in its own process (-v = full output)
+python tests/run_all.py          # every offline test file, each in its own process (-v = full output); test_trim.py only locally (needs gitignored books/*.pgn)
 ```
 
 ## Configuration
@@ -46,7 +46,7 @@ Runtime state lives in `config/` (gitignored, auto-created).
 | `library.py` | Books library (/bibliothek, /tag, /autor, /reindex) |
 | `books/` | PGN files + `books.json` metadata |
 | `assets/` | Bot icons |
-| `tests/` | `run_all.py` (Sammel-Runner = einziger Testbefehl), `test_trim.py` (Snapshot-Regression), `test_commands.py` (Command-Tests), weitere `test_*.py` |
+| `tests/` | `run_all.py` (Sammel-Runner = einziger Testbefehl), `test_trim.py` (Snapshot-Regression, nur lokal mit `books/*_firstkey.pgn`), `test_commands.py` (Command-Tests), weitere `test_*.py` |
 
 ### Key patterns
 
@@ -65,8 +65,13 @@ Runtime state lives in `config/` (gitignored, auto-created).
    mit allen `test_cmd_*`, `test_rendering.py`, `test_rookhub.py`, `test_discord_link.py`) in einem
    eigenen Prozess. Ausgenommen sind nur die Lichess-Netz-Tests (`NETWORK_TESTS` in `run_all.py`).
    Derselbe Befehl ist in `.github/workflows/release.yml` der Job `test`; ohne ihn wird kein
-   `:dev`/`:latest`-Image gebaut. Neue Testdatei → eigenes `__main__` mit Exit-Code != 0 bei Fehler
-   (oder als `test_cmd_*` in `test_commands.py` importieren); `tests/test_ci_gate.py` wacht darüber.
+   `:dev`/`:latest`-Image gebaut. **`test_trim.py` läuft nur lokal** (`NEEDS_BOOKS` in `run_all.py`):
+   Es liest die Snapshot-PGNs `books/*_firstkey.pgn`, und `books/*.pgn` ist gitignored. In einem
+   sauberen Checkout, also auch im CI-Gate, fehlen sie; `run_all.py` meldet die Datei dann sichtbar
+   als `SKIP` statt rot. Fehlen nur einzelne PGNs, läuft sie trotzdem und wird rot. Wer an
+   `puzzle/processing.py` (Trimmen) arbeitet, muss sie also lokal mit den Büchern grün sehen.
+   Neue Testdatei → eigenes `__main__` mit Exit-Code != 0 bei Fehler (oder als `test_cmd_*` in
+   `test_commands.py` importieren); `tests/test_ci_gate.py` wacht darüber.
 2. **Test-First**: Für jedes neue Feature ZUERST einen Test schreiben, dann die Implementierung.
 3. **Bug-First-Test**: Wenn der User einen Bug meldet, ZUERST einen Test schreiben der den Fehler reproduziert (Test muss fehlschlagen), DANN den Bug fixen (Test muss bestehen). So wird sichergestellt, dass der Fehler nie wieder auftreten kann.
 
