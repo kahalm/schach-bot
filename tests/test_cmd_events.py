@@ -853,3 +853,249 @@ def test_turnier_approve_modal():
         teardown_temp_config(tmpdir)
     print()
 
+
+
+# ---------------------------------------------------------------------------
+# Charakterisierung (Vorarbeit Zerlegung schachrallye.py, Review W1 S4-016)
+# ---------------------------------------------------------------------------
+# Halten das heutige Verhalten fest, damit die spaetere Aufteilung in
+# termine.py / turnier_store.py / turnier_loops.py byte-gleich nachweisbar ist.
+# Bis hierher war der Reminder-Loop (7-Tage-Fenster, reminded-Flag, Retry nach
+# Sendefehler) in keinem Test erreichbar.
+
+_GOLDEN_TERMINE_HTML = (
+    '<html><body><p>Vorspann ohne Tabelle</p>'
+    '<table>'
+    '<tr><th>Datum</th><th>Veranstaltung</th><th>Ort</th></tr>'
+    '<tr><td>14.05.2027</td>'
+    '<td>Schachrallye Jenbach <a href="https://example.com/rallye.pdf">Ausschreibung</a></td>'
+    '<td>SK Jenbach, Turnsaal</td></tr>'
+    '<tr><td>20.-24.05.2027</td>'
+    '<td>Tiroler Jugendmeisterschaft U10 Start: 10 Uhr</td>'
+    '<td>Innsbruck<br>Congress</td></tr>'
+    '<tr><td>22.05.-25.05.2027</td>'
+    '<td><a href="https://chess-results.com/tnr1.aspx">Kufstein Open Schnellschach</a>'
+    ' 10:00 Uhr Turnierbeginn</td>'
+    '<td>Kufstein</td></tr>'
+    '<tr><td>20. + 21.06.2027</td>'
+    '<td>Blitz 960 Senioren Cup auf Chess-Results</td>'
+    '<td>Wörgl</td></tr>'
+    '<tr><td>31.07.-02.08.2027</td><td>Rallye Finale</td><td>Hall</td></tr>'
+    '<tr><td>03.09.2027</td><td>Kadertraining Gruppe A</td><td>Schwaz</td></tr>'
+    '<tr><td>04.09.2027</td><td>Österreichische Meisterschaften U12/U14</td><td>Graz</td></tr>'
+    '<tr><td>demnaechst</td><td>Vereinsabend</td><td>Lienz</td></tr>'
+    '<tr><td>05.09.2027</td><td>Nur zwei Zellen</td></tr>'
+    '</table></body></html>'
+)
+
+_GOLDEN_TERMINE = [
+    {'datum': '2027-05-14', 'datum_text': '14.05.2027',
+     'name': 'Schachrallye Jenbach', 'ort': 'SK Jenbach, Turnsaal',
+     'link': 'https://example.com/rallye.pdf', 'tags': ['schachrallye']},
+    {'datum': '2027-05-20', 'datum_text': '20.-24.05.2027',
+     'name': 'Tiroler Jugendmeisterschaft U10', 'ort': 'Innsbruck Congress',
+     'link': '', 'tags': ['jugend']},
+    {'datum': '2027-05-22', 'datum_text': '22.05.-25.05.2027',
+     'name': 'Kufstein Open Schnellschach', 'ort': 'Kufstein',
+     'link': 'https://chess-results.com/tnr1.aspx', 'tags': ['schnellschach', 'klassisch']},
+    {'datum': '2027-06-20', 'datum_text': '20. + 21.06.2027',
+     'name': 'Blitz 960 Senioren Cup', 'ort': 'Wörgl',
+     'link': '', 'tags': ['blitz', '960', 'senioren']},
+    {'datum': '2027-07-31', 'datum_text': '31.07.-02.08.2027',
+     'name': 'Rallye Finale', 'ort': 'Hall',
+     'link': '', 'tags': ['schachrallye']},
+]
+
+
+def test_fetch_termine_golden():
+    """Golden: _fetch_termine liefert aus einer festen Termin-Seite genau diese Liste."""
+    print('[fetch_termine_golden]')
+    import sys as _sys
+    from core.version import VERSION
+    fake_resp = MagicMock()
+    fake_resp.text = _GOLDEN_TERMINE_HTML
+    fake_resp.raise_for_status = MagicMock()
+    fake_get = MagicMock(return_value=fake_resp)
+    with _mock.patch.object(_sys.modules['requests'], 'get', fake_get):
+        events = schachrallye_mod._fetch_termine()
+    check('golden: Event-Liste unveraendert', events == _GOLDEN_TERMINE,
+          detail=json.dumps(events, ensure_ascii=False))
+    args, kwargs = fake_get.call_args
+    check('golden: URL = tirol.chess.at/termine/',
+          args == ('https://tirol.chess.at/termine/',), detail=str(args))
+    check('golden: timeout 15 + User-Agent mit Version',
+          kwargs == {'timeout': 15, 'headers': {'User-Agent': f'schach-bot/{VERSION}'}},
+          detail=str(kwargs))
+    print()
+
+
+class _FlakyChannel(FakeChannel):
+    """FakeChannel, dessen send() auf Wunsch scheitert."""
+
+    def __init__(self, channel_id):
+        super().__init__(channel_id=channel_id)
+        self.fail = False
+
+    async def send(self, content=None, **kwargs):
+        if self.fail:
+            raise RuntimeError('Discord weg')
+        return await super().send(content=content, **kwargs)
+
+
+def test_rallye_loops():
+    """Charakterisierung Reminder-Loop (6 h) + Auto-Parse-Loop (18:00) aus setup()."""
+    print('[rallye_loops]')
+    import sys as _sys
+    from core.datetime_utils import noon_utc_ts
+    tmpdir = setup_temp_config()
+    old_bot = schachrallye_mod._bot
+    old_cid = schachrallye_mod._tournament_channel_id
+    old_btn = (turnier_buttons_mod._bot, turnier_buttons_mod._tournament_channel_id)
+    old_cmds = dict(_captured_commands)
+    try:
+        channel = _FlakyChannel(channel_id=55555)
+
+        class _LoopBot(h._CapturingBot):
+            def __init__(self):
+                super().__init__()
+                self._task_loops = {}
+
+            def get_channel(self, cid):
+                return channel if cid == 55555 else None
+
+        bot = _LoopBot()
+        schachrallye_mod.setup(bot, tournament_channel_id=55555)
+        reminder = bot._task_loops.get('rallye_reminder')
+        auto_parse = bot._task_loops.get('auto_parse')
+        check('setup registriert rallye_reminder + auto_parse in bot._task_loops',
+              reminder is not None and auto_parse is not None)
+        if reminder is None or auto_parse is None:
+            return
+
+        today = date.today()
+
+        def _in(days):
+            return (today + timedelta(days=days)).isoformat()
+
+        def _ev(eid, datum, tags=('schachrallye',), **kw):
+            e = {'id': eid, 'datum': datum, 'datum_text': '', 'name': f'Rallye {eid}',
+                 'ort': 'Ort', 'link': '', 'tags': list(tags), 'reminded': False}
+            e.update(kw)
+            return e
+
+        events = [
+            _ev(1, _in(3), name='5. Rallye', ort='SK Jenbach, Turnsaal'),
+            _ev(2, _in(3), reminded=True),
+            _ev(3, _in(3), approved=False),
+            _ev(4, _in(10)),
+            _ev(5, _in(0)),
+            _ev(6, _in(3), tags=('blitz',)),
+            _ev(7, _in(7), name='', ort='Wörgl'),
+            _ev(8, 'kaputt'),
+            _ev(9, _in(8)),
+        ]
+        atomic_write(schachrallye_mod.TURNIER_FILE, {
+            'events': events,
+            'subscribers': {'schachrallye': [111, 222], 'blitz': [333]},
+            'reviewers': [], 'next_id': 10,
+        })
+
+        def _reminded():
+            data = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+            return {e['id']: e.get('reminded') for e in data.get('events', [])}
+
+        # --- Lauf 1: nur #1 (3 Tage) und #7 (genau 7 Tage) werden erinnert ---
+        run_async(reminder())
+        check('Reminder: 2 Posts (#1 und #7)', len(channel.sent) == 2,
+              detail=str(len(channel.sent)))
+        if len(channel.sent) == 2:
+            m1, m7 = channel.sent
+            ts1 = noon_utc_ts(today + timedelta(days=3))
+            ts7 = noon_utc_ts(today + timedelta(days=7))
+            e1, e7 = m1.kwargs.get('embed'), m7.kwargs.get('embed')
+            check('Reminder: Mentions aller Rallye-Subscriber',
+                  m1.content == '<@111> <@222>' and m7.content == '<@111> <@222>',
+                  detail=f'{m1.content!r} {m7.content!r}')
+            check('Reminder: Embed-Titel',
+                  e1.title == '\U0001f3c7 Schachrallye — Erinnerung', detail=e1.title)
+            check('Reminder: Beschreibung mit Name + gekuerztem Ort',
+                  e1.description == f'**Termin #1** — **5. Rallye** am <t:{ts1}:D> · SK Jenbach',
+                  detail=e1.description)
+            check('Reminder: Beschreibung ohne Name',
+                  e7.description == f'**Termin #7** am <t:{ts7}:D> · Wörgl',
+                  detail=e7.description)
+        r = _reminded()
+        check('Reminder: #1 und #7 als erinnert markiert', r[1] is True and r[7] is True, detail=str(r))
+        check('Reminder: uebrige unveraendert',
+              r[2] is True and all(r[i] is False for i in (3, 4, 5, 6, 8, 9)), detail=str(r))
+
+        # --- Lauf 2: nichts Neues ---
+        run_async(reminder())
+        check('Reminder: zweiter Lauf postet nichts', len(channel.sent) == 2)
+
+        # --- Sendefehler: nicht markieren, naechster Lauf holt nach ---
+        from core.json_store import atomic_update
+
+        def _add10(data):
+            data['events'].append(_ev(10, _in(2)))
+            return data
+
+        atomic_update(schachrallye_mod.TURNIER_FILE, _add10)
+        channel.fail = True
+        run_async(reminder())
+        check('Sendefehler: #10 bleibt unerinnert', _reminded()[10] is False)
+        channel.fail = False
+        run_async(reminder())
+        check('Sendefehler: naechster Lauf postet #10', len(channel.sent) == 3)
+        check('Sendefehler: danach markiert', _reminded()[10] is True)
+
+        # --- ohne Rallye-Subscriber / ohne Channel: nichts ---
+        def _add11_nosubs(data):
+            data['events'].append(_ev(11, _in(1)))
+            data['subscribers'] = {'blitz': [333]}
+            return data
+
+        atomic_update(schachrallye_mod.TURNIER_FILE, _add11_nosubs)
+        run_async(reminder())
+        check('ohne Subscriber: kein Post, #11 unerinnert',
+              len(channel.sent) == 3 and _reminded()[11] is False)
+
+        def _subs_back(data):
+            data['subscribers'] = {'schachrallye': [111]}
+            return data
+
+        atomic_update(schachrallye_mod.TURNIER_FILE, _subs_back)
+        schachrallye_mod._tournament_channel_id = 0
+        run_async(reminder())
+        check('ohne Channel-ID: kein Post', len(channel.sent) == 3)
+        schachrallye_mod._tournament_channel_id = 55555
+
+        # --- Auto-Parse: importiert als pending + pruned Altes ---
+        old = (today - timedelta(days=schachrallye_mod._PRUNE_DAYS + 10)).isoformat()
+        atomic_write(schachrallye_mod.TURNIER_FILE, {
+            'events': [_ev(20, old)],
+            'subscribers': {}, 'reviewers': [], 'next_id': 21,
+        })
+        fake_resp = MagicMock()
+        fake_resp.text = _GOLDEN_TERMINE_HTML
+        fake_resp.raise_for_status = MagicMock()
+        with _mock.patch.object(_sys.modules['requests'], 'get', MagicMock(return_value=fake_resp)):
+            run_async(auto_parse())
+        data = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+        evs = data.get('events', [])
+        check('Auto-Parse: altes Event entfernt', all(e['id'] != 20 for e in evs))
+        check('Auto-Parse: 5 Termine importiert (IDs 21-25)',
+              [e['id'] for e in evs] == [21, 22, 23, 24, 25], detail=str([e['id'] for e in evs]))
+        check('Auto-Parse: next_id = 26', data.get('next_id') == 26)
+        check('Auto-Parse: alle pending', all(e.get('approved') is False for e in evs))
+        check('Auto-Parse: reminded nur bei Rallye',
+              [('reminded' in e) for e in evs] == [True, False, False, False, True])
+        check('Auto-Parse: kein Channel-Post vor Freigabe', len(channel.sent) == 3)
+    finally:
+        schachrallye_mod._bot = old_bot
+        schachrallye_mod._tournament_channel_id = old_cid
+        turnier_buttons_mod.configure(*old_btn)
+        _captured_commands.clear()
+        _captured_commands.update(old_cmds)
+        teardown_temp_config(tmpdir)
+    print()

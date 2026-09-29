@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.6] - 2026-09-29
+### Changed
+- **Intern, kein sichtbarer Unterschied: Testnetz fuer die spaetere Aufteilung von
+  `commands/schachrallye.py`.** Der Rallye-Reminder-Loop (7-Tage-Fenster, `reminded`-Flag,
+  Nachholen nach einem Sendefehler, kein Post ohne Subscriber/Channel) war in keinem Test
+  erreichbar; `test_rallye_loops` holt ihn und den Auto-Parse-Loop ueber `bot._task_loops` und
+  haelt das heutige Verhalten fest. `test_fetch_termine_golden` prueft `_fetch_termine` gegen
+  eine feste Termin-Seite (Event-Liste exakt, URL, Timeout, User-Agent). Die Aufteilung selbst
+  (Review W1 S4-016) ist bewusst verschoben: > 300 geaenderte Zeilen, gehoert in eine eigene Welle.
+
 ## [2.83.5] - 2026-09-29
 ### Fixed
 - **`buch` bei `/endless`, `/reminder` und `/ignore_kapitel` verweist nicht mehr auf `/kurs`.** Diese
