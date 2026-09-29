@@ -20,13 +20,17 @@ import chess
 import chess.pgn
 import requests
 
+from core.secret_env import secret_from_env
+
 log = logging.getLogger('schach-bot')
 
 ROOKHUB_API_URL = os.getenv('ROOKHUB_API_URL', '').rstrip('/')
 ROOKHUB_WEB_URL = os.getenv('ROOKHUB_WEB_URL', '').rstrip('/')
 # Geteiltes HMAC-Secret fuer den Bot-Stats-Endpoint (== RookHubs SchachBot__StatsSecret).
-# Leer → get_player_progress liefert immer PROGRESS_UNAVAILABLE (Feature inaktiv, keine DMs).
-ROOKHUB_STATS_SECRET = os.getenv('ROOKHUB_STATS_SECRET', '')
+# Leer oder Platzhalter aus .env.example (change_me_…, dann ERROR im Log) → get_player_progress
+# liefert immer PROGRESS_UNAVAILABLE (Feature inaktiv, keine DMs), Ergebnis-GETs unsigniert.
+ROOKHUB_STATS_SECRET = secret_from_env(
+    'ROOKHUB_STATS_SECRET', '/motivation, signierte Ergebnis-Abrufe und /webhook/build-info')
 
 _TIMEOUT = 15
 # Kürzerer Timeout für den (häufigen, per Puzzle aufgerufenen) Link-Lookup, damit ein

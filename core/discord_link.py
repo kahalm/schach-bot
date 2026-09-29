@@ -20,13 +20,15 @@ import base64
 import hashlib
 import hmac
 import json
-import os
 import re
 import time
 from urllib.parse import urlencode, urlsplit, urlunsplit, parse_qsl
 
-# Gemeinsames Secret. Leer -> Feature inaktiv (kein Token wird erzeugt/angehängt).
-LINK_SECRET = os.getenv('ROOKHUB_LINK_SECRET', '')
+from core.secret_env import secret_from_env
+
+# Gemeinsames Secret. Leer oder Platzhalter aus .env.example (change_me_…) -> Feature inaktiv
+# (kein Token wird erzeugt/angehängt), beim Platzhalter mit ERROR im Log.
+LINK_SECRET = secret_from_env('ROOKHUB_LINK_SECRET', 'RookHub-Verknuepfung (?dl=-Links, /link)')
 
 # Gültigkeitsdauer eines Link-Tokens (großzügig: der User klickt evtl. erst Tage später).
 DEFAULT_TTL = 30 * 24 * 3600  # 30 Tage

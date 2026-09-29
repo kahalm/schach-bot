@@ -24,6 +24,7 @@ from core import i18n as _i18n
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 from core.permissions import is_privileged, set_guild_id, display_name_cached
+from core.secret_env import secret_from_env
 from core.version import VERSION, GIT_SHA, START_TIME, EMBED_COLOR
 
 from dotenv import load_dotenv
@@ -88,7 +89,8 @@ try:
     WEBHOOK_PORT = int(os.getenv('WEBHOOK_PORT', '9000'))
 except ValueError:
     raise SystemExit(f"WEBHOOK_PORT ungültig: {os.getenv('WEBHOOK_PORT')!r} — muss eine Zahl sein")
-WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET', '') or ''
+# Platzhalter aus .env.example (change_me_…) zaehlt wie leer (ERROR im Log).
+WEBHOOK_SECRET = secret_from_env('WEBHOOK_SECRET', 'Webhook-Empfaenger (RookHub-Solver-Events)')
 
 DM_STATE_FILE   = os.path.join(CONFIG_DIR, 'dm_state.json')
 

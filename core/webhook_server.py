@@ -37,6 +37,8 @@ from typing import Any
 
 from aiohttp import web
 
+from core.secret_env import secret_from_env
+
 log = logging.getLogger('schach-bot')
 
 # Replay-/Timestamp-Schutz: wird ein ``X-Webhook-Timestamp``-Header mitgeschickt,
@@ -342,9 +344,10 @@ async def start(bot, host: str, port: int, secret: str, daily_channels=None) -> 
     # ruft das ab, um den GitHub-Actions-Run des laufenden Bot-Images zu markieren.
     # Authentifiziert via ROOKHUB_STATS_SECRET (dasselbe Shared-Secret wie puzzle/rookhub.py,
     # rookhub-seitig ``SchachBot__StatsSecret``) — nicht via WEBHOOK_SECRET, weil der Abrufer
-    # RookHubs Stats-/Admin-Pfad ist, nicht der Solver-Webhook-Sender.
+    # RookHubs Stats-/Admin-Pfad ist, nicht der Solver-Webhook-Sender. Platzhalter = leer = aus.
     app.router.add_get('/webhook/build-info',
-                       _make_build_info_handler(os.environ.get('ROOKHUB_STATS_SECRET', '')))
+                       _make_build_info_handler(secret_from_env('ROOKHUB_STATS_SECRET',
+                                                                '/webhook/build-info')))
 
     runner = web.AppRunner(app)
     await runner.setup()

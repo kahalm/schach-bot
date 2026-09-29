@@ -4,6 +4,22 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.10] - 2026-09-30
+### Security
+- **Platzhalter aus `.env.example` gelten nicht mehr als echte Geheimnisse.** `.env.example` trug für
+  `ROOKHUB_LINK_SECRET` und `ROOKHUB_STATS_SECRET` denselben Platzhalter
+  (`change_me_shared_with_rookhub`), und der Bot übernahm ihn ungeprüft: Blieb er beim Aufsetzen
+  stehen, signierte der Bot `?dl=`-Verknüpfungslinks und Bot-Aufrufe mit einem öffentlich bekannten
+  Schlüssel und prüfte `/webhook/build-info` damit (die Repos sind öffentlich).
+- Jetzt: Beginnt `ROOKHUB_LINK_SECRET`, `ROOKHUB_STATS_SECRET` oder `WEBHOOK_SECRET` mit
+  `change_me` bzw. `your_`, gilt der Wert wie leer – das Feature ist aus (keine `?dl=`-Tokens,
+  `/motivation` inaktiv und Ergebnis-Abrufe unsigniert, `/webhook/build-info` bzw. der
+  Webhook-Empfänger aus) und beim Start steht ein ERROR im Log, der Variable und Feature nennt
+  (nie den Wert). Gemeinsamer Helfer `core/secret_env.py`. `.env.example` hat für beide
+  RookHub-Geheimnisse eigene Platzhalter.
+- Betrieb: Ein Stack, der heute tatsächlich mit einem Platzhalter läuft, verliert nach dem Update
+  das jeweilige Feature – dann den echten, mit RookHub geteilten Wert setzen.
+
 ## [2.83.9] - 2026-09-30
 ### Fixed
 - **Motivations-DM: „Registrier dich“ nur noch, wenn RookHub wirklich „nicht verknüpft“ meldet.**
