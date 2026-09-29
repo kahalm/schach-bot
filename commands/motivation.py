@@ -26,6 +26,7 @@ import discord
 from discord.ext import tasks
 
 from core.datetime_utils import parse_utc as _parse_utc, parse_zeit as _parse_zeit
+from core.discord_link import mask_dl_tokens
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 from core.permissions import is_privileged, display_name_cached
@@ -249,7 +250,7 @@ async def _check_activities():
                      extra={'es_fields': {
                          'tags': ['motivation'],
                          'username': user_obj.name,
-                         'dm_text': text,
+                         'dm_text': mask_dl_tokens(text),   # ?dl=-Token nie ins ES
                          'game': current_game,
                          'elapsed_minutes': round(elapsed_minutes),
                          'linked': progress is not None,

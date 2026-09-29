@@ -473,6 +473,45 @@ def test_activity_watcher():
         check('nicht verknuepft DM → Registrier-CTA enthalten',
               'registr' in dm_text.lower() or 'rookhub' in dm_text.lower() or 'link' in dm_text.lower())
 
+        # 12b) S4-002: die DM traegt das persoenliche ?dl=-Token (Registrier-CTA), das
+        # ES-Log (labels.dm_text) darf es aber nicht im Klartext enthalten.
+        import logging as _logging
+        import os
+        from core import discord_link as _dlink
+        _records = []
+
+        class _Cap(_logging.Handler):
+            def emit(self, record):
+                _records.append(record)
+
+        _lg = _logging.getLogger('schach-bot')
+        _cap, _orig_level = _Cap(), _lg.level
+        _orig_secret, _orig_web = _dlink.LINK_SECRET, os.environ.get('ROOKHUB_WEB_URL')
+        _lg.addHandler(_cap)
+        _lg.setLevel(_logging.INFO)
+        _dlink.LINK_SECRET = 'test-secret'
+        os.environ['ROOKHUB_WEB_URL'] = 'https://rh.example'
+        try:
+            atomic_write(mot.ACTIVITY_WATCH_FILE, {'watching': {str(fake_uid): dict(state3)}})
+            sent_dms.clear()
+            run_async(mot._check_activities())
+        finally:
+            _lg.removeHandler(_cap)
+            _lg.setLevel(_orig_level)
+            _dlink.LINK_SECRET = _orig_secret
+            if _orig_web is None:
+                os.environ.pop('ROOKHUB_WEB_URL', None)
+            else:
+                os.environ['ROOKHUB_WEB_URL'] = _orig_web
+        sent = sent_dms[0] if sent_dms else ''
+        token = sent.split('dl=', 1)[1].split()[0] if 'dl=' in sent else ''
+        es_texts = [getattr(r, 'es_fields', {}).get('dm_text', '') for r in _records
+                    if 'dm_text' in (getattr(r, 'es_fields', None) or {})]
+        check('Slacker-DM an Unverknuepften traegt dl-Token', len(token) > 20)
+        check('ES dm_text vorhanden', len(es_texts) == 1)
+        check('ES dm_text: dl-Token maskiert',
+              bool(es_texts) and 'dl=***' in es_texts[0] and token not in es_texts[0])
+
         # 13) Kein Spiel aktiv → Watch-State wird geloescht
         fake_member.activities = []
         atomic_write(mot.ACTIVITY_WATCH_FILE, {'watching': {str(fake_uid): state3}})

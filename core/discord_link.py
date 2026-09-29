@@ -21,6 +21,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import time
 from urllib.parse import urlencode, urlsplit, urlunsplit, parse_qsl
 
@@ -73,3 +74,19 @@ def append_dl(url: str | None, discord_id, username: str | None = None,
     query['dl'] = token
     return urlunsplit((parts.scheme, parts.netloc, parts.path,
                        urlencode(query), parts.fragment))
+
+
+# ``?dl=``/``&dl=`` + Token-Alphabet (base64url + ``.``; ``%`` falls doch URL-kodiert).
+_DL_PARAM_RE = re.compile(r'([?&]dl=)[A-Za-z0-9_.%-]+')
+
+
+def mask_dl_tokens(text: str | None) -> str | None:
+    """Ersetzt ``?dl=<token>`` in einem Text durch ``?dl=***``.
+
+    Fuer alles, was DM-Inhalte PERSISTIERT (DM-Log, ES-Felder): das Token ist 30 Tage
+    gueltig und verknuepft die Discord-ID mit dem Konto dessen, der den Link oeffnet —
+    wer den Log lesen kann, darf es nicht verwenden koennen. Die DM selbst bleibt unveraendert.
+    """
+    if not text:
+        return text
+    return _DL_PARAM_RE.sub(r'\1***', text)

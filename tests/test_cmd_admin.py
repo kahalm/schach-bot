@@ -695,6 +695,32 @@ def test_dm_log_internals():
                   '77' not in data)
             check('append → frische Eintraege anderer User bleiben',
                   [e['text'] for e in data.get('88', [])] == ['frisch'])
+
+            # S4-002: persoenliches ?dl=-Verknuepfungstoken nie im Klartext im DM-Log
+            # (per /dm-log fuer Admins/Moderatoren lesbar, 30 Tage aufbewahrt).
+            from core import discord_link
+            url = discord_link.append_dl('https://rh.example/puzzles/book/7', 12345, 'X',
+                                         secret='test-secret')
+            token = url.split('dl=', 1)[1]
+            dm_log_mod._append(12345, dm_log_mod._describe(content=f'[Klickbares Rätsel]({url})'))
+            dm_log_mod.log_incoming(12345, f'mein Link: {url}')
+            data = atomic_read(dm_log_mod.DM_LOG_FILE)
+            texts = [e['text'] for e in data.get('12345', [])]
+            check('append → dl-Token maskiert',
+                  '[Klickbares Rätsel](https://rh.example/puzzles/book/7?dl=***)' in texts)
+            check('log_incoming → dl-Token maskiert',
+                  '[IN] mein Link: https://rh.example/puzzles/book/7?dl=***' in texts)
+            check('kein Token-Klartext im DM-Log', not any(token in t for t in texts))
+
+            # Altbestand (vor dem Fix geschrieben) wird beim naechsten Schreiben mit maskiert.
+            aw2(dm_log_mod.DM_LOG_FILE, {
+                '66': [{'ts': '2099-01-01T00:00:00+00:00', 'text': f'alt: {url}'}],
+            })
+            dm_log_mod._append(99, 'neu')
+            data = atomic_read(dm_log_mod.DM_LOG_FILE)
+            check('Altbestand → dl-Token nachtraeglich maskiert',
+                  [e['text'] for e in data.get('66', [])]
+                  == ['alt: https://rh.example/puzzles/book/7?dl=***'])
         finally:
             dm_log_mod.DM_LOG_FILE = old_file
     finally:

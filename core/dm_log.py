@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 
 import discord
 
+from core.discord_link import mask_dl_tokens
 from core.json_store import atomic_update
 from core.paths import CONFIG_DIR
 
@@ -57,7 +58,10 @@ def _append(user_id: int, text: str):
     """Hängt einen Eintrag an das DM-Log an (sync, für asyncio.to_thread).
     Entfernt Einträge älter als 30 Tage — für ALLE User, nicht nur den
     aktuellen: sonst lingern Einträge inaktiver User für immer und jede
-    einzelne DM schreibt eine monoton wachsende Datei komplett neu."""
+    einzelne DM schreibt eine monoton wachsende Datei komplett neu.
+    Persoenliche ``?dl=``-Verknuepfungstokens werden vorher maskiert (das Log ist per
+    ``/dm-log`` fuer Admins/Moderatoren lesbar)."""
+    text = mask_dl_tokens(text)
     cutoff = (datetime.now(timezone.utc) - timedelta(days=_DM_LOG_MAX_AGE_DAYS)).isoformat()
 
     def _update(data):
@@ -68,6 +72,9 @@ def _append(user_id: int, text: str):
         })
         for k in list(data.keys()):
             pruned = [e for e in data[k] if e.get('ts', '') >= cutoff]
+            for e in pruned:   # Altbestand (vor der Maskierung geschrieben) gleich mit heilen
+                if isinstance(e.get('text'), str):
+                    e['text'] = mask_dl_tokens(e['text'])
             if pruned:
                 data[k] = pruned
             else:

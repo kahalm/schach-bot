@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.2] - 2026-09-29
+### Security
+- **Persoenliche RookHub-Verknuepfungstokens (`?dl=`) landen nicht mehr im Klartext im DM-Log
+  und in Elasticsearch.** Das DM-Log (`config/dm_log.json`, per `/dm-log` fuer Admins und
+  Moderatoren lesbar, 30 Tage aufbewahrt) speicherte die ersten 300 Zeichen jeder DM — bei
+  Raetsel-DMs, `/link` und dem Registrier-Hinweis also das komplette, 30 Tage gueltige Token.
+  Die Slacker-DM an nicht verknuepfte Abonnenten ging zusaetzlich vollstaendig als
+  `labels.dm_text` nach ES. Wer den Link eingeloggt oeffnete, haette die fremde Discord-ID an
+  sein eigenes RookHub-Konto gebunden. Neuer Helfer `discord_link.mask_dl_tokens` ersetzt das
+  Token durch `dl=***`; das DM-Log maskiert beim Schreiben (ein- und ausgehend) und heilt
+  dabei auch Alt-Eintraege, `dm_text` wird vor dem Loggen maskiert. Die DM selbst bleibt
+  unveraendert.
+
 ## [2.83.1] - 2026-09-29
 ### Security
 - **RookHub-Anzeigenamen koennen in Bot-Embeds kein Markdown mehr einschleusen.** Anzeigenamen

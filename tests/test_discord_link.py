@@ -84,10 +84,27 @@ def test_append_dl_empty_url():
     check('append_dl("") → ""', dl.append_dl('', '42', secret=SECRET) == '')
 
 
+def test_mask_dl_tokens():
+    # S4-002: DM-Log und ES duerfen das persoenliche ?dl=-Token nicht im Klartext speichern.
+    url = dl.append_dl('https://rh.example/puzzles/book/7', '42', 'Name', secret=SECRET)
+    token = url.split('dl=', 1)[1]
+    text = f'[Klickbares Rätsel]({url})'
+    masked = dl.mask_dl_tokens(text)
+    check('Token maskiert', token not in masked and '?dl=***' in masked)
+    check('Masked-Link-Klammer bleibt', masked == '[Klickbares Rätsel](https://rh.example/puzzles/book/7?dl=***)')
+    both = dl.append_dl('https://x.example/profile?foo=1', '42', secret=SECRET)
+    check('andere Query-Parameter bleiben', dl.mask_dl_tokens(both) == 'https://x.example/profile?foo=1&dl=***')
+    two = f'{url}\n{url}'
+    check('mehrere Tokens maskiert', dl.mask_dl_tokens(two).count('dl=***') == 2 and token not in dl.mask_dl_tokens(two))
+    check('abgeschnittenes Token maskiert, … bleibt', dl.mask_dl_tokens(url[:-20] + '…').endswith('?dl=***…'))
+    check('Text ohne Token unveraendert', dl.mask_dl_tokens('Hallo ?x=dl=1 download=2') == 'Hallo ?x=dl=1 download=2')
+    check('None/leer robust', dl.mask_dl_tokens('') == '' and dl.mask_dl_tokens(None) is None)
+
+
 def main():
     for t in (test_golden_vector, test_token_structure, test_signature_depends_on_secret,
               test_no_secret_returns_none, test_append_dl, test_append_dl_preserves_existing_query,
-              test_append_dl_no_secret_unchanged, test_append_dl_empty_url):
+              test_append_dl_no_secret_unchanged, test_append_dl_empty_url, test_mask_dl_tokens):
         print(f'== {t.__name__} ==')
         t()
     print()
