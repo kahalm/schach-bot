@@ -9,6 +9,7 @@ monatlicher Auto-Post) liegt in :mod:`commands.leaderboard`; die HTTP-Abfragen i
 from datetime import datetime
 
 from core.datetime_utils import fmt_mmss
+from core.discord_text import escape_display_name
 
 MEDALS = {1: '🥇', 2: '🥈', 3: '🥉'}
 MAX_LADDER = 10
@@ -20,9 +21,9 @@ _MONTHS_DE = [
 
 
 def _name(entry: dict) -> str:
-    """Verknüpfte Spieler als @mention, sonst RookHub-Name."""
+    """Verknüpfte Spieler als @mention, sonst RookHub-Name (Markdown-escapet, frei waehlbar)."""
     did = entry.get('discordId')
-    return f'<@{did}>' if did else (entry.get('name') or '—')
+    return f'<@{did}>' if did else (escape_display_name(entry.get('name')) or '—')
 
 
 def _rank_marker(rank: int) -> str:

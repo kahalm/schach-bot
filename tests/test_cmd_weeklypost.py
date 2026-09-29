@@ -163,6 +163,16 @@ def test_weekly_results_format():
     bob_line = [l for l in out.splitlines() if 'Bob' in l][0]
     check('💡 bei Alice (mit Tipps)', '💡' in alice_line)
     check('kein 💡 bei Bob (ohne Tipps)', '💡' not in bob_line)
+    check('normale Namen byte-gleich', bob_line == 'Bob — 2/5 · 10:05')
+
+    # S4-003: frei waehlbare RookHub-Namen duerfen im Embed kein Markdown/keinen Masked Link bilden.
+    evil = wp.format_weekly_results({'total': 1, 'completedCount': 0, 'players': [
+        {'name': '[Gratis Nitro](https://evil.example/n)', 'solvedCount': 1, 'totalSeconds': 5},
+        {'name': '# Header\n> Zitat', 'solvedCount': 1, 'totalSeconds': 5},
+    ]})
+    check('Masked Link im Namen zerlegt', '[Gratis Nitro](' not in evil and '\\[Gratis Nitro\\]' in evil)
+    check('Header/Zitat im Namen escaped, kein Zeilenumbruch',
+          '\\# Header \\> Zitat' in evil and len(evil.splitlines()) == 3)
     print()
 
 

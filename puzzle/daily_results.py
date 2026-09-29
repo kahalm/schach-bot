@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 
 from core import i18n
 from core.datetime_utils import fmt_mmss
+from core.discord_text import escape_display_name
 from core.json_store import atomic_read, atomic_write
 from core.paths import CONFIG_DIR
 
@@ -182,7 +183,7 @@ def format_solver_line(results: dict, max_names: int = MAX_NAMES, lang: str = 'd
     shown = []
     for s in solvers[:max_names]:
         did = s.get('discordId')
-        name = f'<@{did}>' if did else (s.get('name') or '—')
+        name = f'<@{did}>' if did else (escape_display_name(s.get('name')) or '—')
         tm = _fmt_time(s.get('timeSeconds', 0))
         # Mit Tipps gelöst (HintsUsed > 0 bis einschließlich des ersten Solves) → Glühbirne in Klammern.
         hint = ' (💡)' if s.get('hintsUsed', 0) > 0 else ''

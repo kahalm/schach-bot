@@ -43,7 +43,7 @@ Runtime state lives in `config/` (gitignored, auto-created).
 | `bot.py` | Main entry, events, /help, /version, /stats, /announce, /daily, daily task |
 | `puzzle/` | Package: `commands.py`, `state.py`, `selection.py`, `processing.py`, `rendering.py`, `posting.py` (inkl. `post_rookhub_puzzle`), `rookhub.py` (RookHub-Client), `daily_results.py` (Tagespuzzle-Solver-Anzeige: Poll + ✅-Reaction + Embed-Feld), `lichess.py` (nur Cloud-Eval/Diagnose), `embed.py`, `buttons.py`, `__init__.py` |
 | `commands/` | Slash-Commands: `elo.py`, `reminder.py`, `resourcen.py`, `youtube.py`, `release_notes.py`, `test.py`, `blind.py`, `wanted.py`, `link.py` (RookHub-Verknüpfung), `motivation.py` (stats-basierter Motivations-DM, ersetzt den Wochenpost-Reminder), `wochenpost.py` (nur noch Channel-Posts), `_collection.py` |
-| `core/` | Shared utilities: `paths.py`, `stats.py`, `version.py`, `log_setup.py`, `dm_log.py`, `event_log.py`, `json_store.py`, `command_log.py` (jeder Slash-Befehl → ES, Tag `command`) |
+| `core/` | Shared utilities: `paths.py`, `stats.py`, `version.py`, `log_setup.py`, `dm_log.py`, `event_log.py`, `json_store.py`, `command_log.py` (jeder Slash-Befehl → ES, Tag `command`), `discord_text.py` (RookHub-Anzeigenamen Markdown-sicher fuer Embeds) |
 | `library.py` | Books library (/bibliothek, /tag, /autor, /reindex) |
 | `books/` | PGN files + `books.json` metadata |
 | `assets/` | Bot icons |

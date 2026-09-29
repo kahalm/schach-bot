@@ -18,6 +18,7 @@ import discord
 from discord.ext import tasks
 
 from core.datetime_utils import fmt_mmss, parse_utc as _parse_utc
+from core.discord_text import escape_display_name
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 from core.version import EMBED_COLOR
@@ -187,7 +188,7 @@ def format_weekly_results(results: dict) -> str:
     lines = []
     for p in players[:_WEEKLY_MAX_NAMES]:
         did = p.get('discordId')
-        name = f'<@{did}>' if did else (p.get('name') or '—')
+        name = f'<@{did}>' if did else (escape_display_name(p.get('name')) or '—')
         mark = '✅ ' if p.get('completed') else ''   # ✅ bei erledigt
         hint = ' (💡)' if p.get('hintsUsed', 0) > 0 else ''   # 💡 wenn (bei mind. 1 Puzzle) mit Tipps gelöst
         mode = _mode_suffix(p)   # z.B. „· 2× einfach" (Figuren ziehbar); reines Training bleibt leer

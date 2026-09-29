@@ -4,6 +4,18 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.1] - 2026-09-29
+### Security
+- **RookHub-Anzeigenamen koennen in Bot-Embeds kein Markdown mehr einschleusen.** Anzeigenamen
+  sind auf RookHub frei waehlbar (nur 50 Zeichen, kein Zeichensatz) und standen ungefiltert in
+  oeffentlichen Embeds: im Tagespuzzle-Solver-Feld, in `/bestenliste` und im Monats-Endstand
+  sowie im Wochenpost-Thread. Ein Name wie `[Gratis Nitro](https://…)` erschien dort als
+  klickbarer Fremdlink im Namen des Bots. Neuer Helfer `core/discord_text.py`
+  (`escape_display_name`): Markdown-Zeichen, Masked-Link-Klammern, `<` (Erwaehnungen) und `:`
+  (Autolinks) werden mit Backslash escapet, Zeilenumbrueche/Steuerzeichen zu Leerzeichen, die
+  Laenge nach dem Escapen auf 50 Zeichen gedeckelt. Normale Namen bleiben byte-gleich;
+  verknuepfte Spieler erscheinen wie bisher als @mention.
+
 ## [2.83.0] - 2026-09-23
 ### Added
 - **Befehls-Protokoll: jeder Slash-Befehl eines Nutzers landet in Elasticsearch.** Bisher

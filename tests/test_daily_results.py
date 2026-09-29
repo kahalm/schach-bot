@@ -249,6 +249,36 @@ def test_bot_passes_loop_start_to_catchup():
     check('catchup_due bekommt loop_started', 'loop_started=puzzle_loop_started' in call)
 
 
+def test_markdown_names_escaped():
+    # S4-003: RookHub-Anzeigenamen sind frei waehlbar und landen in oeffentlichen Embeds.
+    # Markdown/Masked Links/Erwaehnungen/Zeilenumbrueche duerfen dort nicht wirken.
+    import re
+    res = {'solvedCount': 3, 'attemptCount': 3, 'solvers': [
+        {'name': '[Gratis Nitro](https://evil.example/n)', 'timeSeconds': 45},
+        {'name': '<@123456789> **fett**', 'timeSeconds': 50},
+        {'name': 'Zeile\n# Header', 'timeSeconds': 55},
+    ]}
+    line = dr.format_solver_line(res)
+    check('Masked Link zerlegt (kein "[..](")', '[Gratis Nitro](' not in line)
+    check('Klammern escaped', '\\[Gratis Nitro\\]' in line)
+    check('URL nicht autolinkbar (https\\:)', 'https://' not in line and 'https\\://' in line)
+    check('Erwaehnung im Namen neutralisiert', re.search(r'(?<!\\)<@123456789>', line) is None)
+    check('Fett-Markup escaped', '\\*\\*fett\\*\\*' in line)
+    check('kein Zeilenumbruch aus dem Namen', '\n' not in line)
+    check('Header-Zeichen escaped', '\\# Header' in line)
+    # Normale Namen bleiben byte-gleich (Format unveraendert).
+    plain = dr.format_solver_line({'solvedCount': 2, 'attemptCount': 2, 'solvers': [
+        {'name': 'Anna', 'discordId': '111', 'timeSeconds': 45},
+        {'name': 'Ben', 'timeSeconds': 83, 'hintsUsed': 1},
+    ]})
+    check('normale Namen byte-gleich', plain == '✅ Gelöst (2): <@111> (45s), Ben (1:23) (💡)')
+    # Laenge gedeckelt: auch ein reiner Sonderzeichen-Name wird nach dem Escapen nicht laenger als 50+1.
+    long_line = dr.format_solver_line({'solvedCount': 1, 'attemptCount': 1, 'solvers': [
+        {'name': '*' * 50}]})
+    check('Escaping sprengt die Namenslaenge nicht', '*' * 26 not in long_line.replace('\\', '')
+          and long_line.count('\\*') == 25 and '…' in long_line)
+
+
 def main():
     for t in (test_no_solvers, test_mentions_and_names, test_truncates_long_list,
               test_anonymous_counted, test_only_anonymous, test_all_solved_hides_try_count,
@@ -256,7 +286,7 @@ def main():
               test_hints_badge, test_hints_badge_without_time,
               test_remember_current_roundtrip, test_remember_midnight_rollover,
               test_catchup_due, test_catchup_no_grace_hole,
-              test_bot_passes_loop_start_to_catchup):
+              test_bot_passes_loop_start_to_catchup, test_markdown_names_escaped):
         print(f'== {t.__name__} ==')
         t()
     print()

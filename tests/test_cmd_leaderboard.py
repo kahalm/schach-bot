@@ -62,6 +62,17 @@ def test_leaderboard_format():
     check('HoF fastest: Zeit (9s) + Datum', '9s' in fast and '2026-06-02' in fast)
     check('HoF fastest None → —', dlb.format_fastest(None) == '—')
     check('fmt_time m:ss', dlb._fmt_time(90) == '1:30')
+
+    # S4-003: frei waehlbare RookHub-Namen duerfen im Embed kein Markdown/keinen Masked Link bilden.
+    evil = '[Gratis Nitro](https://evil.example/n)'
+    lad = dlb.format_ladder(_ladder([{'name': evil, 'points': 5, 'solved': 1, 'golds': 0}]))
+    check('Ladder: Masked Link im Namen zerlegt', '[Gratis Nitro](' not in lad and '\\[Gratis Nitro\\]' in lad)
+    hof_evil = dlb.format_hof_list([{'name': '**fett**', 'value': 3}], 'gelöst')
+    check('HoF: Markdown im Namen escaped', '\\*\\*fett\\*\\*' in hof_evil)
+    fast_evil = dlb.format_fastest({'name': '<@42>', 'timeSeconds': 9})
+    check('HoF fastest: Erwaehnung im Namen neutralisiert', fast_evil == '\\<@42\\> — 9s')
+    check('Ladder: normale Namen byte-gleich',
+          out.splitlines()[1] == '🥈 Ben — **15** Pkt (1 gelöst · 1×🥇)')
     print()
 
 
