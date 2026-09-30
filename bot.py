@@ -147,10 +147,18 @@ def welcome_message_for(user) -> str:
 # Bot
 # ---------------------------------------------------------------------------
 
+from commands.motivation import activity_watch_needs_presences
+
+# Privilegierte Intents nur, soweit genutzt (ein geleakter Token soll nicht mehr sehen als noetig):
+# - message_content AUS: Nachrichteninhalt liest der Bot nur in DMs (on_message, commands/chat.py)
+#   und in eigenen Posts – beides nimmt Discord vom Intent aus; Prefix-Befehle gibt es keine.
+# - members AN: Mitglieder-Cache fuer Begruessung (on_member_join) und guild.get_member.
+# - presences nur, solange der Activity-Watch von /motivation laufen kann (einziger Praesenz-Leser).
+# Im Discord Developer Portal entsprechend abschalten, sonst bleibt der Token dort breiter.
 intents = discord.Intents.default()
-intents.message_content = True
+intents.message_content = False
 intents.members = True
-intents.presences = True  # Privilegierter Intent: muss im Discord Developer Portal aktiviert sein
+intents.presences = activity_watch_needs_presences()
 bot = commands.Bot(command_prefix=commands.when_mentioned, intents=intents)
 bot._task_loops = {}
 tree = bot.tree
@@ -328,8 +336,6 @@ async def on_message(message: discord.Message):
     await asyncio.to_thread(atomic_update, DM_STATE_FILE, _check_and_greet, dict)
     if should_greet:
         await message.channel.send(welcome_message_for(message.author))
-
-    await bot.process_commands(message)
 
 
 @bot.event

@@ -764,6 +764,68 @@ def test_dm_log_incoming():
     print()
 
 
+def test_intents_minimal():
+    """S4-007: privilegierte Intents nur, soweit genutzt; on_message ohne Prefix-Befehle."""
+    print('[Intents minimal]')
+    import bot as bot_mod
+    import commands.motivation as mot
+    from puzzle import rookhub
+
+    # message_content AUS (DMs + eigene Posts nimmt Discord vom Intent aus), members AN.
+    check('intents.message_content = False', bot_mod.intents.message_content is False)
+    check('intents.members = True', bot_mod.intents.members is True)
+    check('intents.presences folgt dem Activity-Watch',
+          bot_mod.intents.presences is mot.activity_watch_needs_presences())
+
+    # Presence-Intent nur, wenn /motivation (Activity-Watch) ueberhaupt arbeiten kann.
+    old_url, old_secret = rookhub.ROOKHUB_API_URL, rookhub.ROOKHUB_STATS_SECRET
+    try:
+        rookhub.ROOKHUB_API_URL, rookhub.ROOKHUB_STATS_SECRET = 'http://rookhub-api:5000', 'geheim'
+        check('Watch aktiv → presences noetig', mot.activity_watch_needs_presences() is True)
+        rookhub.ROOKHUB_STATS_SECRET = ''
+        check('ohne Stats-Secret → keine presences', mot.activity_watch_needs_presences() is False)
+        rookhub.ROOKHUB_API_URL, rookhub.ROOKHUB_STATS_SECRET = '', 'geheim'
+        check('ohne API-URL → keine presences', mot.activity_watch_needs_presences() is False)
+    finally:
+        rookhub.ROOKHUB_API_URL, rookhub.ROOKHUB_STATS_SECRET = old_url, old_secret
+
+    # Keine Prefix-Befehle → kein process_commands (war ohne Wirkung und brauchte den Inhalt).
+    import inspect
+    src = inspect.getsource(bot_mod)
+    check('bot.py ruft process_commands nicht mehr auf', 'process_commands' not in src)
+    check('bot.py registriert keine Prefix-Befehle',
+          '@bot.command' not in src and 'add_command(' not in src)
+
+    # on_message: erste DM → Begruessung, laeuft ohne process_commands durch.
+    tmpdir = setup_temp_config()
+    import core.dm_log as dm_log_mod
+    old_dm_state, old_dm_log = bot_mod.DM_STATE_FILE, dm_log_mod.DM_LOG_FILE
+    bot_mod.DM_STATE_FILE = os.path.join(tmpdir, 'dm_state.json')
+    dm_log_mod.DM_LOG_FILE = os.path.join(tmpdir, 'dm_log.json')
+    try:
+        class _DM(FakeChannel, _discord.DMChannel):
+            pass
+
+        class _Msg:
+            pass
+
+        msg = _Msg()
+        msg.author = FakeUser(uid=777001, name='Neu')
+        msg.channel = _DM()
+        msg.content = 'Hallo Bot'
+        err = None
+        try:
+            run_async(bot_mod.on_message(msg))
+        except Exception as e:  # z. B. AttributeError process_commands
+            err = e
+        check('on_message (DM) wirft nicht', err is None, repr(err))
+        check('on_message (DM) → Begruessung gesendet', len(msg.channel.sent) == 1)
+    finally:
+        bot_mod.DM_STATE_FILE, dm_log_mod.DM_LOG_FILE = old_dm_state, old_dm_log
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_dm_permissions():
     """Tests fuer DM-Berechtigungen mit GUILD_ID."""
     print('[DM-Permissions]')

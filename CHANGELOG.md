@@ -4,6 +4,23 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.13] - 2026-09-30
+### Security
+- **Privilegierte Intents nur noch, soweit der Bot sie nutzt.** Der Bot forderte `message_content`,
+  `members` und `presences` an. Nachrichteninhalt liest er aber nur in DMs und in eigenen Posts
+  (beides nimmt Discord vom Intent aus), Präsenzen nur für den Activity-Watch von `/motivation`,
+  und Prefix-Befehle gibt es keine. Ein geleakter `DISCORD_TOKEN` hätte mit diesen Intents alle
+  Nachrichten und Präsenzen aller Mitglieder in allen Guilds des Bots mitlesen können; zusätzlich
+  hielt discord.py Präsenzdaten aller Mitglieder im Speicher.
+- Jetzt: `message_content` ist aus. `presences` ist nur an, wenn der Activity-Watch arbeiten kann
+  (`ROOKHUB_API_URL` und `ROOKHUB_STATS_SECRET` gesetzt, `commands/motivation.py`,
+  `activity_watch_needs_presences`), sonst fordert der Bot den Intent gar nicht an. `members` bleibt
+  (Begrüßung, Mitglieder-Cache). Das wirkungslose `bot.process_commands(message)` in `on_message` ist
+  entfernt.
+- Betrieb: Im Discord Developer Portal „Message Content Intent“ abschalten (und „Presence Intent“,
+  wo `/motivation` nicht genutzt wird) – erst das begrenzt einen geleakten Token. Auf Dev prüfen,
+  dass DM-Begrüßung und DM-Chat weiter den Text sehen.
+
 ## [2.83.12] - 2026-09-30
 ### Security
 - **Webhook-Empfänger verlangt den Zeitstempel.** `/webhook/puzzle-attempt`, `/webhook/weekly-progress`

@@ -74,6 +74,18 @@ def _watch_default():
 # Activity-Watch (Rich Presence)
 # ---------------------------------------------------------------------------
 
+def activity_watch_needs_presences() -> bool:
+    """Braucht der Activity-Watch den privilegierten Presence-Intent?
+
+    Der Watch (:func:`_check_activities`) ist der einzige Praesenz-Leser des Bots. Ohne
+    ``ROOKHUB_API_URL``/``ROOKHUB_STATS_SECRET`` liefert ``get_player_progress`` nur
+    ``PROGRESS_UNAVAILABLE`` → der Watch schickt nie eine DM, ``/motivation`` ist inaktiv.
+    Dann fordert bot.py den Intent gar nicht erst an (Datensparsamkeit). Faellt der Watch
+    einmal weg, muss mit dieser Funktion auch der Intent in bot.py gehen.
+    """
+    return bool(getattr(rookhub, 'ROOKHUB_API_URL', '') and getattr(rookhub, 'ROOKHUB_STATS_SECRET', ''))
+
+
 def _get_member(uid_int: int):
     """Gibt das Member-Objekt des Users zurueck (Heim-Server zuerst, dann alle Guilds)."""
     if _bot is None:
