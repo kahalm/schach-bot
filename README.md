@@ -40,7 +40,7 @@ Python-Pakete:
 ```bash
 python3 -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+pip install --require-hashes -r requirements.lock
 ```
 
 `.env` anlegen und Bot starten:
@@ -225,7 +225,8 @@ schach-bot/
 ├── tests/                      # run_all.py (alle Tests), test_trim.py, test_commands.py, …
 ├── Dockerfile
 ├── docker-compose.yml
-├── requirements.txt
+├── requirements.txt            # direkte Abhaengigkeiten (Eingabe fuer pip-compile)
+├── requirements.lock           # exakt gepinnt + Hashes (Dockerfile/CI: --require-hashes)
 ├── .env.example
 ├── CHANGELOG.md
 └── config/                     # Runtime-State (gitignored, auto-erstellt)

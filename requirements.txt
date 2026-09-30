@@ -1,3 +1,6 @@
+# Direkte Abhaengigkeiten (Untergrenzen). Installiert wird requirements.lock
+# (exakt gepinnt + Hashes): nach jeder Aenderung hier neu erzeugen mit
+#   pip-compile --generate-hashes --allow-unsafe --strip-extras -o requirements.lock requirements.txt
 discord.py>=2.3.0
 requests>=2.31.0
 python-chess>=1.10.0

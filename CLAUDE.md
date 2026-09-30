@@ -9,8 +9,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies (exakt aus dem Lock, wie Dockerfile und CI)
+pip install --require-hashes -r requirements.lock
 
 # Run the bot
 python bot.py
@@ -99,3 +99,12 @@ Beide Dateien gehören in denselben Commit – nie nachträglich! Kein Commit oh
 | `requests` | Lichess API calls |
 | `python-dotenv` | `.env` loading |
 | `svglib` / `reportlab` | SVG → PNG conversion for chess pieces |
+
+`requirements.txt` listet nur die direkten Abhängigkeiten (Untergrenzen) und ist die Eingabe für
+`requirements.lock` (alle Pakete exakt gepinnt, mit Hashes). Dockerfile und CI installieren
+ausschließlich den Lock mit `--require-hashes`; ein neues PyPI-Release kommt so nur per bewusstem
+Commit ins Image. Lock neu erzeugen (pip-tools, Python 3.13):
+`pip-compile --generate-hashes --allow-unsafe --strip-extras -o requirements.lock requirements.txt`
+(einzelnes Paket anheben: zusätzlich `--upgrade-package <name>`), danach `python tests/run_all.py`.
+`pip-audit` läuft in `release.yml` (Job `audit`) nur als Warnung. `tests/test_ci_gate.py` wacht über
+Lock, Actions-SHAs und das mehrstufige Dockerfile (Laufzeit-Stage ohne Compiler/`-dev`-Pakete).

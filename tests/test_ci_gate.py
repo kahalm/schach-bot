@@ -268,6 +268,86 @@ def test_books_exception():
           f'rc={rc} out={out!r}')
 
 
+def _norm_pkg(name):
+    return re.sub(r'[-_.]+', '-', name).lower()
+
+
+def _dockerfile_stages(text):
+    """Liste der Stages (Text ab ``FROM`` bis vor das naechste ``FROM``)."""
+    parts = re.split(r'^(?=FROM\s)', text, flags=re.M)
+    return [p for p in parts if p.startswith('FROM')]
+
+
+def test_supply_chain_pinned():
+    """Review W4s S4-010: Abhaengigkeiten per Lock mit Hashes, Actions per SHA,
+    Laufzeit-Image ohne Compiler, pip-audit als Warnung."""
+    wf_dir = os.path.join(_REPO, '.github', 'workflows')
+    unpinned = []
+    for name in sorted(os.listdir(wf_dir)):
+        if not name.endswith(('.yml', '.yaml')):
+            continue
+        for line in _read('.github', 'workflows', name).splitlines():
+            m = re.match(r'^\s*(?:-\s*)?uses:\s*(\S+)', line)
+            if m and not re.fullmatch(r'[\w.-]+/[\w./-]+@[0-9a-f]{40}', m.group(1)):
+                unpinned.append(f'{name}: {m.group(1)}')
+    check('jede Action in .github/workflows per Commit-SHA gepinnt', not unpinned, f'{unpinned}')
+
+    lock_path = os.path.join(_REPO, 'requirements.lock')
+    check('requirements.lock vorhanden', os.path.isfile(lock_path))
+    lock = _read('requirements.lock') if os.path.isfile(lock_path) else ''
+    reqs = re.findall(r'^([A-Za-z0-9][A-Za-z0-9._-]*)(==[^\s;\\]+)?[^\n]*$', lock, re.M)
+    check('Lock pinnt jede Abhaengigkeit exakt (==)', reqs and all(v for _, v in reqs),
+          f'{[n for n, v in reqs if not v]}')
+    blocks = re.split(r'\n(?=[A-Za-z0-9])', lock.split('\n', 1)[-1]) if lock else []
+    no_hash = [b.split()[0] for b in blocks
+               if re.match(r'[A-Za-z0-9]', b) and '--hash=sha256:' not in b]
+    check('Lock hat fuer jede Abhaengigkeit Hashes', lock and not no_hash, f'{no_hash}')
+    top = {_norm_pkg(m) for m in re.findall(r'^([A-Za-z0-9][A-Za-z0-9._-]*)', _read('requirements.txt'), re.M)}
+    locked = {_norm_pkg(n) for n, _ in reqs}
+    check('jede Abhaengigkeit aus requirements.txt steht im Lock', top and top <= locked,
+          f'fehlen: {sorted(top - locked)}')
+    check('Lock mit pip-compile --generate-hashes fuer Python 3.13 erzeugt',
+          'pip-compile' in lock and '--generate-hashes' in lock and 'Python 3.13' in lock)
+
+    text = _read('.github', 'workflows', 'release.yml')
+    jobs = _jobs(text)
+    check('Job "test" installiert aus dem Lock mit --require-hashes',
+          re.search(r'pip install --require-hashes -r requirements\.lock', jobs.get('test', ''))
+          is not None)
+    check('kein Workflow installiert requirements.txt ohne Hashes',
+          'pip install -r requirements.txt' not in text)
+    audit = [n for n, body in jobs.items() if 'pip-audit' in body]
+    check('pip-audit laeuft im Workflow', bool(audit), f'jobs={sorted(jobs)}')
+    for n in audit:
+        body = jobs[n]
+        check(f'pip-audit ({n}) nur als Warnung (continue-on-error)',
+              re.search(r'continue-on-error:\s*true', body) is not None)
+        check(f'pip-audit ({n}) prueft den Lock mit Hashes',
+              re.search(r'pip-audit[^\n]*-r requirements\.lock[^\n]*--require-hashes', body)
+              is not None)
+    needs = re.search(r'^    needs:\s*\[([^\]]*)\]', jobs.get('build-and-push', ''), re.M)
+    check('pip-audit blockiert kein Image (nicht in needs von build-and-push)',
+          needs is not None and not any(n in needs.group(1) for n in audit if n != 'test'))
+
+    docker = _read('Dockerfile')
+    stages = _dockerfile_stages(docker)
+    check('Dockerfile mehrstufig (Build-Stage + Laufzeit)', len(stages) >= 2, f'{len(stages)} Stages')
+    runtime = stages[-1] if stages else ''
+    build = '\n'.join(stages[:-1])
+    check('Build-Stage installiert aus dem Lock mit --require-hashes',
+          re.search(r'pip install[^\n]*--require-hashes[^\n]*-r requirements\.lock', build) is not None)
+    check('Dockerfile nutzt requirements.txt nicht mehr', 'requirements.txt' not in docker)
+    tools = re.findall(r'\b(build-essential|gcc|pkg-config|[\w.+-]+-dev)\b', runtime)
+    check('Laufzeit-Stage ohne Compiler/-dev-Pakete', stages and not tools, f'{tools}')
+    check('Laufzeit-Stage uebernimmt die Abhaengigkeiten aus der Build-Stage (COPY --from)',
+          re.search(r'^COPY --from=\S+', runtime, re.M) is not None)
+    check('Build-Smoke test_rendering laeuft in der Laufzeit-Stage',
+          'RUN python tests/test_rendering.py' in runtime)
+    bases = re.findall(r'^FROM\s+(\S+)', docker, re.M)
+    check('alle Stages auf demselben Python-Basis-Image (venv-Pfade passen)',
+          bases and len(set(bases)) == 1 and bases[0].startswith('python:3.13'), f'{bases}')
+
+
 def test_docs_name_runner():
     check('CLAUDE.md nennt python tests/run_all.py',
           'python tests/run_all.py' in _read('CLAUDE.md'))
@@ -279,7 +359,7 @@ def test_docs_name_runner():
 
 def main():
     for t in (test_release_workflow_gated, test_release_tags_guarded, test_every_test_file_has_runner,
-              test_collect, test_books_exception, test_docs_name_runner):
+              test_collect, test_books_exception, test_docs_name_runner, test_supply_chain_pinned):
         print(f'== {t.__name__} ==')
         t()
     print()

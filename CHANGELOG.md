@@ -4,6 +4,25 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.19] - 2026-09-30
+### Security
+- **Lieferkette: Abhängigkeiten gepinnt, Laufzeit-Image ohne Compiler.** Alle zehn Pakete waren
+  nur nach unten begrenzt (`>=`), ohne Lock und ohne Hashes; jeder Image-Build löste neu auf. Ein
+  Breaking Release (z. B. discord.py 3.0) oder eine kompromittierte Version wäre ungeprüft ins
+  `:dev`-Image gerutscht und von Watchtower nachts ausgerollt worden (vgl. 2.62.1: ungepinntes
+  reportlab → Tagespuzzle ohne Brett).
+- Jetzt: `requirements.lock` (pip-compile `--generate-hashes`, Python 3.13) pinnt alle 43 Pakete
+  mit Hashes; Dockerfile und CI installieren nur noch daraus mit `--require-hashes`.
+  `requirements.txt` bleibt die Eingabe mit den direkten Abhängigkeiten. Updates sind damit ein
+  bewusster Lock-Commit (Befehl in `CLAUDE.md`).
+- Dockerfile mehrstufig: Build-Stage mit `build-essential`/`libcairo2-dev`/`pkg-config`/`libffi-dev`
+  baut ein venv, die Laufzeit-Stage übernimmt es und bringt nur `libcairo2` mit – kein Compiler,
+  keine `-dev`-Pakete mehr im Image. Der Build-Smoke (`tests/test_rendering.py`) läuft in der
+  Laufzeit-Stage und prüft damit auch die cairo-Laufzeitbibliothek.
+- `release.yml`: neuer Job `audit` mit `pip-audit` gegen den Lock (nur Warnung, blockiert kein
+  Image); alle Actions (auch in `changelog-discord.yml`) auf Commit-SHA gepinnt (gleiche Stände
+  wie die bisherigen Major-Tags). `tests/test_ci_gate.py` wacht über Lock, SHAs und Dockerfile.
+
 ## [2.83.18] - 2026-09-30
 ### Fixed
 - **Bibliothek: Seitenaufbau ohne Datei-Zugriffe im Event-Loop.** Die Buch-Auswahl von

@@ -1,4 +1,5 @@
-FROM python:3.13-slim
+# --- Build-Stage: Abhaengigkeiten bauen (pycairo kompiliert gegen libcairo2-dev) ---
+FROM python:3.13-slim AS build
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -8,15 +9,31 @@ RUN apt-get update \
        libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+# Exakt die Versionen + Hashes aus requirements.lock (pip-compile --generate-hashes);
+# ein neues Release auf PyPI kommt so nur per bewusstem Lock-Commit ins Image.
+# In ein venv, das die Laufzeit-Stage fertig uebernimmt.
+RUN python -m venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+COPY requirements.lock .
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# --- Laufzeit: ohne Compiler und -dev-Pakete, nur die cairo-Laufzeitbibliothek ---
+FROM python:3.13-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libcairo2 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /opt/venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+
+WORKDIR /app
 
 COPY . .
 
 # Build-Smoke-Test: rendert ein echtes Brett. Fehlt das renderPM-Backend
-# (rlPyCairo), schlaegt der Build hier fehl statt spaeter still "ohne Brett".
+# (rlPyCairo) oder die cairo-Laufzeitbibliothek, schlaegt der Build hier fehl
+# statt spaeter still "ohne Brett".
 RUN python tests/test_rendering.py
 
 RUN useradd -m botuser && chown -R botuser:botuser /app
