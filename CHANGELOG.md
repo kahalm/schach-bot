@@ -4,6 +4,18 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.18] - 2026-09-30
+### Fixed
+- **Bibliothek: Seitenaufbau ohne Datei-Zugriffe im Event-Loop.** Die Buch-Auswahl von
+  `/bibliothek`, `/tag` und `/autor` las je Eintrag `isfile`/`getsize` im Konstruktor, und das
+  Embed prüfte über `_collect_formats` bis zu vier Dateien je Buch – beides im Event-Loop, nach
+  der Suche und bei jedem Vor/Zurück. Hängt der Bibliotheks-Mount (mergerfs/Syncthing), standen
+  alle Befehle, der Webhook-Empfänger und der Heartbeat, bis er wieder antwortete.
+- Jetzt baut `_library_page` Embed und Dateigrößen einer Seite in einem Thread; `_BookSelect`
+  bekommt die Größen fertig übergeben und macht selbst keine Datei-I/O mehr. Auch der
+  SFTPGo-Link nimmt die schon bekannte Dateigröße, statt sie im Loop erneut zu lesen. Anzeige
+  unverändert.
+
 ## [2.83.17] - 2026-09-30
 ### Fixed
 - **`docker-compose.yml` reicht `DAILY_EXTRA_CHANNEL_IDS` und `DAILY_DEFAULT_LANG` durch.** Die

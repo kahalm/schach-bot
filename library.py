@@ -697,19 +697,21 @@ def _sftpgo_rel_path(local_path: str) -> str | None:
     return str(rel).replace('\\', '/')
 
 
-def _sftpgo_message(entry: dict, path: str, fmt: str) -> str:
+def _sftpgo_message(entry: dict, path: str, fmt: str, size: int | None = None) -> str:
     """Baut die ephemere Antwort-Nachricht mit Web-Client-Link (OHNE Passwort).
 
     Das Passwort wird bewusst NICHT in diese Nachricht gepackt — es geht als
     separate Nachricht (`_sftpgo_password_message`), damit es nicht im selben
-    (kopier-/weiterleitbaren) Block wie der Link steht.
+    (kopier-/weiterleitbaren) Block wie der Link steht. ``size`` (Bytes) geben
+    die Aufrufer im Event-Loop mit, dann fällt das getsize hier weg.
     """
     from urllib.parse import quote
     rel        = _sftpgo_rel_path(path) or os.path.basename(path)
     encoded    = quote('/' + rel)
     browse_url = (f'{_SFTPGO_BASE_URL}/web/client/pubshares/'
                   f'{_SFTPGO_SHARE_ID}/browse?path={encoded}')
-    size       = os.path.getsize(path)
+    if size is None:
+        size = os.path.getsize(path)
     mb         = size / (1024 * 1024)
     msg = (f'📥 **{entry["title"]}** `[{fmt.upper()} · {mb:.1f} MB]`\n\n'
            f'🔗 {browse_url}')
@@ -744,7 +746,7 @@ async def _send_book(interaction: discord.Interaction,
         if size > _MAX_UPLOAD:
             if _sftpgo_link_allowed():
                 await interaction.followup.send(
-                    _sftpgo_message(entry, path, fmt), ephemeral=True)
+                    _sftpgo_message(entry, path, fmt, size), ephemeral=True)
                 pw_msg = _sftpgo_password_message()
                 if pw_msg:
                     await interaction.followup.send(pw_msg, ephemeral=True)
@@ -810,10 +812,11 @@ class _FormatView(discord.ui.View):
             btn = discord.ui.Button(
                 label=label, emoji=_FORMAT_EMOJI.get(fmt, '📄'),
                 style=style, custom_id=f'fmt_{fmt}')
-            btn.callback = self._make_callback(fmt, path, big, link)
+            btn.callback = self._make_callback(fmt, path, big, link, size)
             self.add_item(btn)
 
-    def _make_callback(self, fmt: str, path: str, big: bool, link: bool):
+    def _make_callback(self, fmt: str, path: str, big: bool, link: bool,
+                       size: int | None = None):
         async def _cb(interaction: discord.Interaction):
             # Gemeinfreiheits-Sperre auch hier (deckt den direkten SFTPGo-Link-Pfad ab).
             if _is_locked(self.entry):
@@ -826,7 +829,7 @@ class _FormatView(discord.ui.View):
             if big and link:
                 # Direkt antworten (kein defer nötig)
                 await interaction.response.send_message(
-                    _sftpgo_message(self.entry, path, fmt), ephemeral=True)
+                    _sftpgo_message(self.entry, path, fmt, size), ephemeral=True)
                 pw_msg = _sftpgo_password_message()
                 if pw_msg:
                     await interaction.followup.send(pw_msg, ephemeral=True)
@@ -844,10 +847,50 @@ class _FormatView(discord.ui.View):
         return _cb
 
 
+def _first_file_sizes(entries: list[dict]) -> list[int | None]:
+    """Größe der ersten vorhandenen Datei je Eintrag (Bytes) oder None.
+
+    Macht bis zu zwei stat-Aufrufe je Eintrag auf dem Bibliotheks-Mount
+    (Syncthing-/Netzpfad) → NUR in einem Thread aufrufen (_library_page).
+    """
+    sizes: list[int | None] = []
+    for e in entries:
+        size = None
+        for f in e.get('files', []):
+            local = _local_path(f)
+            try:
+                if local and os.path.isfile(local):
+                    size = os.path.getsize(local)
+                    break
+            except OSError:
+                continue
+        sizes.append(size)
+    return sizes
+
+
+async def _library_page(pages: list[list[dict]], idx: int,
+                        query: str) -> tuple[discord.Embed, list[int | None]]:
+    """Embed + Dateigrößen einer Bibliotheks-Seite, alle stat-Aufrufe in einem Thread.
+
+    _build_library_embed (_collect_formats) und die Größen für _BookSelect lesen
+    den Bibliotheks-Mount; im Event-Loop würde ein hängender Mount den ganzen Bot
+    anhalten (Review W4s S4-025, Rest von PD-124).
+    """
+    entries = pages[idx]
+
+    def _build():
+        embed = _build_library_embed(entries, page=idx + 1, total_pages=len(pages), query=query)
+        return embed, _first_file_sizes(entries)
+    return await asyncio.to_thread(_build)
+
+
 class _BookSelect(discord.ui.Select):
     """Dropdown zum Auswählen eines Buchs zum Download."""
 
-    def __init__(self, entries: list[dict]):
+    def __init__(self, entries: list[dict], sizes: list[int | None] | None = None):
+        """``sizes`` (je Eintrag Bytes der ersten Datei, siehe _first_file_sizes)
+        vorab in einem Thread ermitteln — der Konstruktor läuft im Event-Loop und
+        macht selbst keine Datei-I/O; ohne ``sizes`` fehlt nur die Größenangabe."""
         options = []
         for i, e in enumerate(entries):
             emoji = _TYPE_EMOJI.get(e.get('file_type', ''), '📄')
@@ -858,12 +901,9 @@ class _BookSelect(discord.ui.Select):
             if ft:
                 parts.append(ft.upper())
             # Dateigröße der ersten vorhandenen Datei
-            for f in e.get('files', []):
-                local = _local_path(f)
-                if local and os.path.isfile(local):
-                    mb = os.path.getsize(local) / (1024 * 1024)
-                    parts.append(f'{mb:.1f} MB')
-                    break
+            size = sizes[i] if sizes is not None and i < len(sizes) else None
+            if size is not None:
+                parts.append(f'{size / (1024 * 1024):.1f} MB')
             desc = ' · '.join(p for p in parts if p)[:100]
             options.append(discord.SelectOption(
                 label=label, description=desc, emoji=emoji, value=str(i)))
@@ -916,39 +956,37 @@ class _BookSelect(discord.ui.Select):
 
 
 class LibraryPaginationView(discord.ui.View):
-    def __init__(self, pages: list[list[dict]], query: str):
+    def __init__(self, pages: list[list[dict]], query: str,
+                 sizes: list[int | None] | None = None):
+        """``sizes``: Dateigrößen der ersten Seite aus _library_page (Thread)."""
         super().__init__(timeout=120)
         self.pages = pages
         self.query = query
         self.current = 0
-        self._update_select()
+        self._update_select(sizes)
 
-    def _update_select(self):
+    def _update_select(self, sizes: list[int | None] | None = None):
         # Altes Select entfernen falls vorhanden
         for child in self.children:
             if isinstance(child, _BookSelect):
                 self.remove_item(child)
                 break
-        self.add_item(_BookSelect(self.pages[self.current]))
+        self.add_item(_BookSelect(self.pages[self.current], sizes))
 
     @discord.ui.button(label='◀ Zurück', style=discord.ButtonStyle.secondary)
     async def prev_button(self, interaction: discord.Interaction,
                            button: discord.ui.Button):
         self.current = max(0, self.current - 1)
-        self._update_select()
-        embed = _build_library_embed(
-            self.pages[self.current], page=self.current + 1,
-            total_pages=len(self.pages), query=self.query)
+        embed, sizes = await _library_page(self.pages, self.current, self.query)
+        self._update_select(sizes)
         await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label='Weiter ▶', style=discord.ButtonStyle.secondary)
     async def next_button(self, interaction: discord.Interaction,
                            button: discord.ui.Button):
         self.current = min(len(self.pages) - 1, self.current + 1)
-        self._update_select()
-        embed = _build_library_embed(
-            self.pages[self.current], page=self.current + 1,
-            total_pages=len(self.pages), query=self.query)
+        embed, sizes = await _library_page(self.pages, self.current, self.query)
+        self._update_select(sizes)
         await interaction.response.edit_message(embed=embed, view=self)
 
 
@@ -970,8 +1008,8 @@ def setup(bot: discord.ext.commands.Bot):
                 f'Keine Treffer für „{suche}".', ephemeral=True)
             return
         pages = [results[i:i + 10] for i in range(0, len(results), 10)]
-        embed = _build_library_embed(pages[0], page=1, total_pages=len(pages), query=suche)
-        view = LibraryPaginationView(pages, query=suche)
+        embed, sizes = await _library_page(pages, 0, suche)
+        view = LibraryPaginationView(pages, query=suche, sizes=sizes)
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
     @cmd_bibliothek.autocomplete('suche')
@@ -1002,9 +1040,8 @@ def setup(bot: discord.ext.commands.Bot):
             return
         results.sort(key=lambda e: (_author_str(e.get('author', '')), e['title']))
         pages = [results[i:i + 10] for i in range(0, len(results), 10)]
-        embed = _build_library_embed(pages[0], page=1, total_pages=len(pages),
-                                      query=f'Tag: {tag}')
-        view = LibraryPaginationView(pages, query=f'Tag: {tag}')
+        embed, sizes = await _library_page(pages, 0, f'Tag: {tag}')
+        view = LibraryPaginationView(pages, query=f'Tag: {tag}', sizes=sizes)
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
     @cmd_tag.autocomplete('tag')
@@ -1032,9 +1069,8 @@ def setup(bot: discord.ext.commands.Bot):
             return
         results.sort(key=lambda e: e['title'])
         pages = [results[i:i + 10] for i in range(0, len(results), 10)]
-        embed = _build_library_embed(pages[0], page=1, total_pages=len(pages),
-                                      query=f'Autor: {autor}')
-        view = LibraryPaginationView(pages, query=f'Autor: {autor}')
+        embed, sizes = await _library_page(pages, 0, f'Autor: {autor}')
+        view = LibraryPaginationView(pages, query=f'Autor: {autor}', sizes=sizes)
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
     @cmd_autor.autocomplete('autor')

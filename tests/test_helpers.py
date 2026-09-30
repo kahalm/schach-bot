@@ -134,9 +134,14 @@ class FakeView:
         self.children = []
     def add_item(self, item):
         self.children.append(item)
+    def remove_item(self, item):
+        self.children.remove(item)
 
 class FakeSelect(FakeView):
-    pass
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.options = kw.get('options', [])
+        self.placeholder = kw.get('placeholder')
 
 class FakeButton:
     def __init__(self, **kw):

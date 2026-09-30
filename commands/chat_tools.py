@@ -807,7 +807,7 @@ async def _tool_send_library_book(tool_input, ctx) -> str:
                 content=f'📖 **{title}** — {author} `[{fmt.upper()}]`',
                 file=book_file)
         elif _sftpgo_link_allowed():
-            await channel.send(_sftpgo_message(entry, path, fmt))
+            await channel.send(_sftpgo_message(entry, path, fmt, size))
             pw_msg = _sftpgo_password_message()
             if pw_msg:
                 await channel.send(pw_msg)

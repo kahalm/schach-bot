@@ -26,7 +26,7 @@ def test_bibliothek():
         import library as lib_mod
 
         orig_pag = lib_mod.LibraryPaginationView
-        lib_mod.LibraryPaginationView = lambda pages, query: FakeView()
+        lib_mod.LibraryPaginationView = lambda pages, query, sizes=None: FakeView()
 
         orig_search = lib_mod._search_library
         lib_mod._search_library = lambda q, limit=25: [
@@ -71,7 +71,7 @@ def test_tag():
 
         # LibraryPaginationView ist ein MagicMock → ersetzen
         orig_pag = lib_mod.LibraryPaginationView
-        lib_mod.LibraryPaginationView = lambda pages, query: FakeView()
+        lib_mod.LibraryPaginationView = lambda pages, query, sizes=None: FakeView()
 
         orig_ensure = lib_mod._ensure_library
         lib_mod._ensure_library = lambda: [
@@ -121,7 +121,7 @@ def test_autor():
         import library as lib_mod
 
         orig_pag = lib_mod.LibraryPaginationView
-        lib_mod.LibraryPaginationView = lambda pages, query: FakeView()
+        lib_mod.LibraryPaginationView = lambda pages, query, sizes=None: FakeView()
 
         orig_ensure = lib_mod._ensure_library
         lib_mod._ensure_library = lambda: [
@@ -523,6 +523,96 @@ def test_pd_lock_share_link():
          library._SFTPGO_SHARE_ID, library._SFTPGO_SHARE_PASSWORD) = orig
         library.stats.inc = orig_inc
         library._reload_library()
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    print()
+
+
+def test_library_view_no_loop_io():
+    """Review W4s S4-025 (Rest von PD-124): Bibliotheks-Seiten bauen ohne stat im Event-Loop.
+
+    _BookSelect las je Eintrag os.path.isfile/getsize im Konstruktor, und der lief
+    im Loop (nach dem to_thread der Suche und bei jedem Vor/Zurueck), ebenso
+    _build_library_embed → _collect_formats. Haengt der Bibliotheks-Mount, stand
+    der ganze Bot. Hier wirft jeder Datei-stat aus dem Loop-Thread (Hauptthread)."""
+    print('[library view no loop io]')
+    import threading
+    import library as lib_mod
+
+    cmd = _captured_commands.get('bibliothek')
+    check('cmd_bibliothek gefunden', cmd is not None)
+    if not cmd:
+        return
+    tmpdir = tempfile.mkdtemp(prefix='lib_loopio_')
+    orig_search = lib_mod._search_library
+    orig_isfile, orig_getsize = os.path.isfile, os.path.getsize
+    orig_sftp = (lib_mod._SFTPGO_BASE_URL, lib_mod._SFTPGO_SHARE_ID)
+    orig_inc = lib_mod.stats.inc
+    loop_calls = []
+
+    def _guard(real, name):
+        def _wrapped(p, *a, **kw):
+            if threading.current_thread() is threading.main_thread() and str(p).startswith(tmpdir):
+                loop_calls.append((name, os.path.basename(str(p))))
+            return real(p, *a, **kw)
+        return _wrapped
+
+    try:
+        entries = []
+        for i in range(12):   # 2 Seiten
+            f = os.path.join(tmpdir, f'buch{i:02d}.pdf')
+            with open(f, 'wb') as fh:
+                fh.truncate((i + 1) * 1024 * 1024)
+            entries.append({'id': f'b{i}', 'title': f'Buch {i:02d}', 'author': 'A',
+                            'tags': [], 'file_type': 'pdf', 'files': [f]})
+        lib_mod._search_library = lambda q, limit=25: entries
+        os.path.isfile = _guard(orig_isfile, 'isfile')
+        os.path.getsize = _guard(orig_getsize, 'getsize')
+
+        ia = make_interaction()
+        run_async(cmd(ia, suche='buch'))
+        sent = ia.followup.calls[0] if ia.followup.calls else {}
+        view, embed = sent.get('view'), sent.get('embed')
+        check('/bibliothek: kein Datei-stat im Event-Loop', not loop_calls, str(loop_calls[:4]))
+        check('/bibliothek: Embed zeigt Formate (stat lief im Thread)',
+              embed is not None and 'PDF' in embed.fields[0]['value'])
+        select = next((c for c in getattr(view, 'children', [])
+                       if isinstance(c, lib_mod._BookSelect)), None)
+        descs = [o.description for o in getattr(select, 'options', [])] if select else []
+        check('/bibliothek: Auswahl zeigt weiter die Dateigroesse',
+              len(descs) == 10 and '1.0 MB' in descs[0] and '10.0 MB' in descs[9], str(descs[:2]))
+
+        loop_calls.clear()
+        ia2 = make_interaction()
+        if view is not None:
+            run_async(view.next_button(ia2, None))
+        edit = ia2.response.calls[0] if ia2.response.calls else {}
+        check('Weiter: kein Datei-stat im Event-Loop', not loop_calls, str(loop_calls[:4]))
+        select2 = next((c for c in getattr(view, 'children', [])
+                        if isinstance(c, lib_mod._BookSelect)), None)
+        descs2 = [o.description for o in getattr(select2, 'options', [])] if select2 else []
+        check('Weiter: Seite 2 mit Groessen und neuem Embed',
+              edit.get('type') == 'edit_message' and len(descs2) == 2 and '11.0 MB' in descs2[0]
+              and edit.get('embed') is not None and 'Seite 2/2' in edit['embed'].footer.text,
+              str(descs2))
+        check('Weiter: genau eine Auswahl in der View',
+              sum(isinstance(c, lib_mod._BookSelect) for c in getattr(view, 'children', [])) == 1)
+
+        # Format-Button mit SFTPGo-Link: Groesse kommt aus dem View-Bau, kein getsize im Loop
+        lib_mod._SFTPGO_BASE_URL, lib_mod._SFTPGO_SHARE_ID = 'https://sftp.example', 's1'
+        lib_mod.stats.inc = lambda *a, **k: None
+        big = entries[9]['files'][0]
+        fv = lib_mod._FormatView(entries[9], {'pdf': big}, {'pdf': 10 * 1024 * 1024})
+        loop_calls.clear()
+        ia3 = make_interaction()
+        run_async(fv.children[0].callback(ia3))
+        msg = str(ia3.response.calls[0].get('content') if ia3.response.calls else '')
+        check('SFTPGo-Link per Button: kein getsize im Event-Loop, Groesse stimmt',
+              not loop_calls and 'pubshares' in msg and '10.0 MB' in msg, f'{loop_calls} {msg[:80]}')
+    finally:
+        os.path.isfile, os.path.getsize = orig_isfile, orig_getsize
+        lib_mod._search_library = orig_search
+        lib_mod._SFTPGO_BASE_URL, lib_mod._SFTPGO_SHARE_ID = orig_sftp
+        lib_mod.stats.inc = orig_inc
         shutil.rmtree(tmpdir, ignore_errors=True)
     print()
 
