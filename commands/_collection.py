@@ -30,7 +30,7 @@ def setup_collection(bot, *,
     """Registriert einen URL-Collection-Command mit Add/List-Logik."""
     tree = bot.tree
 
-    @tree.command(name=cmd_name, description=cmd_description)
+    @tree.command(name=cmd_name, description=cmd_description, extras={'help': 'community'})
     @discord.app_commands.describe(url=url_label, beschreibung=desc_label)
     async def _cmd(interaction: discord.Interaction,
                    url: str = None,

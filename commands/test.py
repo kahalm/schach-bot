@@ -715,7 +715,8 @@ def setup(bot):
         for key, desc in _MODES.items()
     ]
 
-    @bot.tree.command(name='test', description='Diagnose-Tests ausfuehren (Admin)')
+    @bot.tree.command(name='test', description='Diagnose-Tests ausfuehren (Admin)',
+                      extras={'help': 'admin'})
     @discord.app_commands.default_permissions(administrator=True)
     @discord.app_commands.describe(
         modus='Test-Modus (Standard: snapshots)',

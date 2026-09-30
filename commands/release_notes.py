@@ -59,7 +59,8 @@ def setup(bot: commands.Bot):
     tree = bot.tree
 
     @tree.command(name='release-notes',
-                  description='Zeigt die Versionshistorie (Changelog) des Bots')
+                  description='Zeigt die Versionshistorie (Changelog) des Bots',
+                  extras={'help': 'info'})
     @discord.app_commands.describe(
         version='Optional: bestimmte Version anzeigen (z.B. 1.1.0)',
         anzahl='Wie viele Versionen anzeigen (Default 3)')

@@ -184,7 +184,7 @@ sudo systemctl enable --now schach-bot
 schach-bot/
 ├── bot.py                      # Main Entry, Events, Admin-Commands, Daily-Task
 ├── puzzle/
-│   ├── commands.py            # /puzzle, /kurs, /train, /next, /endless
+│   ├── commands.py            # /puzzle, /kurs, /endless, /randompuzzle, /blindpuzzle (+ Stubs /train, /next)
 │   ├── selection.py           # Laden, Caching, Auswahl
 │   ├── processing.py          # PGN-Trimming, Loesungs-Extraktion
 │   ├── rendering.py           # Board → PNG (SVG-Figuren + Pillow)
@@ -194,7 +194,7 @@ schach-bot/
 │   ├── lichess.py             # Lichess-API + Rate-Limiting
 │   └── state.py               # Persistenter Zustand (Ignore, Training)
 ├── commands/
-│   ├── blind.py               # /blind
+│   ├── blind.py               # /blind (abgelöst, Hinweis-Stub)
 │   ├── chat.py                # KI-Chat (/chat_whitelist, DM-Listener)
 │   ├── elo.py                 # /elo
 │   ├── reminder.py            # /reminder + Loop
@@ -249,10 +249,11 @@ schach-bot/
 |---------|-------------|---------|
 | `/puzzle [anzahl] [buch] [id] [user]` | 1–20 Puzzles posten | alle (user: Admin) |
 | `/kurs [buch]` | Buecher + Kapiteldetails auflisten | alle |
-| `/train [buch]` | Sequenzielles Training starten/stoppen | alle |
-| `/next [anzahl]` | Naechste Puzzle(s) aus Training | alle |
+| `/train`, `/next` | Abgelöst: Hinweis auf RookHub-Kurse (ohne Parameter, nicht in `/help`) | alle |
 | `/endless [buch]` | Endlosmodus (auto-next nach Reaktion) | alle |
-| `/blind [moves] [anzahl] [buch]` | Blind-Puzzle: N Halbzuege mental loesen | alle |
+| `/randompuzzle` | Zufallspuzzle von RookHub in den Channel posten | alle |
+| `/blindpuzzle` | Blind-Puzzle von RookHub in den Channel posten | alle |
+| `/blind` | Abgelöst: Hinweis auf `/puzzle` bzw. `/blindpuzzle` (ohne Parameter, nicht in `/help`) | alle |
 | `/ignore_kapitel [buch] [kapitel]` | Ganzes Kapitel ignorieren | Admin |
 
 ### Turnier & Rallye
@@ -313,7 +314,7 @@ schach-bot/
 
 | Command | Beschreibung | Zugriff |
 |---------|-------------|---------|
-| `/help [bereich]` | Hilfe anzeigen | alle |
+| `/help [bereich]` | Hilfe anzeigen – generiert aus den registrierten Befehlen (`commands/help.py`, Bereich je Befehl per `extras={'help': …}`) | alle |
 | `/version` | Version + Git-SHA + Uptime | alle |
 | `/release-notes [version] [anzahl]` | Changelog anzeigen | alle |
 | `/reminder [hours] [puzzle_count] [buch]` | Puzzle-Erinnerung konfigurieren | alle |
@@ -367,7 +368,7 @@ Buttons sind als Mutex-Paare implementiert: ✅↔❌ und 👍↔👎 schliessen
 
 - `difficulty`: Anzeige-Label (Anfaenger, Fortgeschritten, Meister)
 - `rating`: 1–10 Schwierigkeitsgrad
-- `blind`: Fuer `/blind`-Modus geeignet
+- `blind`: Fuer Blind-Puzzles geeignet
 - `random`: Im taeglichen Pool (`true`) oder deaktiviert (`false`)
 
 ### Modi
@@ -375,9 +376,9 @@ Buttons sind als Mutex-Paare implementiert: ✅↔❌ und 👍↔👎 schliessen
 | Modus | Command | Beschreibung |
 |-------|---------|-------------|
 | Einzelpuzzle | `/puzzle` | 1–20 zufaellige Puzzles per DM |
-| Training | `/train` + `/next` | Sequenziell durch ein Buch, Fortschritt gespeichert |
+| Training | RookHub-Kurse | Sequenziell durch ein Buch, Fortschritt auf RookHub (`/train`/`/next` verweisen dorthin) |
 | Endlos | `/endless` | Nach jeder Reaktion kommt das naechste (5 Min Timeout) |
-| Blind | `/blind` | N Halbzuege mental loesen, dann erst das Brett sehen |
+| Blind | `/blindpuzzle` | Blind-Puzzle von RookHub (`/blind` verweist dorthin) |
 | Reminder | `/reminder` | Wiederkehrende Puzzle-DMs (1–168h Intervall) |
 | Taeglich | automatisch | Ein Puzzle pro Tag im konfigurierten Channel |
 

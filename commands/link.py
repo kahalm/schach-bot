@@ -19,7 +19,8 @@ log = logging.getLogger('schach-bot')
 def setup(bot):
     tree = bot.tree
 
-    @tree.command(name='link', description='RookHub-Konto mit deinem Discord-Account verknüpfen')
+    @tree.command(name='link', description='RookHub-Konto mit deinem Discord-Account verknüpfen',
+                  extras={'help': 'community'})
     async def cmd_link(interaction: discord.Interaction):
         web_url = os.getenv('ROOKHUB_WEB_URL', '').rstrip('/')
         if not web_url or not discord_link.is_enabled():

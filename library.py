@@ -998,7 +998,8 @@ def setup(bot: discord.ext.commands.Bot):
     """Registriert alle Bibliothek-Commands auf dem Bot."""
     tree = bot.tree
 
-    @tree.command(name='bibliothek', description='Schachbuch-Bibliothek durchsuchen')
+    @tree.command(name='bibliothek', description='Schachbuch-Bibliothek durchsuchen',
+                  extras={'help': 'bibliothek'})
     @discord.app_commands.describe(suche='Suchbegriff (Titel, Autor oder Tag)')
     async def cmd_bibliothek(interaction: discord.Interaction, suche: str):
         await interaction.response.defer(ephemeral=True)
@@ -1027,7 +1028,7 @@ def setup(bot: discord.ext.commands.Bot):
             for e in results
         ]
 
-    @tree.command(name='tag', description='Bücher nach Tag filtern')
+    @tree.command(name='tag', description='Bücher nach Tag filtern', extras={'help': 'bibliothek'})
     @discord.app_commands.describe(tag='Tag zum Filtern')
     async def cmd_tag(interaction: discord.Interaction, tag: str):
         await interaction.response.defer(ephemeral=True)
@@ -1056,7 +1057,8 @@ def setup(bot: discord.ext.commands.Bot):
             for t in tags[:25]
         ]
 
-    @tree.command(name='autor', description='Bücher eines Autors anzeigen')
+    @tree.command(name='autor', description='Bücher eines Autors anzeigen',
+                  extras={'help': 'bibliothek'})
     @discord.app_commands.describe(autor='Autorname')
     async def cmd_autor(interaction: discord.Interaction, autor: str):
         await interaction.response.defer(ephemeral=True)
@@ -1085,7 +1087,8 @@ def setup(bot: discord.ext.commands.Bot):
             for a in authors[:25]
         ]
 
-    @tree.command(name='reindex', description='Bibliotheks-Katalog + Puzzle-Cache neu aufbauen (Admin)')
+    @tree.command(name='reindex', description='Bibliotheks-Katalog + Puzzle-Cache neu aufbauen (Admin)',
+                  extras={'help': 'admin'})
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_reindex(interaction: discord.Interaction):
         if not is_privileged(interaction):

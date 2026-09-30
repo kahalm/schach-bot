@@ -285,7 +285,7 @@ def test_train():
         if not cmd:
             return
         ia = make_interaction()
-        run_async(cmd(ia, buch=None))
+        run_async(cmd(ia))  # S4-013: parameterloser Hinweis-Stub
         content = (ia.response.calls[0].get('content') or '').lower()
         check('train → RookHub-Hinweis', 'rookhub' in content)
         check('train → Verknüpfungs-/Puzzle-Hinweis', '/link' in content or '/puzzle' in content)
@@ -304,7 +304,7 @@ def test_next():
         if not cmd:
             return
         ia = make_interaction()
-        run_async(cmd(ia, anzahl=1))
+        run_async(cmd(ia))  # S4-013: parameterloser Hinweis-Stub
         content = (ia.response.calls[0].get('content') or '').lower()
         check('next → RookHub-Hinweis', 'rookhub' in content)
         check('next → /puzzle-Hinweis', '/puzzle' in content)
@@ -525,13 +525,13 @@ def test_local_book_param():
         check('post_puzzle buch 17 → Text nennt lokale Buecher statt /kurs',
               _no_kurs_source(text) and '1–3' in text, text)
 
-        # 7) /help erklaert die lokale Nummerierung
+        # 7) /help erklaert die lokale Nummerierung (generiert aus @describe)
         fields = dict(h._help_fields_fn('puzzle', False)[1])
         fields.update(dict(h._help_fields_fn('admin', True)[1]))
         for key in ('/endless [buch]', '/reminder [hours] [puzzle_count] [buch]',
                     '/ignore_kapitel [buch] [kapitel] [aktion]'):
             check(f'/help {key.split()[0]}: buch = lokales Buch',
-                  'lokales Buch' in fields.get(key, ''), fields.get(key, '<fehlt>'))
+                  'lokales buch' in fields.get(key, '').lower(), fields.get(key, '<fehlt>'))
     finally:
         (leg._list_pgn_files, leg._clean_book_name, posting._list_pgn_files,
          reminder_mod._bot) = orig
@@ -549,7 +549,7 @@ def test_blind():
         if not cmd:
             return
         ia = make_interaction()
-        run_async(cmd(ia, moves=4, anzahl=1, buch=0, user=None))
+        run_async(cmd(ia))  # S4-013: parameterloser Hinweis-Stub
         content = (ia.response.calls[0].get('content') or '').lower()
         check('blind → abgelöst/RookHub-Hinweis', 'abgelöst' in content or 'rookhub' in content)
         check('blind → /puzzle-Hinweis', '/puzzle' in content)

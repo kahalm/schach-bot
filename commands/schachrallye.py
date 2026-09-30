@@ -352,7 +352,8 @@ def setup(bot, tournament_channel_id: int = 0):
     # --- /schachrallye -------------------------------------------------------
 
     @tree.command(name='schachrallye',
-                  description='Alle zukuenftigen Schachrallye-Termine anzeigen')
+                  description='Alle zukuenftigen Schachrallye-Termine anzeigen',
+                  extras={'help': 'community'})
     async def cmd_schachrallye(interaction: discord.Interaction):
         data = atomic_read(TURNIER_FILE, default=dict)
         if not data:
@@ -399,7 +400,8 @@ def setup(bot, tournament_channel_id: int = 0):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @tree.command(name='schachrallye_add',
-                  description='Neuen Schachrallye-Termin anlegen (Admin)')
+                  description='Neuen Schachrallye-Termin anlegen (Admin)',
+                  extras={'help': 'admin'})
     @discord.app_commands.describe(
         datum='Datum im Format TT.MM.JJJJ',
         ort='Ort des Turniers',
@@ -449,7 +451,8 @@ def setup(bot, tournament_channel_id: int = 0):
             ephemeral=True)
 
     @tree.command(name='schachrallye_del',
-                  description='Schachrallye-Termin loeschen (Admin)')
+                  description='Schachrallye-Termin loeschen (Admin)',
+                  extras={'help': 'admin'})
     @discord.app_commands.describe(id='ID des Termins (aus /schachrallye)')
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_schachrallye_del(interaction: discord.Interaction, id: int):
@@ -476,7 +479,8 @@ def setup(bot, tournament_channel_id: int = 0):
                 f'\u274c Termin #{id} nicht gefunden.', ephemeral=True)
 
     @tree.command(name='schachrallye_sub',
-                  description='Fuer Schachrallye-Erinnerungen subscriben')
+                  description='Fuer Schachrallye-Erinnerungen subscriben',
+                  extras={'help': 'community'})
     @discord.app_commands.describe(
         user='Anderen User subscriben (nur Admin)')
     async def cmd_schachrallye_sub(interaction: discord.Interaction,
@@ -532,7 +536,8 @@ def setup(bot, tournament_channel_id: int = 0):
                 log.warning('Rallye-Sub-DM an %s fehlgeschlagen.', target.id)
 
     @tree.command(name='schachrallye_unsub',
-                  description='Schachrallye-Erinnerungen abbestellen')
+                  description='Schachrallye-Erinnerungen abbestellen',
+                  extras={'help': 'community'})
     @discord.app_commands.describe(
         user='Anderen User unsubscriben (nur Admin)')
     async def cmd_schachrallye_unsub(interaction: discord.Interaction,
@@ -574,7 +579,8 @@ def setup(bot, tournament_channel_id: int = 0):
     # --- /turnier_sub + /turnier_unsub -----------------------------------
 
     @tree.command(name='turnier_sub',
-                  description='Fuer einen Turnier-Tag subscriben (Ping bei neuen Turnieren)')
+                  description='Fuer einen Turnier-Tag subscriben (Ping bei neuen Turnieren)',
+                  extras={'help': 'community'})
     @discord.app_commands.describe(
         tag='Tag fuer den du gepingt werden willst (z.B. schnellschach, blitz, 960, klassisch, jugend, senioren)',
         user='Anderen User subscriben (nur Admin)')
@@ -649,7 +655,8 @@ def setup(bot, tournament_channel_id: int = 0):
                 log.warning('Turnier-Sub-DM an %s fehlgeschlagen.', target.id)
 
     @tree.command(name='turnier_unsub',
-                  description='Turnier-Tag-Abo abbestellen')
+                  description='Turnier-Tag-Abo abbestellen',
+                  extras={'help': 'community'})
     @discord.app_commands.describe(
         tag='Tag den du abbestellen willst (z.B. schnellschach, blitz, 960, schachrallye)',
         user='Anderen User unsubscriben (nur Admin)')
@@ -793,7 +800,8 @@ def setup(bot, tournament_channel_id: int = 0):
     # --- /turnier_parse -------------------------------------------------
 
     @tree.command(name='turnier_parse',
-                  description='Termine von tirol.chess.at importieren (Admin)')
+                  description='Termine von tirol.chess.at importieren (Admin)',
+                  extras={'help': 'admin'})
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_turnier_parse(interaction: discord.Interaction):
         if not is_privileged(interaction):
@@ -835,7 +843,8 @@ def setup(bot, tournament_channel_id: int = 0):
     # --- /turnier ------------------------------------------------------------
 
     @tree.command(name='turnier',
-                  description='Alle zukuenftigen Turniere anzeigen (von tirol.chess.at)')
+                  description='Alle zukuenftigen Turniere anzeigen (von tirol.chess.at)',
+                  extras={'help': 'community'})
     async def cmd_turnier(interaction: discord.Interaction):
         data = atomic_read(TURNIER_FILE, default=dict)
         if not data:
@@ -871,7 +880,8 @@ def setup(bot, tournament_channel_id: int = 0):
     # --- /turnier_review (Reviewer sub/unsub) ---------------------------------
 
     @tree.command(name='turnier_review',
-                  description='Als Turnier-Reviewer subscriben/unsubscriben (Admin)')
+                  description='Als Turnier-Reviewer subscriben/unsubscriben (Admin)',
+                  extras={'help': 'admin'})
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_turnier_review(interaction: discord.Interaction):
         if not is_privileged(interaction):
@@ -910,7 +920,8 @@ def setup(bot, tournament_channel_id: int = 0):
     # --- /turnier_pending (pending Events anzeigen) -------------------------
 
     @tree.command(name='turnier_pending',
-                  description='Ausstehende Turniere anzeigen (Admin)')
+                  description='Ausstehende Turniere anzeigen (Admin)',
+                  extras={'help': 'admin'})
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_turnier_pending(interaction: discord.Interaction):
         if not is_privileged(interaction):

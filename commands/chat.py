@@ -521,7 +521,8 @@ def setup(bot: commands.Bot):
     # --- /chat_whitelist ---
 
     @tree.command(name='chat_whitelist',
-                  description='KI-Chat Whitelist verwalten (Admin)')
+                  description='KI-Chat Whitelist verwalten (Admin)',
+                  extras={'help': 'admin'})
     @discord.app_commands.describe(
         user='User hinzufuegen/entfernen',
         aktion='add/remove/list (Standard: add)')
@@ -606,7 +607,8 @@ def setup(bot: commands.Bot):
     # --- /chat_clear ---
 
     @tree.command(name='chat_clear',
-                  description='Eigene KI-Chat-Historie loeschen')
+                  description='Eigene KI-Chat-Historie loeschen',
+                  extras={'help': 'community'})
     async def cmd_chat_clear(interaction: discord.Interaction):
         uid_key = str(interaction.user.id)
         result = {}

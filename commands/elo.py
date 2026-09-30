@@ -44,7 +44,8 @@ def add(user_id: int, elo: int):
 def setup(bot):
     tree = bot.tree
 
-    @tree.command(name='elo', description='Eigene Schach-Elo angeben oder anzeigen')
+    @tree.command(name='elo', description='Eigene Schach-Elo angeben oder anzeigen',
+                  extras={'help': 'community'})
     @discord.app_commands.describe(
         wert='Deine aktuelle Elo (100–3500). Ohne Wert: aktuelle Elo + Historie anzeigen.',
     )

@@ -308,7 +308,8 @@ async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
         await interaction.followup.send('❌ Ein Fehler ist aufgetreten.', ephemeral=True)
 
 
-async def _cmd_train(interaction: discord.Interaction, buch: int = None):
+async def _cmd_train(interaction: discord.Interaction):
+    # Abgelöster Hinweis-Stub (parameterlos, nicht in /help).
     # Sequentielles Training läuft jetzt auf RookHub (Kurse, mit gespeichertem Fortschritt
     # je Konto). Der Bot verlinkt nur noch dorthin.
     # Strikt WEB_URL — kein Fallback auf API_URL, sonst landen interne Docker-Adressen
@@ -423,7 +424,8 @@ async def send_next_training(channel, user_id: int, count: int = 1) -> dict:
             'total': total_in_book, 'book': name, 'finished': False}
 
 
-async def _cmd_next(interaction: discord.Interaction, anzahl: int = 1):
+async def _cmd_next(interaction: discord.Interaction):
+    # Abgelöster Hinweis-Stub (parameterlos, nicht in /help).
     # Sequentielles Training läuft jetzt auf RookHub (Kurse mit gespeichertem Fortschritt).
     # Strikt WEB_URL — kein Fallback auf API_URL, sonst landen interne Docker-Adressen
     # (z. B. http://10.24.13.6:8087) in User-Posts.
@@ -589,7 +591,8 @@ def setup(bot: discord.ext.commands.Bot):
     """Registriert alle Puzzle-Commands auf dem Bot."""
     tree = bot.tree
 
-    @tree.command(name='puzzle', description='Puzzle(s) aus den Büchern posten')
+    @tree.command(name='puzzle', description='Puzzle(s) aus den Büchern posten',
+                  extras={'help': 'puzzle'})
     @discord.app_commands.describe(
         anzahl='Anzahl Puzzles (1–20, Standard: 1)',
         buch='Buchnummer aus /kurs (Standard: alle Bücher)',
@@ -607,28 +610,28 @@ def setup(bot: discord.ext.commands.Bot):
                          option: discord.app_commands.Choice[str] | None = None):
         await _cmd_puzzle(interaction, anzahl, buch, id, user, option)
 
-    @tree.command(name='kurs', description='Puzzle-Bücher anzeigen; optional Details zu einem Buch')
+    @tree.command(name='kurs', description='Puzzle-Bücher anzeigen; optional Details zu einem Buch',
+                  extras={'help': 'puzzle'})
     @discord.app_commands.describe(
         buch='Buchnummer aus /kurs für Detailansicht mit allen Kapiteln',
     )
     async def cmd_buecher(interaction: discord.Interaction, buch: int = 0):
         await _cmd_buecher(interaction, buch)
 
-    @tree.command(name='train', description='Buch für sequentielles Training auswählen')
-    @discord.app_commands.describe(
-        buch='Buchnummer aus /kurs (0 = Training beenden, leer = Status anzeigen)',
-    )
-    async def cmd_train(interaction: discord.Interaction, buch: int = None):
-        await _cmd_train(interaction, buch)
+    # /train und /next: abgelöst (Training läuft auf RookHub) – parameterlose Hinweis-Stubs für
+    # eine Version, weder in der Begrüßung noch in /help.
+    @tree.command(name='train', description='Abgelöst: Training läuft jetzt auf RookHub (Kurse).',
+                  extras={'help': None})
+    async def cmd_train(interaction: discord.Interaction):
+        await _cmd_train(interaction)
 
-    @tree.command(name='next', description='Nächste Linie(n) aus dem Trainingsbuch')
-    @discord.app_commands.describe(
-        anzahl='Anzahl Linien (Standard: 1, max 20)',
-    )
-    async def cmd_next(interaction: discord.Interaction, anzahl: int = 1):
-        await _cmd_next(interaction, anzahl)
+    @tree.command(name='next', description='Abgelöst: Training läuft jetzt auf RookHub (Kurse).',
+                  extras={'help': None})
+    async def cmd_next(interaction: discord.Interaction):
+        await _cmd_next(interaction)
 
-    @tree.command(name='endless', description='Endlos-Puzzle-Modus starten/stoppen')
+    @tree.command(name='endless', description='Endlos-Puzzle-Modus starten/stoppen',
+                  extras={'help': 'puzzle'})
     @discord.app_commands.describe(
         buch=f'{LOCAL_BOOK_DESCRIBE} (Standard: alle)',
     )
@@ -640,18 +643,21 @@ def setup(bot: discord.ext.commands.Bot):
     async def endless_buch_autocomplete(interaction: discord.Interaction, current: str):
         return local_book_choices(current)
 
-    @tree.command(name='randompuzzle', description='Zufälliges Puzzle von RookHub posten')
+    @tree.command(name='randompuzzle', description='Zufälliges Puzzle von RookHub posten',
+                  extras={'help': 'puzzle'})
     @discord.app_commands.checks.cooldown(1, 10.0)
     async def cmd_randompuzzle(interaction: discord.Interaction):
         await _cmd_randompuzzle(interaction)
 
-    @tree.command(name='blindpuzzle', description='Zufälliges Blind-Puzzle von RookHub posten')
+    @tree.command(name='blindpuzzle', description='Zufälliges Blind-Puzzle von RookHub posten',
+                  extras={'help': 'puzzle'})
     @discord.app_commands.checks.cooldown(1, 10.0)
     async def cmd_blindpuzzle(interaction: discord.Interaction):
         await _cmd_blindpuzzle(interaction)
 
     @tree.command(name='ignore_kapitel',
-                  description='Ein ganzes Kapitel ignorieren oder Liste anzeigen (Admin)')
+                  description='Ein ganzes Kapitel ignorieren oder Liste anzeigen (Admin)',
+                  extras={'help': 'admin'})
     @discord.app_commands.describe(
         buch=LOCAL_BOOK_DESCRIBE,
         kapitel='Kapitel-Nummer (z.B. 3)',

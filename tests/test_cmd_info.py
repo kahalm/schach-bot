@@ -16,44 +16,110 @@ import core.version
 
 
 def test_help():
-    """Tests fuer /help Command."""
+    """/help wird aus den registrierten Befehlen generiert (S4-013): Spiegeltest Registrierung ↔
+    Hilfe, abgeloeste Stubs ausgeblendet und parameterlos, Begruessung ohne tote Befehle."""
     print('[/help]')
+    import re
+    import commands.help as help_mod
     tmpdir = setup_temp_config()
     try:
-        # Test: Uebersicht (kein Bereich)
-        title, fields = _help_fields_fn('', False)
-        check('kein Bereich → leerer Titel', title == '')
-        check('kein Bereich → keine Felder', fields == [])
+        meta = dict(h._captured_meta)
+        check('Befehle erfasst (>= 40)', len(meta) >= 40, str(len(meta)))
 
-        # Test: Bereich puzzle
-        title, fields = _help_fields_fn('puzzle', False)
-        check('Bereich puzzle → Titel', 'Puzzles' in title)
-        check('Bereich puzzle → hat Felder', len(fields) > 0)
+        # 1) Jeder Befehl traegt einen gueltigen Bereich (None = bewusst ausgeblendet).
+        bad = sorted(n for n, c in meta.items()
+                     if 'help' not in c.extras
+                     or (c.extras['help'] is not None and c.extras['help'] not in help_mod.BEREICHE))
+        check('jeder Befehl hat extras[help] mit gueltigem Bereich', not bad, str(bad))
 
-        # Test: Bereich bibliothek
-        title, fields = _help_fields_fn('bibliothek', False)
-        check('Bereich bibliothek → Titel', 'Bibliothek' in title)
+        # 2) Abgeloeste Stubs: nicht in /help, ohne Parameter.
+        for stub in ('blind', 'train', 'next'):
+            c = meta.get(stub)
+            check(f'/{stub} registriert (Hinweis-Stub)', c is not None)
+            if c is not None:
+                check(f'/{stub} ausgeblendet', c.extras.get('help') is None)
+                check(f'/{stub} parameterlos', c.parameters == [],
+                      str([p.name for p in c.parameters]))
 
-        # Test: Bereich community
-        title, fields = _help_fields_fn('community', False)
-        check('Bereich community → Titel', 'Community' in title)
+        # 3) Spiegel: Nicht-Admin-Hilfe == alle sichtbaren Nicht-Admin-Befehle, Admin-Hilfe ==
+        #    alle Admin-Befehle; kein Eintrag ohne Registrierung.
+        def _names(is_admin, areas):
+            out = []
+            for b in areas:
+                out += [sig.split()[0][1:] for sig, _ in _help_fields_fn(b, is_admin)[1]]
+            return out
+        user_areas = [b for b in help_mod.BEREICHE if b != 'admin']
+        user_help = _names(False, user_areas)
+        expected_user = sorted(n for n, c in meta.items()
+                               if c.extras.get('help') not in (None, 'admin'))
+        check('Nicht-Admin-Hilfe = sichtbare Nicht-Admin-Befehle',
+              sorted(user_help) == expected_user,
+              str(set(user_help) ^ set(expected_user)))
+        check('kein Befehl doppelt in der Hilfe', len(user_help) == len(set(user_help)))
+        admin_help = _names(True, ['admin'])
+        expected_admin = sorted(n for n, c in meta.items() if c.extras.get('help') == 'admin')
+        check('Admin-Hilfe = Admin-Befehle', sorted(admin_help) == expected_admin,
+              str(set(admin_help) ^ set(expected_admin)))
+        for n in ('randompuzzle', 'blindpuzzle', 'bestenliste', 'reindex'):
+            check(f'/{n} steht in der Hilfe', n in user_help + admin_help)
+        for n in ('blind', 'train', 'next'):
+            check(f'/{n} steht nicht in der Hilfe', n not in user_help + admin_help)
+        check('/stats nur im Admin-Bereich', 'stats' in admin_help and 'stats' not in user_help)
 
-        # Test: Bereich info
-        title, fields = _help_fields_fn('info', False)
-        check('Bereich info → Titel', 'Info' in title)
+        # Beschreibung + Parameter kommen aus der Registrierung.
+        fields = dict(_help_fields_fn('puzzle', False)[1])
+        puzzle_field = next((v for k, v in fields.items() if k.startswith('/puzzle ')), '')
+        check('/puzzle-Eintrag nennt Beschreibung', meta['puzzle'].description in puzzle_field)
+        check('/puzzle-Eintrag nennt Parameter anzahl', '`anzahl` —' in puzzle_field, puzzle_field)
 
-        # Test: unbekannter Bereich
-        title, fields = _help_fields_fn('nonsense', False)
-        check('unbekannter Bereich → leer', title == '' and fields == [])
-
-        # Test: Admin-Bereich ohne Admin
-        title, fields = _help_fields_fn('admin', False)
-        check('admin ohne Admin → leer', title == '' and fields == [])
-
-        # Test: Admin-Bereich mit Admin
+        # 4) Bereiche ohne Rechte/unbekannt → leer.
+        check('kein Bereich → leer', _help_fields_fn('', False) == ('', []))
+        check('unbekannter Bereich → leer', _help_fields_fn('nonsense', False) == ('', []))
+        check('admin ohne Admin → leer', _help_fields_fn('admin', False) == ('', []))
         title, fields = _help_fields_fn('admin', True)
         check('admin mit Admin → Titel', 'Admin' in title)
-        check('admin mit Admin → hat Felder', len(fields) > 0)
+
+        # 5) Discord-Limits je Bereich (25 Felder, 6000 Zeichen, 1024 je Feld).
+        for b in help_mod.BEREICHE:
+            title, fields = _help_fields_fn(b, True)
+            size = len(title) + sum(len(k) + len(v) for k, v in fields)
+            check(f'Bereich {b} innerhalb der Embed-Limits',
+                  len(fields) <= 25 and size <= 5800 and all(len(v) <= 1024 for _, v in fields),
+                  f'{len(fields)} Felder, {size} Zeichen')
+
+        # 6) /help ausfuehren: Uebersicht ohne Admin-Bereich fuer normale User.
+        cmd = _captured_commands.get('help')
+        check('cmd_help gefunden', cmd is not None)
+        ia = make_interaction(admin=False)
+        run_async(cmd(ia, bereich=''))
+        embed = ia.response.calls[0].get('embed')
+        names = [f['name'] for f in embed.fields] if embed else []
+        check('Uebersicht: 4 Bereiche fuer normale User', len(names) == 4, str(names))
+        check('Uebersicht: kein Admin-Bereich', not any('admin' in n for n in names))
+        overview = ' '.join(f['value'] for f in embed.fields) if embed else ''
+        check('Uebersicht ohne /train, /next, /blind',
+              not re.search(r'`/(train|next|blind)`', overview), overview)
+        ia = make_interaction(admin=True)
+        run_async(cmd(ia, bereich=''))
+        embed = ia.response.calls[0].get('embed')
+        check('Uebersicht: Admin sieht Admin-Bereich',
+              embed is not None and any('admin' in f['name'] for f in embed.fields))
+        ia = make_interaction(admin=False)
+        run_async(cmd(ia, bereich='xyz'))
+        content = ia.response.calls[0].get('content') or ''
+        check('unbekannter Bereich → Liste ohne admin',
+              'Unbekannter Bereich' in content and '`puzzle`' in content and 'admin' not in content,
+              content)
+
+        # 7) Begruessung: keine abgeloesten/Admin-Befehle, nur registrierte.
+        welcome = bot_mod.WELCOME_MESSAGE
+        mentioned = re.findall(r'`/([\w-]+)`', welcome)
+        check('Begruessung nennt Befehle', len(mentioned) >= 10, str(mentioned))
+        for n in ('blind', 'train', 'next', 'stats'):
+            check(f'Begruessung ohne /{n}', n not in mentioned)
+        dead = [n for n in mentioned
+                if n not in meta or meta[n].extras.get('help') in (None, 'admin')]
+        check('Begruessung nennt nur sichtbare Nicht-Admin-Befehle', not dead, str(dead))
     finally:
         teardown_temp_config(tmpdir)
     print()

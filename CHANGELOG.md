@@ -4,6 +4,25 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.20] - 2026-09-30
+### Changed
+- **`/help` wird aus den registrierten Befehlen erzeugt.** Hilfe, Übersicht und Begrüßung waren
+  an vier Stellen händisch gepflegt und liefen dem Befehlsbestand davon: `/help` erklärte noch
+  `/train 0`, `/next 5` und `/blind moves:5 anzahl:2 buch:3`, obwohl diese Befehle nur noch einen
+  Hinweis ausgeben; `/randompuzzle`, `/blindpuzzle`, `/bestenliste` und `/reindex` fehlten.
+- Jetzt baut `commands/help.py` jeden Eintrag aus Name, `description` und den `@describe`-Texten
+  der Registrierung – dieselben Texte, die Discord im Befehlsmenü zeigt. Den Bereich trägt jeder
+  Befehl selbst (`extras={'help': 'puzzle'}` usw., `None` = ausgeblendet). Ein Spiegeltest
+  (`tests/test_cmd_info.py`) prüft, dass jeder Befehl einen gültigen Bereich hat und die Hilfe
+  genau die registrierten Befehle zeigt. Das Chat-Werkzeug `get_help` liest ebenfalls von dort
+  statt über `import bot` (das hätte das Startskript ein zweites Mal ausgeführt).
+- **Abgelöste Befehle `/blind`, `/train`, `/next`:** aus Begrüßung und `/help` gestrichen, für
+  eine Version noch als parameterlose Hinweis-Stubs da (vorher sechs wirkungslose Parameter).
+  Wer sie tippt, bekommt weiter den Verweis auf RookHub, `/puzzle` bzw. `/blindpuzzle`; danach
+  fallen sie weg.
+- Begrüßungs-DM: `/stats` („Deine Statistiken“) gestrichen – der Befehl ist nur für Admins;
+  statt `/blind` steht dort jetzt `/blindpuzzle`.
+
 ## [2.83.19] - 2026-09-30
 ### Security
 - **Lieferkette: Abhängigkeiten gepinnt, Laufzeit-Image ohne Compiler.** Alle zehn Pakete waren

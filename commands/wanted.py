@@ -28,7 +28,8 @@ def setup(bot: commands.Bot):
     tree = bot.tree
 
     @tree.command(name='wanted',
-                  description='Feature-Wunsch einreichen (oder Liste anzeigen ohne Argument)')
+                  description='Feature-Wunsch einreichen (oder Liste anzeigen ohne Argument)',
+                  extras={'help': 'community'})
     @discord.app_commands.describe(
         beschreibung='Beschreibung des Feature-Wunsches')
     async def cmd_wanted(interaction: discord.Interaction,
@@ -64,12 +65,14 @@ def setup(bot: commands.Bot):
             f'✅ Feature-Wunsch #{new_entry["id"]} gespeichert: **{beschreibung}**')
 
     @tree.command(name='wanted_list',
-                  description='Alle Feature-Wünsche anzeigen (sortiert nach Stimmen)')
+                  description='Alle Feature-Wünsche anzeigen (sortiert nach Stimmen)',
+                  extras={'help': 'community'})
     async def cmd_wanted_list(interaction: discord.Interaction):
         await _show_list(interaction)
 
     @tree.command(name='wanted_vote',
-                  description='Für einen Feature-Wunsch abstimmen (Toggle)')
+                  description='Für einen Feature-Wunsch abstimmen (Toggle)',
+                  extras={'help': 'community'})
     @discord.app_commands.describe(id='Nummer des Feature-Wunsches')
     async def cmd_wanted_vote(interaction: discord.Interaction, id: int):
         uid = interaction.user.id
@@ -99,7 +102,8 @@ def setup(bot: commands.Bot):
                 f'↩️ Stimme für Feature #{id} zurückgenommen.', ephemeral=True)
 
     @tree.command(name='wanted_delete',
-                  description='Feature-Wunsch löschen (Admin)')
+                  description='Feature-Wunsch löschen (Admin)',
+                  extras={'help': 'admin'})
     @discord.app_commands.describe(id='Nummer des Feature-Wunsches')
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_wanted_delete(interaction: discord.Interaction, id: int):

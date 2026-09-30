@@ -104,10 +104,40 @@ _discord.Intents.default.return_value = MagicMock()
 _discord.ChannelType = MagicMock()
 _discord.Attachment = type('Attachment', (), {'url': '', 'filename': ''})
 
-# app_commands: alle Decorators als passthrough
+# app_commands: Decorators geben die Funktion zurueck; describe/default_permissions merken
+# sich ihre Angaben wie discord.py an der Funktion, damit der Capturing-Tree daraus die
+# Befehls-Metadaten fuer die generierte /help bauen kann (siehe _FakeAppCommand).
 _app_commands = sys.modules['discord.app_commands']
-_app_commands.describe = _passthrough_decorator
-_app_commands.default_permissions = _passthrough_decorator
+
+
+def _describe_stub(**descriptions):
+    def deco(func):
+        merged = dict(getattr(func, '__discord_app_commands_param_description__', {}))
+        merged.update(descriptions)
+        func.__discord_app_commands_param_description__ = merged
+        return func
+    return deco
+
+
+class FakeAppPermissions:
+    """Stub fuer discord.Permissions in default_permissions (nur die genutzten Flags)."""
+    _BITS = {'administrator': 8, 'manage_messages': 8192}
+
+    def __init__(self, **flags):
+        for flag in self._BITS:
+            setattr(self, flag, bool(flags.get(flag)))
+        self.value = sum(bit for flag, bit in self._BITS.items() if flags.get(flag))
+
+
+def _default_permissions_stub(**flags):
+    def deco(func):
+        func.__discord_app_commands_default_permissions__ = FakeAppPermissions(**flags)
+        return func
+    return deco
+
+
+_app_commands.describe = _describe_stub
+_app_commands.default_permissions = _default_permissions_stub
 _app_commands.choices = _passthrough_decorator
 
 class _FakeChoice:
@@ -211,18 +241,46 @@ os.environ.setdefault('CHANNEL_ID', '99999')
 # ---------------------------------------------------------------------------
 
 _captured_commands = {}
+_captured_meta = {}  # Name → _FakeAppCommand (Metadaten wie discord.app_commands.Command)
+
+
+class _FakeParam:
+    def __init__(self, name, description, required):
+        self.name = self.display_name = name
+        self.description = description
+        self.required = required
+
+
+class _FakeAppCommand:
+    """Die Felder von discord.app_commands.Command, die commands/help.py liest."""
+
+    def __init__(self, func, **kwargs):
+        self.name = kwargs.get('name', '')
+        self.description = kwargs.get('description', '')
+        self.extras = kwargs.get('extras') or {}
+        self.default_permissions = getattr(
+            func, '__discord_app_commands_default_permissions__', None)
+        descs = getattr(func, '__discord_app_commands_param_description__', {})
+        params = list(inspect.signature(func).parameters.values())[1:]  # ohne interaction
+        self.parameters = [
+            _FakeParam(p.name, descs.get(p.name, '…'), p.default is inspect.Parameter.empty)
+            for p in params]
 
 
 class _CapturingTree:
-    """tree.command(name=...) speichert die async function."""
+    """tree.command(name=...) speichert die async function (+ Metadaten)."""
 
     def command(self, **kwargs):
         cmd_name = kwargs.get('name', '')
         def decorator(func):
             _captured_commands[cmd_name] = func
+            _captured_meta[cmd_name] = _FakeAppCommand(func, **kwargs)
             func.autocomplete = lambda name: _passthrough_single
             return func
         return decorator
+
+    def get_commands(self, guild=None):
+        return list(_captured_meta.values())
 
     def __getattr__(self, name):
         return MagicMock()
@@ -523,5 +581,6 @@ for mod in (elo_mod, resourcen_mod, youtube_mod, wanted_mod,
     else:
         mod.setup(_cap_bot)
 
-# bot.py-interne Helper merken
-_help_fields_fn = bot_mod._help_fields
+# /help-Generator (commands/help.py, liest die Befehle aus dem Capturing-Tree)
+import commands.help as help_mod
+_help_fields_fn = help_mod.help_fields

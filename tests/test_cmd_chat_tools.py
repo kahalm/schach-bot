@@ -697,7 +697,7 @@ def test_tool_get_help():
     print('[tool_get_help]')
     from commands.chat_tools import _tool_get_help
 
-    # Mock _help_fields um circular import zu vermeiden
+    # help_fields mocken (Inhalt kommt sonst aus den registrierten Befehlen)
     fake_fields = {
         'puzzle': ('🧩 Puzzles', [('/puzzle', 'Puzzle senden'), ('/kurs', 'Kurse anzeigen')]),
         'bibliothek': ('📚 Bibliothek', [('/bibliothek', 'Suchen')]),
@@ -712,7 +712,7 @@ def test_tool_get_help():
         pass
 
     # Ohne Bereich → Uebersicht
-    with patch('bot._help_fields', mock_help_fields):
+    with patch('commands.help.help_fields', mock_help_fields):
         result_str = run_async(_tool_get_help({}, {}))
         result = json.loads(result_str)
     check('get_help ohne Bereich hat puzzle', 'puzzle' in result)
@@ -721,7 +721,7 @@ def test_tool_get_help():
     check('get_help puzzle hat commands', 'commands' in result['puzzle'])
 
     # Mit Bereich
-    with patch('bot._help_fields', mock_help_fields):
+    with patch('commands.help.help_fields', mock_help_fields):
         result_str = run_async(_tool_get_help({'bereich': 'puzzle'}, {}))
         result = json.loads(result_str)
     check('get_help puzzle hat bereich', 'bereich' in result)
@@ -729,11 +729,21 @@ def test_tool_get_help():
     check('get_help puzzle 2 commands', len(result['commands']) == 2)
 
     # Unbekannter Bereich
-    with patch('bot._help_fields', mock_help_fields):
+    with patch('commands.help.help_fields', mock_help_fields):
         result_str = run_async(_tool_get_help({'bereich': 'xyz'}, {}))
         result = json.loads(result_str)
     check('get_help unbekannt → error', 'error' in result)
     check('get_help unbekannt → verfuegbar', 'verfuegbar' in result)
+
+    # bot.py laeuft als __main__ – ein `import bot` wuerde das Startskript erneut ausfuehren.
+    import inspect
+    check('get_help importiert nicht aus bot', 'from bot import' not in inspect.getsource(_tool_get_help))
+    # Ungemockt: echte, generierte Hilfe (nur Nicht-Admin-Bereiche).
+    result = json.loads(run_async(_tool_get_help({}, {})))
+    check('get_help echt: kein admin-Bereich', 'admin' not in result and 'puzzle' in result)
+    check('get_help echt: /blindpuzzle gelistet, /train nicht',
+          any(c.startswith('/blindpuzzle') for c in result['puzzle']['commands'])
+          and not any(c.startswith('/train') for c in result['puzzle']['commands']))
 
 
 def test_tool_get_release_notes():

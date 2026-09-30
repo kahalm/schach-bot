@@ -688,14 +688,17 @@ async def _tool_get_version(tool_input, ctx) -> str:
 
 
 async def _tool_get_help(tool_input, ctx) -> str:
-    from bot import _help_fields
+    # Aus commands.help, NICHT aus bot: bot.py ist beim Start __main__, ein `import bot`
+    # fuehrte das ganze Startskript ein zweites Mal aus.
+    from commands import help as _help
+    user_bereiche = [b for b in _help.BEREICHE if b != _help.ADMIN]
     bereich = tool_input.get('bereich', '').lower().strip()
     if bereich:
-        title, fields = _help_fields(bereich, is_admin=False)
+        title, fields = _help.help_fields(bereich, is_admin=False)
         if not fields:
             return json.dumps({
                 'error': f'Unbekannter Bereich: {bereich}',
-                'verfuegbar': ['puzzle', 'bibliothek', 'community', 'info'],
+                'verfuegbar': user_bereiche,
             }, ensure_ascii=False)
         return json.dumps({
             'bereich': title,
@@ -704,8 +707,8 @@ async def _tool_get_help(tool_input, ctx) -> str:
         }, ensure_ascii=False)
     # Uebersicht aller Bereiche
     bereiche = {}
-    for b in ('puzzle', 'bibliothek', 'community', 'info'):
-        title, fields = _help_fields(b, is_admin=False)
+    for b in user_bereiche:
+        title, fields = _help.help_fields(b, is_admin=False)
         bereiche[b] = {
             'titel': title,
             'commands': [name for name, _ in fields],

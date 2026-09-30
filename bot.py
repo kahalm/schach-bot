@@ -98,9 +98,8 @@ WELCOME_MESSAGE = (
     'Hallo! Ich bin der Schach-Bot eurer Servergruppe. ♟️\n\n'
     '**Was ich kann:**\n'
     '🧩 `/puzzle` — Zufällige Taktikrätsel per DM\n'
-    '🙈 `/blind` — Stellung X Züge vor dem Puzzle (im Kopf rechnen)\n'
+    '🙈 `/blindpuzzle` — Blind-Puzzle von RookHub (im Kopf rechnen)\n'
     '♾️ `/endless` — Endlos-Modus: nach jeder Antwort kommt das nächste Puzzle\n'
-    '📖 `/train` + `/next` — Buch sequentiell durcharbeiten\n'
     '📚 `/kurs` — Alle Puzzle-Bücher mit Fortschritt\n'
     '📖 `/bibliothek` — Schachbuch-Bibliothek durchsuchen & downloaden\n'
     '🔗 `/resourcen` — Online-Lernressourcen anzeigen oder hinzufügen\n'
@@ -112,8 +111,7 @@ WELCOME_MESSAGE = (
     '🔔 `/turnier_sub` — Bei neuen Turnieren gepingt werden\n'
     '🏇 `/schachrallye` — Schachrallye-Termine anzeigen\n'
     '💡 `/wanted` — Feature-Wünsche einreichen\n'
-    '🏆 `/bestenliste` — Tagespuzzle: Monats-Wertung + Hall of Fame\n'
-    '📊 `/stats` — Deine Statistiken\n\n'
+    '🏆 `/bestenliste` — Tagespuzzle: Monats-Wertung + Hall of Fame\n\n'
     'Mit `/help` siehst du alle Befehle im Detail.'
 )
 
@@ -167,6 +165,7 @@ tree = bot.tree
 import puzzle
 import library
 from commands import reminder, resourcen, youtube, elo, release_notes, blind, test, wanted, schachrallye, weeklypost, chat, link, motivation, leaderboard
+from commands import help as help_cmd
 
 puzzle.setup(bot)
 library.setup(bot)
@@ -184,6 +183,7 @@ chat.setup(bot)
 link.setup(bot)
 motivation.setup(bot)
 leaderboard.setup(bot, channel_id=CHANNEL_ID)
+help_cmd.setup(bot, guild_id=GUILD_ID)
 
 
 _ready_done = False
@@ -406,169 +406,8 @@ async def _require_admin(interaction: discord.Interaction) -> bool:
     return False
 
 
-def _help_fields(bereich: str, is_admin: bool) -> tuple[str, list[tuple[str, str]]]:
-    """Gibt (Titel, [(name, value), ...]) für den gewünschten Bereich zurück."""
-    if bereich == 'puzzle':
-        return '🧩 Puzzles', [
-            ('/puzzle [anzahl] [buch]',
-             'Zufälliges Puzzle per DM senden.\n'
-             '`anzahl` — 1–20 Puzzles (Standard: 1)\n'
-             '`buch` — Nur aus diesem Buch (Nummer aus `/kurs`, Standard: alle)'),
-            ('/kurs',
-             'Alle verfügbaren Puzzle-Bücher mit Fortschritt anzeigen.'),
-            ('/train [buch]',
-             'Buch für sequentielles Training wählen (Nummer aus `/kurs`).\n'
-             '`/train` — Status anzeigen · `/train 0` — Training beenden'),
-            ('/next [anzahl]',
-             'Nächste Linie(n) aus dem Trainingsbuch per DM senden.\n'
-             '`/next` — 1 Linie · `/next 5` — 5 Linien'),
-            ('/blind [moves] [anzahl] [buch]',
-             'Blind-Puzzle: Stellung X Halbzüge VOR dem eigentlichen Puzzle.\n'
-             '`/blind` — 4 Züge blind, zufälliges Buch\n'
-             '`/blind moves:5 anzahl:2 buch:3` — 2 Puzzles aus Buch 3, je 5 Züge blind\n'
-             'Nur Bücher mit `blind: true` nutzbar (siehe `/kurs`).'),
-            ('/endless [buch]',
-             'Endlos-Modus: nach jeder ✅/❌ kommt sofort das nächste Puzzle per DM.\n'
-             'Nochmal `/endless` zum Stoppen.\n'
-             '`buch` — lokales Buch aus der Vorschlagsliste (nicht die `/kurs`-ID)'),
-            ('/reminder [hours] [puzzle_count] [buch]',
-             'Wiederkehrende Puzzle-DMs einstellen.\n'
-             '`/reminder hours:4 puzzle_count:3` — Alle 4h 3 Puzzles\n'
-             '`/reminder hours:0` — Stoppen · `/reminder` — Status anzeigen\n'
-             '`buch` — lokales Buch aus der Vorschlagsliste (nicht die `/kurs`-ID)'),
-        ]
-    if bereich == 'bibliothek':
-        return '📚 Bibliothek', [
-            ('/bibliothek <suche>',
-             'Schachbuch-Bibliothek durchsuchen (Titel, Autor, Tags).\nDownload mit Formatauswahl (PDF/DJVU/EPUB).'),
-            ('/autor <autor>',
-             'Alle Bücher eines Autors anzeigen.'),
-            ('/tag <tag>',
-             'Bücher nach Tag filtern (z.B. Taktik, Französisch, Endspiel).'),
-        ]
-    if bereich == 'community':
-        return '🌐 Community', [
-            ('/resourcen [url] [beschreibung]',
-             'Online-Lernressourcen anzeigen oder hinzufügen.\n'
-             '`/resourcen` — Auflisten · `/resourcen url:… beschreibung:…` — Hinzufügen'),
-            ('/youtube [url] [beschreibung]',
-             'YouTube-Kanäle/Videos anzeigen oder hinzufügen.\n'
-             '`/youtube` — Auflisten · `/youtube url:… beschreibung:…` — Hinzufügen'),
-            ('/elo [wert]',
-             'Eigene Schach-Elo angeben oder anzeigen.\n'
-             '`/elo wert:1500` — Setzen · `/elo` — Anzeigen mit Historie'),
-            ('/link', 'RookHub-Konto mit deinem Discord-Account verknüpfen (Link per DM).'),
-            ('/wanted [beschreibung]',
-             'Feature-Wunsch einreichen oder Liste anzeigen.\n'
-             '`/wanted` — Auflisten · `/wanted beschreibung:…` — Einreichen'),
-            ('/wanted_list', 'Alle Feature-Wünsche anzeigen (nach Stimmen sortiert).'),
-            ('/wanted_vote <id>', 'Für einen Feature-Wunsch stimmen (Toggle +1/−1).'),
-            ('/chat_clear', 'Eigene KI-Chat-Historie löschen.'),
-            ('/schachrallye', 'Alle Schachrallye-Termine anzeigen.'),
-            ('/schachrallye_sub [user]',
-             'Für Rallye-Erinnerungen subscriben.\n'
-             '`/schachrallye_sub` — Selbst · `/schachrallye_sub user:@X` — Admin subscribed anderen'),
-            ('/schachrallye_unsub [user]', 'Rallye-Erinnerungen abbestellen.'),
-            ('/turnier', 'Alle zukünftigen Turniere anzeigen (tirol.chess.at).'),
-            ('/turnier_sub <tag> [user]',
-             'Für Turnier-Tag subscriben (Ping bei neuen Turnieren).\n'
-             'Tags z.B.: `schnellschach`, `blitz`, `960`, `schachrallye`'),
-            ('/turnier_unsub <tag> [user]', 'Turnier-Tag-Abo abbestellen.'),
-            ('/motivation <an|aus|status> [zeit]',
-             'Tägliche, persönliche Motivations-DM nach deinen RookHub-Trainingszielen.\n'
-             '`an` — abonnieren (`zeit` = Uhrzeit MEZ/MESZ, Standard: 18) · `aus` — abbestellen · `status`\n'
-             'Voraussetzung: dein Discord-Account ist mit RookHub verknüpft (`/link`).'),
-        ]
-    if bereich == 'info':
-        return 'ℹ️ Info', [
-            ('/version', 'Aktuelle Bot-Version und Uptime anzeigen.'),
-            ('/release-notes [version] [anzahl]',
-             'Versionshistorie/Changelog anzeigen.\n'
-             '`/release-notes` — Letzte 3 Versionen\n'
-             '`/release-notes version:1.1.0` — Bestimmte Version'),
-            ('/help [bereich]',
-             'Hilfe anzeigen. Bereiche: `puzzle` · `bibliothek` · `community` · `info`'
-             + (' · `admin`' if is_admin else '')),
-        ]
-    if bereich == 'admin' and is_admin:
-        return '🔧 Admin', [
-            ('/daily', 'Tägliches Puzzle manuell auslösen.'),
-            ('/stats', 'Nutzungsstatistiken aller User anzeigen.'),
-            ('/announce <user>', 'Begrüßungsnachricht per DM an einen User senden.'),
-            ('/greeted', 'Alle User anzeigen, die die Begrüßungs-DM erhalten haben.'),
-            ('/ignore_kapitel [buch] [kapitel] [aktion]',
-             'Ein ganzes Kapitel ignorieren.\n'
-             '`/ignore_kapitel buch:2 kapitel:3` — ignorieren\n'
-             '`/ignore_kapitel buch:2 kapitel:3 aktion:unignore` — reaktivieren\n'
-             '`/ignore_kapitel` — alle ignorierten Kapitel anzeigen\n'
-             '`buch` — lokales Buch aus der Vorschlagsliste (nicht die `/kurs`-ID)'),
-            ('/log [zeilen]', 'Letzte Log-Zeilen anzeigen (Standard: 50).'),
-            ('/dm-log [user]', 'DM-Log anzeigen (alle oder ein bestimmter User).'),
-            ('/test', 'Snapshot-Regressionstests ausführen.'),
-            ('/wanted_delete <id>', 'Feature-Wunsch löschen.'),
-            ('/schachrallye_add <datum> <ort>', 'Rallye-Termin anlegen (TT.MM.JJJJ).'),
-            ('/schachrallye_del <id>', 'Rallye-Termin löschen.'),
-            ('/turnier_parse', 'Termine von tirol.chess.at importieren.'),
-            ('/turnier_review', 'Als Turnier-Reviewer subscriben (Toggle).'),
-            ('/turnier_pending', 'Ausstehende Turniere anzeigen.'),
-            ('/motivation_send <user> [zeit]',
-             'Motivations-DM sofort senden; mit `zeit` (MEZ/MESZ) den User zusätzlich täglich abonnieren.'),
-            ('/motivation <an|aus|status> [zeit] [user]',
-             '`user:@X` (Admin): Abo für einen anderen User setzen/entfernen, `status` ohne `user` listet alle Abos.'),
-            ('/chat_whitelist [user] [aktion]',
-             'KI-Chat Whitelist verwalten.\n'
-             '`/chat_whitelist user:@X` — Hinzufügen\n'
-             '`/chat_whitelist user:@X aktion:remove` — Entfernen\n'
-             '`/chat_whitelist aktion:list` — Liste anzeigen'),
-        ]
-    return '', []
-
-
-@tree.command(name='help', description='Verfügbare Befehle anzeigen')
-@discord.app_commands.describe(bereich='Bereich: puzzle, bibliothek, community, info, admin')
-async def cmd_help(interaction: discord.Interaction, bereich: str = ''):
-    is_admin = _is_admin(interaction)
-    bereich = bereich.lower().strip()
-
-    if bereich:
-        title, fields = _help_fields(bereich, is_admin)
-        if not fields:
-            await interaction.response.send_message(
-                f'Unbekannter Bereich `{bereich}`. '
-                'Verfügbar: `puzzle` · `bibliothek` · `community` · `info`'
-                + (' · `admin`' if is_admin else ''),
-                ephemeral=True,
-            )
-            return
-        embed = discord.Embed(title=title, color=EMBED_COLOR)
-        for name, value in fields:
-            embed.add_field(name=name, value=value, inline=False)
-    else:
-        # Übersicht aller Bereiche
-        embed = discord.Embed(title='♟️ Schach-Bot — Hilfe', color=EMBED_COLOR,
-                              description='Nutze `/help bereich:…` für Details.')
-        embed.add_field(name='🧩 puzzle',
-                        value='`/puzzle` `/kurs` `/train` `/next` `/blind` `/endless` `/reminder`',
-                        inline=False)
-        embed.add_field(name='📚 bibliothek',
-                        value='`/bibliothek` `/autor` `/tag`',
-                        inline=False)
-        embed.add_field(name='🌐 community',
-                        value='`/resourcen` `/youtube` `/elo` `/wanted` `/schachrallye` `/turnier` `/chat_clear`',
-                        inline=False)
-        embed.add_field(name='ℹ️ info',
-                        value='`/version` `/release-notes` `/help`',
-                        inline=False)
-        if is_admin:
-            embed.add_field(name='🔧 admin',
-                            value='`/daily` `/stats` `/announce` `/log` `/dm-log` `/ignore_kapitel` `/test` `/wanted_delete` `/schachrallye_add` `/schachrallye_del` `/turnier_review` `/turnier_pending` `/motivation_send` `/chat_whitelist`',
-                            inline=False)
-
-    embed.set_footer(text=f'Schach-Bot v{VERSION}')
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-
-
-@tree.command(name='version', description='Aktuelle Bot-Version und Uptime anzeigen')
+@tree.command(name='version', description='Aktuelle Bot-Version und Uptime anzeigen',
+              extras={'help': 'info'})
 async def cmd_version(interaction: discord.Interaction):
     ts = int(START_TIME.timestamp())
     sha_short = GIT_SHA[:7] if GIT_SHA != 'dev' else 'dev'
@@ -578,7 +417,8 @@ async def cmd_version(interaction: discord.Interaction):
         ephemeral=True)
 
 
-@tree.command(name='greeted', description='Zeigt alle User, die die Begrüßungs-DM erhalten haben (Admin)')
+@tree.command(name='greeted', description='Zeigt alle User, die die Begrüßungs-DM erhalten haben (Admin)',
+              extras={'help': 'admin'})
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_greeted(interaction: discord.Interaction):
     if not await _require_admin(interaction):
@@ -600,7 +440,7 @@ async def cmd_greeted(interaction: discord.Interaction):
     await interaction.followup.send(embeds=embeds, ephemeral=True)
 
 
-@tree.command(name='dm-log', description='DM-Log anzeigen (Admin)')
+@tree.command(name='dm-log', description='DM-Log anzeigen (Admin)', extras={'help': 'admin'})
 @discord.app_commands.describe(user='Nur DMs dieses Users anzeigen')
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_dm_log(interaction: discord.Interaction, user: discord.User = None):
@@ -661,7 +501,8 @@ async def cmd_dm_log(interaction: discord.Interaction, user: discord.User = None
     await interaction.followup.send(embeds=embeds, ephemeral=True)
 
 
-@tree.command(name='announce', description='Begrüßungsnachricht an einen User senden (Admin)')
+@tree.command(name='announce', description='Begrüßungsnachricht an einen User senden (Admin)',
+              extras={'help': 'admin'})
 @discord.app_commands.describe(user='Der User, der die Nachricht erhalten soll')
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_announce(interaction: discord.Interaction, user: discord.User):
@@ -682,7 +523,8 @@ async def cmd_announce(interaction: discord.Interaction, user: discord.User):
         await interaction.response.send_message('❌ Ein Fehler ist aufgetreten.', ephemeral=True)
 
 
-@tree.command(name='stats', description='Nutzungsstatistiken aller User anzeigen (Admin)')
+@tree.command(name='stats', description='Nutzungsstatistiken aller User anzeigen (Admin)',
+              extras={'help': 'admin'})
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_stats(interaction: discord.Interaction):
     if not await _require_admin(interaction):
@@ -733,7 +575,7 @@ def _read_log_tail(n: int) -> str:
         return '(leer)'
 
 
-@tree.command(name='log', description='Letzte Log-Zeilen anzeigen (Admin)')
+@tree.command(name='log', description='Letzte Log-Zeilen anzeigen (Admin)', extras={'help': 'admin'})
 @discord.app_commands.describe(zeilen='Anzahl Zeilen (Standard: 50, Max: 200)')
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_log(interaction: discord.Interaction, zeilen: int = 50):
@@ -750,7 +592,8 @@ async def cmd_log(interaction: discord.Interaction, zeilen: int = 50):
             file=discord.File(buf, filename='bot.log'), ephemeral=True)
 
 
-@tree.command(name='daily', description='Tägliches Puzzle manuell auslösen (Admin)')
+@tree.command(name='daily', description='Tägliches Puzzle manuell auslösen (Admin)',
+              extras={'help': 'admin'})
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_daily(interaction: discord.Interaction):
     if not await _require_admin(interaction):

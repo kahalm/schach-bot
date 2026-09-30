@@ -1026,7 +1026,7 @@ def test_es_tags():
         tmpdir = setup_temp_config()
         try:
             ia = make_interaction()
-            run_async(cmd(ia, moves=4, anzahl=1, buch=0, user=None))
+            run_async(cmd(ia))  # S4-013: parameterloser Hinweis-Stub
             content = (ia.response.calls[0].get('content') or '').lower()
             check('/blind abgelöst → RookHub-Hinweis', 'abgelöst' in content or 'rookhub' in content)
         finally:

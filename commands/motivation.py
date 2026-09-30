@@ -492,7 +492,8 @@ def setup(bot):
     tree = bot.tree
 
     @tree.command(name='motivation',
-                  description='Taegliche Motivations-DM nach deinen RookHub-Trainingszielen')
+                  description='Taegliche Motivations-DM nach deinen RookHub-Trainingszielen',
+                  extras={'help': 'community'})
     @discord.app_commands.describe(
         aktion='an = abonnieren, aus = abbestellen, status = Status',
         zeit='Uhrzeit MEZ/MESZ (z.B. 17, 17:30, 1730) — nur bei "an", Default 18:00',
@@ -621,7 +622,8 @@ def setup(bot):
             f'✅ {wer}Motivations-DM {verb}: {zeit_txt}.\n{note}', ephemeral=True)
 
     @tree.command(name='motivation_send',
-                  description='Motivations-DM sofort an einen User senden (Admin); mit Zeit zusaetzlich abonnieren')
+                  description='Motivations-DM sofort an einen User senden (Admin); mit Zeit zusaetzlich abonnieren',
+                  extras={'help': 'admin'})
     @discord.app_commands.default_permissions(administrator=True)
     @discord.app_commands.describe(
         user='User, der die Motivations-DM jetzt bekommen soll',

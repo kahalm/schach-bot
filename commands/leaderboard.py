@@ -148,7 +148,8 @@ def setup(bot, channel_id: int = 0):
     tree = bot.tree
 
     @tree.command(name='bestenliste',
-                  description='Tagespuzzle-Bestenliste: Monats-Wertung + Hall of Fame')
+                  description='Tagespuzzle-Bestenliste: Monats-Wertung + Hall of Fame',
+                  extras={'help': 'puzzle'})
     @discord.app_commands.describe(monat='Monat als JJJJ-MM (Standard: aktueller Monat)')
     async def cmd_bestenliste(interaction: discord.Interaction, monat: str = ''):
         import asyncio

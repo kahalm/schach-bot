@@ -102,7 +102,8 @@ def setup(bot):
     _bot = bot
     tree = bot.tree
 
-    @tree.command(name='reminder', description='Wiederkehrende Puzzle-DMs einstellen')
+    @tree.command(name='reminder', description='Wiederkehrende Puzzle-DMs einstellen',
+                  extras={'help': 'puzzle'})
     @discord.app_commands.describe(
         hours='Intervall in Stunden (1–168). 0 = Reminder stoppen.',
         puzzle_count='Anzahl Puzzles pro Erinnerung (1–20, Standard: 1)',
