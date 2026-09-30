@@ -180,6 +180,8 @@ sudo systemctl enable --now schach-bot
 
 ## Architektur
 
+Auszug; die vollständige Modulliste mit Rollen steht in `CLAUDE.md` (Abschnitt „Architecture“).
+
 ```
 schach-bot/
 ├── bot.py                      # Main Entry, Events, Admin-Commands, Daily-Task
@@ -199,8 +201,7 @@ schach-bot/
 │   ├── elo.py                 # /elo
 │   ├── reminder.py            # /reminder + Loop
 │   ├── schachrallye.py        # /schachrallye*, /turnier*, Turnier-Import
-│   ├── wochenpost.py          # /wochenpost* + Loop
-│   ├── wochenpost_buttons.py  # WochenpostView
+│   ├── weeklypost.py          # Wochenpost-Ankündigung (RookHub = Quelle) + Loop
 │   ├── turnier_buttons.py     # TurnierReviewView
 │   ├── wanted.py              # /wanted*
 │   ├── resourcen.py           # /resourcen
@@ -497,6 +498,24 @@ git tag v2.22.1
 git push origin main --tags
 # → baut :2.22.1, :2.22, :latest und :dev
 ```
+
+### Deploy-Kopplung mit RookHub
+
+Bot und RookHub signieren ihre Aufrufe gegenseitig per HMAC mit Zeitstempel, einen Rückfall auf
+die alte Signatur ohne Zeitstempel gibt es auf keiner Seite mehr. Drei Paare müssen deshalb
+zusammenpassen, auch bei einem Rollback:
+
+| Aufruf | Bot | RookHub | Passt es nicht |
+|--------|-----|---------|----------------|
+| `GET /api/bot/player-progress` (`/motivation`, `X-Bot-Timestamp` Pflicht) | ≥ 2.73.0 | ≥ v0.355.0 lehnt ohne Zeitstempel ab | 401 → `/motivation` liefert allen „nicht verfügbar“, keine Motivations-DMs |
+| Webhooks `puzzle-attempt`, `weekly-progress`, `daily-regenerate` (`X-Webhook-Timestamp` Pflicht) | ≥ 2.83.12 verlangt ihn | ≥ v0.184.33 sendet ihn | 401 → Löser-Updates, Wochenpost-Fortschritt und Daily-Neuerzeugung kommen nicht an (Tagespuzzle-Löser holt der Bot erst beim nächsten Start per `refresh()` nach) |
+| `GET /webhook/build-info` (signiert, fail-closed) | ≥ 2.81.0 | ≥ v0.355.0 signiert | die Admin-CI-Übersicht von RookHub kennt die laufende Bot-Version nicht |
+
+Also: den Bot nicht unter 2.73.0 zurückrollen, solange RookHub ≥ v0.355.0 läuft, und RookHub
+nicht unter v0.184.33, solange der Bot ≥ 2.83.12 läuft. Weich gekoppelt (mit Rückfall) sind die
+signierten Ergebnis-GETs (bei 401/403 unsigniert, dann Namen statt @-Erwähnungen) und der
+Heartbeat (bei 404 auf `/api/client-log`). Beide Seiten brauchen dasselbe Secret:
+`ROOKHUB_STATS_SECRET` = RookHubs `SchachBot__StatsSecret`, `WEBHOOK_SECRET` = RookHubs `SchachBot__WebhookSecret`.
 
 ### CI/CD
 

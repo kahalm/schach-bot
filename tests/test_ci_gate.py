@@ -371,10 +371,39 @@ def test_docs_name_runner():
               'NEEDS_BOOKS' in text and 'test_trim.py' in text)
 
 
+def _architecture_rows():
+    """{erste Zelle ohne Backticks: Rest der Zeile} der Tabelle unter ``## Architecture``."""
+    m = re.search(r'^## Architecture\n(.*?)^### ', _read('CLAUDE.md'), re.M | re.S)
+    rows = {}
+    for line in (m.group(1) if m else '').splitlines():
+        cells = [c.strip() for c in line.strip().strip('|').split('|')]
+        if len(cells) >= 2 and cells[0].startswith('`'):
+            rows[cells[0].strip('`')] = ' | '.join(cells[1:])
+    return rows
+
+
+def test_docs_architecture():
+    """CLAUDE.md-Architektur vollstaendig und ohne Geister (Review W4s S4-024): es fehlten Module,
+    darunter webhook_server/discord_link/es_client, und ``wochenpost.py`` gab es nicht."""
+    rows = _architecture_rows()
+    check('CLAUDE.md: Architektur-Tabelle gefunden', bool(rows))
+    for pkg in ('commands', 'core', 'puzzle'):
+        on_disk = sorted(f for f in os.listdir(os.path.join(_REPO, pkg))
+                         if f.endswith('.py') and f != '__init__.py')
+        named = set(re.findall(r'`([A-Za-z0-9_]+\.py)`', rows.get(f'{pkg}/', '')))
+        missing = [f for f in on_disk if f not in named]
+        ghosts = sorted(f for f in named - {'__init__.py'} if f not in on_disk)
+        check(f'CLAUDE.md {pkg}/: jede Datei genannt', not missing, str(missing))
+        check(f'CLAUDE.md {pkg}/: jede genannte Datei existiert', not ghosts, str(ghosts))
+    top = sorted(f for f in os.listdir(_REPO) if f.endswith('.py'))
+    check('CLAUDE.md: jede .py im Repo-Wurzelverzeichnis mit eigener Zeile',
+          all(f in rows for f in top), str([f for f in top if f not in rows]))
+
+
 def main():
     for t in (test_release_workflow_gated, test_release_tags_guarded, test_every_test_file_has_runner,
               test_collect, test_books_exception, test_docs_name_runner, test_supply_chain_pinned,
-              test_docker_init):
+              test_docker_init, test_docs_architecture):
         print(f'== {t.__name__} ==')
         t()
     print()

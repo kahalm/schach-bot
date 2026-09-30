@@ -328,8 +328,9 @@ def _error_reason(r):
 def get_player_progress(discord_id, timeout: int = _TIMEOUT):
     """Holt den Trainings-/Puzzle-Fortschritt eines mit RookHub verknuepften Spielers.
 
-    Authentifiziert ueber eine HMAC-Signatur (``X-Bot-Signature: sha256=<hex>``) ueber die Discord-ID
-    mit dem geteilten ``ROOKHUB_STATS_SECRET`` (== RookHubs ``SchachBot__StatsSecret``).
+    Authentifiziert ueber eine HMAC-Signatur (``X-Bot-Signature: sha256=<hex>``) ueber
+    ``"<ts>.<discordId>"`` mit dem geteilten ``ROOKHUB_STATS_SECRET`` (== RookHubs
+    ``SchachBot__StatsSecret``); ``ts`` geht als ``X-Bot-Timestamp`` mit (Pflicht).
 
     Rueckgabe:
 
@@ -354,8 +355,10 @@ def get_player_progress(discord_id, timeout: int = _TIMEOUT):
         return PROGRESS_UNAVAILABLE
     did = str(discord_id)
     # Replay-Schutz: Signatur ueber "<ts>.<did>" + X-Bot-Timestamp-Header (rookhub prueft ±300s).
-    # rookhub akzeptiert weiterhin auch die alte body-only-Signatur, sobald ein Timestamp
-    # mitgeschickt wird MUSS rookhub ihn aber einbeziehen → rookhub >= dieser Bot-Version deployen.
+    # Der Zeitstempel ist Pflicht: rookhub (BotStatsController, ab v0.355.0) lehnt Aufrufe ohne ihn
+    # mit 401 ab, die alte body-only-Signatur gilt nicht mehr. Ein Bot-Stand unter v2.73.0
+    # (erste Version mit Zeitstempel) bekommt deshalb nur 401, /motivation faellt fuer alle aus
+    # (README: „Deploy-Kopplung mit RookHub“).
     ts = str(int(datetime.now(timezone.utc).timestamp()))
     sig = hmac.new(ROOKHUB_STATS_SECRET.encode('utf-8'), f'{ts}.{did}'.encode('utf-8'),
                    hashlib.sha256).hexdigest()

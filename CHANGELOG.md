@@ -4,6 +4,22 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.30] - 2026-09-30
+### Changed
+- **Doku: vollständige Modulliste und die Deploy-Kopplung mit RookHub.** Die Architektur-Tabelle
+  in `CLAUDE.md` ließ Module aus, darunter die sicherheitsrelevanten `core/webhook_server.py`,
+  `core/discord_link.py` und `core/es_client.py`, und nannte ein nicht existierendes
+  `commands/wochenpost.py` (die Datei heißt `weeklypost.py`). Jetzt steht jede Datei mit ihrer
+  Rolle in der Tabelle, ohne Zählwerte; `tests/test_ci_gate.py` prüft, dass die Liste zur
+  Dateiliste passt (neue Datei ohne Eintrag oder Eintrag ohne Datei → rot).
+- Der Kommentar in `puzzle/rookhub.py`, RookHub akzeptiere für `/api/bot/player-progress` weiter
+  die alte Signatur ohne Zeitstempel, war falsch: RookHub lehnt sie seit v0.355.0 mit 401 ab.
+  Korrigiert; `CLAUDE.md` beschreibt die HMAC-Regeln zwischen Bot und RookHub jetzt an einer Stelle.
+- Neu im README: Abschnitt „Deploy-Kopplung mit RookHub“ – welche Bot- und RookHub-Stände
+  zusammen laufen müssen (Bot ≥ 2.73.0 für `/motivation` gegen RookHub ≥ v0.355.0, RookHub
+  ≥ v0.184.33 für die Webhooks gegen Bot ≥ 2.83.12, `build-info` ab Bot 2.81.0/RookHub v0.355.0)
+  und was bei einem Rollback bricht.
+
 ## [2.83.29] - 2026-09-30
 ### Changed
 - **KI-Chat-Befehle nur noch mit `CLAUDE_API_KEY`.** Ohne Key (in beiden Stacks seit dem
