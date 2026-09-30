@@ -325,7 +325,8 @@ def test_reminder():
         _orig_bot = reminder_mod._bot
         _calls = []
 
-        async def _fake_post(channel, count=1, book_idx=0, user_id=None, show_board=True):
+        async def _fake_post(channel, count=1, book_idx=0, user_id=None, show_board=True,
+                             raise_unreachable=False):
             _calls.append(user_id)
             return count
 
@@ -377,22 +378,31 @@ def test_reminder_delivery_policy():
     """N10-002: Unzustellbar/Fehler im Reminder-Loop → kein Versuch in jeder Minute mehr.
     Zustellpolitik wie /motivation (core/dm_delivery)."""
     print('[/reminder Zustellpolitik]')
+    import io
+    import chess
+    import chess.pgn
     import discord
     import puzzle as _leg
+    from core.json_store import atomic_update
     import commands.reminder as reminder_mod
     from core import dm_delivery
+
+    import puzzle.posting as posting
 
     tmpdir = setup_temp_config()
     from commands.reminder import _reminder_loop, REMINDER_FILE as RF   # nach dem Temp-Pfad
     _orig_post, _orig_bot = _leg.post_puzzle, reminder_mod._bot
-    calls = {'fetch': 0, 'dm': [], 'post': 0}
-    mode = {'fetch': None, 'dm': None, 'post': None}   # je Stufe: Ausnahme oder None
+    calls = {'fetch': 0, 'dm': [], 'post': 0, 'raise_unreachable': []}
+    # je Stufe: Ausnahme oder None; post_ret: Rueckgabe von post (None = count);
+    # during: Callback waehrend des Laufs (z. B. /reminder neu gesetzt)
+    mode = {'fetch': None, 'dm': None, 'post': None, 'post_ret': None, 'during': None}
 
-    class _DM:
+    class _DM(discord.DMChannel):   # echte DM-Klasse → post_puzzle erkennt is_dm
         async def send(self, content=None, **kw):
             if mode['dm']:
                 raise mode['dm']
             calls['dm'].append(content)
+            return h.FakeMessage(content=content, **kw)
 
     class _User:
         async def create_dm(self):
@@ -401,19 +411,23 @@ def test_reminder_delivery_policy():
     class _Bot:
         async def fetch_user(self, uid):
             calls['fetch'] += 1
+            if mode['during']:
+                mode['during']()
             if mode['fetch']:
                 raise mode['fetch']
             return _User()
 
-    async def _post(channel, count=1, book_idx=0, user_id=None, show_board=True):
+    async def _post(channel, count=1, book_idx=0, user_id=None, show_board=True,
+                    raise_unreachable=False):
         calls['post'] += 1
+        calls['raise_unreachable'].append(raise_unreachable)
         if mode['post']:
             raise mode['post']
-        return count
+        return count if mode['post_ret'] is None else mode['post_ret']
 
     def _reset(**m):
-        calls.update(fetch=0, dm=[], post=0)
-        mode.update(fetch=None, dm=None, post=None)
+        calls.update(fetch=0, dm=[], post=0, raise_unreachable=[])
+        mode.update(fetch=None, dm=None, post=None, post_ret=None, during=None)
         mode.update(m)
 
     def _entry(uid='44444'):
@@ -478,6 +492,137 @@ def test_reminder_delivery_policy():
         e = _entry()
         check('Erfolg → Zaehler weg, Termin vor',
               'unreachable' not in e and 'retries' not in e and reminder_mod._parse_utc(e['next']) > now)
+        check('Normalzweig reicht raise_unreachable=True an post_puzzle',
+              calls['raise_unreachable'] == [True])
+
+        # F) post_puzzle liefert 0 ohne Ausnahme (z. B. keine Linien) → zugestellt, Termin vor,
+        #    der unreachable-Zaehler bleibt aber stehen (nur echte Zustellung setzt ihn zurueck).
+        _reset(post_ret=0)
+        atomic_write(RF, {'44444': {'hours': 4, 'puzzle': 1, 'buch': 0, 'next': just_due,
+                                    'unreachable': 3}})
+        run_async(_reminder_loop())
+        e = _entry()
+        check('posted=0 → unreachable bleibt, Termin vor',
+              e.get('unreachable') == 3 and 'retries' not in e
+              and reminder_mod._parse_utc(e['next']) > now)
+
+        # G) /reminder waehrend des Laufs neu gesetzt → weder ueberschrieben noch geloescht.
+        fresh = (now + timedelta(hours=8)).isoformat()
+
+        def _reset_reminder():
+            def _set(data):
+                data['44444'] = {'hours': 8, 'puzzle': 2, 'buch': 0, 'next': fresh}
+                return data
+            atomic_update(RF, _set)
+
+        _reset(during=_reset_reminder)
+        atomic_write(RF, {'44444': {'hours': 4, 'puzzle': 1, 'buch': 0, 'next': just_due}})
+        run_async(_reminder_loop())
+        check('neu gesetzter /reminder bleibt (Zustellung)',
+              _entry() == {'hours': 8, 'puzzle': 2, 'buch': 0, 'next': fresh}, str(_entry()))
+        _reset(during=_reset_reminder, fetch=discord.NotFound('404'))
+        atomic_write(RF, {'44444': {'hours': 24, 'puzzle': 1, 'buch': 0, 'next': just_due,
+                                    'unreachable': dm_delivery.MAX_UNREACHABLE_DAYS - 1}})
+        run_async(_reminder_loop())
+        check('neu gesetzter /reminder bleibt (Limit erreicht, nicht geloescht)',
+              _entry() == {'hours': 8, 'puzzle': 2, 'buch': 0, 'next': fresh}, str(_entry()))
+
+        # H) Regelfall: 4-h-Reminder, DMs gesperrt, echtes post_puzzle (Forbidden beim Senden).
+        #    Vorher: post_puzzle schluckte das Forbidden je Puzzle und lieferte 0 → der Zaehler
+        #    stieg nie, ein Versuch je Intervall fuer immer. Jetzt: je Termin +1, am 25. entfernt.
+        game = chess.pgn.Game()
+        game.add_variation(chess.Move.from_uci('e2e4')).add_variation(chess.Move.from_uci('e7e5'))
+
+        async def _render(g):
+            return 'white', io.BytesIO(b'PNG')
+
+        async def _plain_send(target, *a, **kw):   # ohne 5xx-Retry (discord-Stub hat keine errors)
+            return await target.send(*a, **kw)
+
+        async def _no_followups(*a, **kw):
+            return None
+
+        p_names = ('pick_random_lines', 'safe_render_board', '_resilient_send',
+                   '_register_puzzle_msg', 'save_puzzle_context', '_send_puzzle_followups')
+        p_orig = {n: getattr(posting, n) for n in p_names}
+        posting.pick_random_lines = lambda count, book=None: [
+            (f'b.pgn:{i}', game) for i in range(count)]
+        posting.safe_render_board = _render
+        posting._resilient_send = _plain_send
+        posting._register_puzzle_msg = lambda *a, **k: None
+        posting.save_puzzle_context = lambda *a, **k: None
+        posting._send_puzzle_followups = _no_followups
+        try:
+            _leg.post_puzzle = posting.post_puzzle
+            _reset(dm=discord.Forbidden('403'))
+            atomic_write(RF, {'44444': {'hours': 4, 'puzzle': 1, 'buch': 0, 'next': just_due}})
+            counts, removed_at = [], None
+            for term in range(1, 41):
+                run_async(_reminder_loop())
+                e = _entry()
+                if e is None:
+                    removed_at = term
+                    break
+                counts.append(e.get('unreachable'))
+                if reminder_mod._parse_utc(e['next']) <= now:
+                    break
+
+                def _due_again(data):
+                    data['44444']['next'] = just_due
+                    return data
+                atomic_update(RF, _due_again)
+            check('Regelfall Forbidden → unreachable zaehlt je Termin hoch',
+                  counts == list(range(1, len(counts) + 1)) and len(counts) >= 24, str(counts))
+            check('Regelfall Forbidden → am 25. Termin (4 h) entfernt', removed_at == 25,
+                  str(removed_at))
+
+            # post_puzzle direkt: nur mit raise_unreachable, nur DM, nur vor dem ersten Post.
+            _reset(dm=discord.Forbidden('403'))
+            check('post_puzzle ohne raise_unreachable schluckt Forbidden (0)',
+                  run_async(posting.post_puzzle(_DM(), count=1)) == 0)
+            try:
+                run_async(posting.post_puzzle(_DM(), count=1, raise_unreachable=True))
+                raised = False
+            except discord.Forbidden:
+                raised = True
+            check('post_puzzle raise_unreachable + DM → Forbidden weitergereicht', raised)
+            _reset(dm=RuntimeError('kaputt'))
+            check('post_puzzle raise_unreachable: anderer Fehler bleibt geschluckt (0)',
+                  run_async(posting.post_puzzle(_DM(), count=1, raise_unreachable=True)) == 0)
+
+            class _HalfDM(_DM):   # erstes Puzzle geht raus, danach gesperrt
+                n = 0
+
+                async def send(self, content=None, **kw):
+                    _HalfDM.n += 1
+                    if _HalfDM.n > 1:
+                        raise discord.Forbidden('403')
+                    return await super().send(content, **kw)
+
+            _reset()
+            check('post_puzzle raise_unreachable nach erstem Post → kein Raise, 1 gepostet',
+                  run_async(posting.post_puzzle(_HalfDM(), count=2, raise_unreachable=True)) == 1)
+
+            class _Blocked:
+                id = 1
+
+                async def send(self, *a, **kw):
+                    raise discord.Forbidden('403')
+
+            orig_resolve = posting._resolve_target
+
+            async def _as_thread(channel, thread_name):
+                return _Blocked(), False
+            posting._resolve_target = _as_thread
+            try:
+                check('post_puzzle raise_unreachable im Server-Thread → kein Raise (0)',
+                      run_async(posting.post_puzzle(object(), count=1,
+                                                    raise_unreachable=True)) == 0)
+            finally:
+                posting._resolve_target = orig_resolve
+        finally:
+            for n, v in p_orig.items():
+                setattr(posting, n, v)
 
         # Gemeinsame Regel: taeglich ab dem 5. Mal, Wochen-Reminder ab dem 2., 4 h ab dem 25.
         check('unreachable_expired taeglich 4/5',

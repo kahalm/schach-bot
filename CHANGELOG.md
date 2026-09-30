@@ -4,6 +4,20 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.32] - 2026-10-01
+### Fixed
+- **`/reminder`: gesperrte DMs zählen jetzt auch beim regulären Termin.** Seit 2.83.25 lief der
+  Zähler für unzustellbare Nutzer nur bei gelöschtem Konto oder im Nachhol-Zweig. Beim regulären
+  Termin fing `post_puzzle` das `Forbidden` je Puzzle selbst ab und meldete nur „0 gepostet“; der
+  Reminder wertete das als zugestellt und schickte bei dauerhaft gesperrten DMs weiter einen
+  Versuch je Intervall – ohne Ende, samt Fehler-Traceback im Log. Jetzt reicht `post_puzzle` für
+  den Reminder (`raise_unreachable=True`) ein `Forbidden` in einer DM weiter, solange noch kein
+  Puzzle gepostet ist; der Zähler steigt je Termin, und nach so vielen Fehlschlägen in Folge wie
+  fünf tägliche (4-Stunden-Reminder: 25) wird der Reminder beendet – wie bei `/motivation`. Alle
+  anderen Aufrufer von `post_puzzle` (Puzzle-Buttons, Chat-Tool) verhalten sich unverändert.
+- Liefert `post_puzzle` ohne Fehler 0 Puzzles (z. B. keine Linien gefunden), rückt der Termin
+  regulär vor, ein laufender Unzustellbar-Zähler wird dabei aber nicht zurückgesetzt.
+
 ## [2.83.31] - 2026-10-01
 ### Fixed
 - **Bibliothek: schnelle Klicks auf Vor/Zurück überholen sich nicht mehr.** Seit 2.83.18 baut
@@ -92,10 +106,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
   vor und versuchte es in jeder Minute erneut – ohne Ende, samt Warnzeile. Im Nachhol-Zweig nach
   einer Bot-Pause bekam der Nutzer außerdem die Nachricht „Ich war leider offline …“ jede Minute
   wieder, wenn danach etwas schiefging. Jetzt gilt dieselbe Zustellregel wie bei `/motivation`
-  (neu `core/dm_delivery.py`): Bei gesperrten DMs oder gelöschtem Konto rückt der Termin
-  regulär vor und ein Zähler läuft mit; liegen die Fehlschläge in Folge so weit auseinander wie
-  fünf tägliche (4-Stunden-Reminder: 25 Versuche), wird der Reminder beendet. Andere Fehler
-  werden höchstens dreimal im Minutentakt wiederholt, dann folgt der nächste reguläre Termin.
+  (neu `core/dm_delivery.py`): Bei gelöschtem Konto, oder wenn schon die Nachhol-Nachricht an
+  gesperrten DMs scheitert, rückt der Termin regulär vor und ein Zähler läuft mit; liegen die
+  Fehlschläge in Folge so weit auseinander wie fünf tägliche (4-Stunden-Reminder: 25 Versuche),
+  wird der Reminder beendet. Beim regulären Termin zählten gesperrte DMs in dieser Version noch
+  nicht mit – dort blieb es bei einem Versuch je Intervall (behoben in 2.83.32). Andere Fehler
+  bekommen höchstens drei Versuche im Minutentakt, dann folgt der nächste reguläre Termin.
   Sobald die erste DM des Nachhol-Zweigs raus ist, rückt der Termin auf jeden Fall vor. Ein
   zwischenzeitlich neu gesetzter `/reminder` wird dabei weder überschrieben noch gelöscht.
 

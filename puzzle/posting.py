@@ -231,7 +231,8 @@ async def _send_optional(target, *args, label: str = '', **kwargs):
 
 
 async def post_puzzle(channel, count: int = 1, book_idx: int = 0,
-                      user_id: int | None = None, show_board: bool = True) -> int:
+                      user_id: int | None = None, show_board: bool = True,
+                      raise_unreachable: bool = False) -> int:
     """Puzzles auswählen, rendern und posten.
 
     count      – Anzahl Puzzles (1–20).
@@ -239,6 +240,10 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0,
                  nicht die RookHub-Buch-ID aus /kurs.
     user_id    – Discord-User-ID; wenn gesetzt, wird die Tages-Studie wiederverwendet.
     show_board – False: kein Brettbild, keine Lösung – nur Embed + RookHub-Link.
+    raise_unreachable – True: ein ``discord.Forbidden`` beim Senden in eine DM wird
+                 weitergereicht, solange noch kein Puzzle gepostet ist (DMs gesperrt),
+                 statt je Puzzle geschluckt zu werden. Für Aufrufer mit eigener
+                 Zustellpolitik (Reminder, core/dm_delivery); alle anderen bleiben bei False.
 
     Gibt die Anzahl tatsächlich geposteter Puzzles zurück.
     """
@@ -325,6 +330,9 @@ async def post_puzzle(channel, count: int = 1, book_idx: int = 0,
             _register_puzzle_msg(msg.id, lid)
             save_puzzle_context(user_id, _build_puzzle_context(game, turn, diff, lid))
         except Exception as e:
+            if (raise_unreachable and is_dm and not posted_ok
+                    and isinstance(e, discord.Forbidden)):
+                raise   # DMs gesperrt: der Aufrufer zaehlt das als unzustellbar
             log.exception('Puzzle %d/%d (%s) fehlgeschlagen: %s',
                           i + 1, len(puzzles), lid, e)
             continue

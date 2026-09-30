@@ -8,8 +8,8 @@ noch die Logs flutet:
 * :data:`UNREACHABLE` – DMs gesperrt oder Konto weg (``Forbidden``/``NotFound``): NICHT gleich
   wiederholen, sondern zum naechsten regulaeren Termin; decken die Fehlschlaege in Folge
   :data:`MAX_UNREACHABLE_DAYS` Tage ab (:func:`unreachable_expired`), wird der Eintrag entfernt.
-* :data:`TRANSIENT`   – alles andere: hoechstens :data:`MAX_TRANSIENT_RETRIES` kurze
-  Wiederholungen, danach ebenfalls der naechste regulaere Termin.
+* :data:`TRANSIENT`   – alles andere: hoechstens :data:`MAX_TRANSIENT_RETRIES` Versuche je
+  Termin (der erste zaehlt mit), danach ebenfalls der naechste regulaere Termin.
 """
 
 import discord
@@ -18,7 +18,7 @@ SENT = 'sent'
 UNREACHABLE = 'unreachable'
 TRANSIENT = 'transient'
 
-MAX_TRANSIENT_RETRIES = 3   # kurze Wiederholungen bei voruebergehenden Fehlern je Termin
+MAX_TRANSIENT_RETRIES = 3   # Versuche je Termin bei voruebergehenden Fehlern (1 + 2 Wiederholungen)
 MAX_UNREACHABLE_DAYS = 5    # so lange in Folge unzustellbar → Eintrag automatisch entfernen
 
 

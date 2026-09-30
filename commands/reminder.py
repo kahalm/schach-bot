@@ -76,11 +76,14 @@ async def _reminder_loop_inner():
                 posted = await puzzle.post_puzzle(dm, count=1, book_idx=entry.get('buch', 0), user_id=uid)
                 log.info('Reminder: %d verpasst, 1 nachgereicht für User %s.', missed, uid)
             else:
+                # raise_unreachable: gesperrte DMs kommen als Forbidden hoch (statt 0 gepostet),
+                # damit der unreachable-Zaehler auch im Regelfall mitlaeuft.
                 posted = await puzzle.post_puzzle(
                     dm,
                     count=entry.get('puzzle', 1),
                     book_idx=entry.get('buch', 0),
                     user_id=uid,
+                    raise_unreachable=True,
                 )
                 log.info('Reminder: %d Puzzle(s) an User %s gesendet.', entry.get('puzzle', 1), uid)
         except Exception as e:
@@ -88,7 +91,9 @@ async def _reminder_loop_inner():
 
         # Zustellpolitik wie bei /motivation (core/dm_delivery): unzustellbar → regulaerer
         # Termin + Zaehler, nach MAX_UNREACHABLE_DAYS entfernen; voruebergehend → hoechstens
-        # MAX_TRANSIENT_RETRIES Minuten-Retries. Vorher: jede Minute ein neuer Versuch, endlos.
+        # MAX_TRANSIENT_RETRIES Versuche je Termin (im Minutentakt). Vorher: jede Minute ein
+        # neuer Versuch, endlos. posted == 0 ohne Ausnahme (z. B. keine Linien) gilt als
+        # zugestellt, setzt den unreachable-Zaehler aber nicht zurueck.
         outcome = dm_delivery.outcome_of(None if first_dm_sent else error)
         retries = int(entry.get('retries', 0) or 0)
         unreachable = int(entry.get('unreachable', 0) or 0)
