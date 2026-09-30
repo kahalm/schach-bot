@@ -3,7 +3,7 @@
 import os
 from datetime import datetime, timezone
 
-VERSION = '2.83.26'
+VERSION = '2.83.27'
 GIT_SHA = os.environ.get('GIT_SHA', 'dev')
 GIT_REF = os.environ.get('GIT_REF', '')
 START_TIME = datetime.now(timezone.utc)

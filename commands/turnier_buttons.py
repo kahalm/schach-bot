@@ -11,6 +11,7 @@ import discord
 from discord import ui
 
 from core.json_store import atomic_read, atomic_update
+from core.permissions import iter_guilds_home_first
 
 log = logging.getLogger('schach-bot')
 
@@ -28,13 +29,17 @@ def configure(bot, tournament_channel_id: int):
 def _resolve_player_names(bot, names: list[str]) -> tuple[list[int], list[str]]:
     """Loest Spielernamen zu Guild-Member-IDs auf (case-insensitive display_name).
 
+    Nur Mitglieder des Heim-Servers (GUILD_ID): Der Bot ist auch in fremden Guilds (Daily-
+    Spiegel); ein gleichnamiges Mitglied dort darf nicht still statt des Heim-Mitglieds
+    getaggt werden. Ohne GUILD_ID zaehlen alle Guilds.
+
     Returns: (gefundene_user_ids, nicht_gefundene_namen)
     """
     # Member-Index einmal aufbauen (display_name.lower -> id), statt pro Name linear
     # ueber alle Guilds/Member zu iterieren (O(Namen * Mitglieder) im Approve-Hotpath).
     # setdefault bewahrt die First-Match-Semantik (erste Guild/erstes Member gewinnt).
     index: dict[str, int] = {}
-    for guild in bot.guilds:
+    for guild in iter_guilds_home_first(bot, home_only=True):
         for member in guild.members:
             index.setdefault(member.display_name.lower(), member.id)
 

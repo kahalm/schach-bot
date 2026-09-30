@@ -855,6 +855,68 @@ def test_turnier_approve_modal():
 
 
 
+def test_guild_order_home_first():
+    """Heim-Guild zuerst (Review W4s S4-021): eine Reihenfolge fuer Member-/Namensaufloesung,
+    Spieler-Tagging bei der Turnier-Freigabe nur ueber die Heim-Guild."""
+    print('[guild_order_home_first]')
+    from commands.turnier_buttons import _resolve_player_names
+    from commands import motivation as mot
+    from core import permissions
+
+    class _Guild:
+        def __init__(self, gid, members):
+            self.id = gid
+            self.members = members
+
+        def get_member(self, uid):
+            return next((m for m in self.members if m.id == uid), None)
+
+    home_max = FakeMember(uid=2001, name='Max')
+    foreign_max = FakeMember(uid=3001, name='Max')
+    foreign_only = FakeMember(uid=3002, name='Fremd')
+    home = _Guild(111, [home_max, FakeMember(uid=2002, name='Lisa')])
+    # dieselbe User-ID in beiden Guilds, fremder Nick
+    foreign = _Guild(222, [foreign_max, foreign_only, FakeMember(uid=2002, name='Lisa (Spiegel)')])
+
+    bot = MagicMock()
+    bot.guilds = [foreign, home]          # fremde Guild liefert bot.guilds zuerst
+    bot.get_guild = lambda gid: {111: home, 222: foreign}.get(gid)
+    bot.get_user = lambda uid: None
+
+    old_gid, old_bot = permissions._guild_id, mot._bot
+    try:
+        permissions._guild_id = 111
+        order = list(permissions.iter_guilds_home_first(bot))
+        check('Reihenfolge: Heim zuerst, jede Guild einmal', order == [home, foreign])
+        check('home_only: nur die Heim-Guild',
+              list(permissions.iter_guilds_home_first(bot, home_only=True)) == [home])
+
+        ids, missing = _resolve_player_names(bot, ['Max', 'Fremd'])
+        check('Tagging: gleichnamiger Max → Heim-Mitglied, nicht der fremde',
+              ids == [2001], f'ids={ids}')
+        check('Tagging: nur in fremder Guild → „Nicht gefunden"',
+              missing == ['Fremd'], f'missing={missing}')
+
+        check('display_name_cached: Heim-Nick vor fremdem',
+              permissions.display_name_cached(bot, 2002) == 'Lisa')
+        mot._bot = bot
+        check('motivation._get_member: Heim-Member vor fremdem',
+              mot._get_member(2002) is home.members[1])
+
+        # Heim-Guild nicht im Cache → kein Fallback auf fremde Guilds beim Tagging
+        bot.get_guild = lambda gid: None
+        ids2, missing2 = _resolve_player_names(bot, ['Max'])
+        check('Tagging: Heim-Guild fehlt → nichts getaggt', ids2 == [] and missing2 == ['Max'])
+
+        # Ohne GUILD_ID gibt es keinen Heim-Server → alle Guilds (Ein-Guild-Betrieb)
+        permissions._guild_id = 0
+        check('ohne GUILD_ID: bot.guilds-Reihenfolge',
+              list(permissions.iter_guilds_home_first(bot, home_only=True)) == [foreign, home])
+    finally:
+        permissions._guild_id, mot._bot = old_gid, old_bot
+    print()
+
+
 # ---------------------------------------------------------------------------
 # Charakterisierung (Vorarbeit Zerlegung schachrallye.py, Review W1 S4-016)
 # ---------------------------------------------------------------------------

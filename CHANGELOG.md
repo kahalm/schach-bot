@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.27] - 2026-09-30
+### Fixed
+- **Spieler-Tagging bei der Turnier-Freigabe nur noch aus dem Heim-Server.** Seit dem
+  Daily-Spiegel ist der Bot in einer zweiten Guild. Der Namensindex für das Feld „Spieler taggen“
+  lief über alle Guilds in der Reihenfolge, die Discord liefert; hieß dort jemand ebenfalls „Max“,
+  wurde still der fremde Nutzer im Turnier-Channel erwähnt, und Namen, die es nur in der fremden
+  Guild gab, landeten nie unter „Nicht gefunden“. Jetzt zählen nur Mitglieder des Heim-Servers
+  (`GUILD_ID`); ohne `GUILD_ID` bleibt es bei allen Guilds.
+### Changed
+- **Eine Guild-Reihenfolge für die Mitglieder-Auflösung.** `core/permissions.py`
+  `iter_guilds_home_first(bot)` (Heim-Server zuerst, dann die übrigen, jede Guild einmal) ersetzt
+  die zwei Kopien in `display_name_cached` und `motivation._get_member`.
+
 ## [2.83.26] - 2026-09-30
 ### Fixed
 - **Sauberer Stopp statt SIGKILL nach 10 Sekunden.** `python bot.py` lief im Container als PID 1

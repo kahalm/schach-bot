@@ -29,7 +29,9 @@ from core import dm_delivery
 from core.datetime_utils import parse_utc as _parse_utc, parse_zeit as _parse_zeit
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
-from core.permissions import is_privileged, display_name_cached, require_privileged
+from core.permissions import (
+    is_privileged, display_name_cached, require_privileged, iter_guilds_home_first,
+)
 from core.sprueche import random_spruch as _random_spruch  # re-exportiert (Modul-Oberfläche/Test)
 from puzzle import rookhub
 
@@ -90,14 +92,7 @@ def _get_member(uid_int: int):
     """Gibt das Member-Objekt des Users zurueck (Heim-Server zuerst, dann alle Guilds)."""
     if _bot is None:
         return None
-    from core.permissions import _guild_id
-    if _guild_id:
-        guild = _bot.get_guild(_guild_id)
-        if guild:
-            m = guild.get_member(uid_int)
-            if m:
-                return m
-    for g in _bot.guilds:
+    for g in iter_guilds_home_first(_bot):
         m = g.get_member(uid_int)
         if m:
             return m
