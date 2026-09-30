@@ -49,9 +49,24 @@ def test_t():
     check('format-Platzhalter (de)', t('daily.more', 'de', n=3) == '+3 weitere')
 
 
+def test_keys_complete():
+    """Jeder Schluessel hat de + en mit denselben Platzhaltern (sonst KeyError in einer Sprache)."""
+    import string
+    from core.i18n import _T, SUPPORTED
+    for key, texts in _T.items():
+        check(f'{key}: alle Sprachen', set(texts) == set(SUPPORTED), str(sorted(texts)))
+        fields = {lang: {f for _, f, _, _ in string.Formatter().parse(txt) if f}
+                  for lang, txt in texts.items()}
+        check(f'{key}: gleiche Platzhalter', len({frozenset(v) for v in fields.values()}) == 1,
+              str(fields))
+    check('/puzzle-Antwort en', t('puzzle.sent_n', 'en', n=1, dest='to you', note='')
+          == '✅ 1 puzzle(s) sent to you by DM.')
+
+
 if __name__ == '__main__':
     print('=== test_i18n.py ===\n')
     test_norm()
     test_t()
+    test_keys_complete()
     print(f'\n--- {total} checks, {failed} failed ---')
     sys.exit(1 if failed else 0)

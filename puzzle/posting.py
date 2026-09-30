@@ -436,7 +436,7 @@ async def post_rookhub_puzzle(channel, pool: str = 'daily',
         if diff:
             stars = ('★' * rating + '☆' * (10 - rating)) if rating else ''
             suffix = f' · {diff}  {stars}'.rstrip() if stars else f' · {diff}'
-        link_label = i18n.t('daily.solve_on_rookhub', lang) if pool == 'daily' else 'Rätsel auf RookHub lösen'
+        link_label = i18n.t('daily.solve_on_rookhub' if pool == 'daily' else 'puzzle.solve_link', lang)
         text = (f'🧩 [{link_label}]({web_url}){suffix}' if web_url
                 else f'🧩 Rätsel `{line_id}`{suffix}')
         msg = await _resilient_send(target, content=text)

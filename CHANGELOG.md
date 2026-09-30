@@ -4,6 +4,23 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.22] - 2026-09-30
+### Fixed
+- **Keine Begrüßungs-DM mehr an Mitglieder fremder Guilds.** `on_member_join` begrüßte jeden
+  Neuzugang jeder Guild, in der der Bot ist – auch in der Zusatz-Guild mit dem gespiegelten
+  Tagespuzzle. Dort bekam jedes neue Mitglied unaufgefordert die deutsche DM über „Turniere in
+  Tirol“, `/bibliothek`, `/reminder` usw., obwohl dort nur `/puzzle` registriert ist (Risiko
+  von Spam-Meldungen gegen den Bot). Jetzt begrüßt der Bot bei gesetzter `GUILD_ID` nur
+  Beitritte zur Heim-Guild und bei der ersten DM nur deren Mitglieder; wer (noch) nicht dazu
+  gehört, wird auch nicht als begrüßt vermerkt und bekommt die Begrüßung beim späteren Beitritt.
+  Ohne `GUILD_ID` bleibt alles wie bisher.
+- **`/puzzle` antwortet in der Sprache der Guild.** `/puzzle` ist als einziger Befehl auch in
+  Zusatz-Guilds registriert, antwortete dort aber immer deutsch („✅ 1 Puzzle(s) wurde(n) dir per
+  DM gesendet“), obwohl deren Daily-Channel auf `en` stehen kann. Jetzt nehmen die Antworten
+  (und der Link-Text der Puzzle-DM) die Sprache des Daily-Channels dieser Guild
+  (`DAILY_EXTRA_CHANNEL_IDS=…:en`, sonst `DAILY_DEFAULT_LANG`), ohne eigenen Daily-Channel die
+  Discord-Sprache des Aufrufers. In der Heim-Guild und per DM bleibt `/puzzle` deutsch.
+
 ## [2.83.21] - 2026-09-30
 ### Fixed
 - **`/help` zeigt nur noch Befehle, die der Aufrufer ausführen kann.** Moderatoren (Rolle

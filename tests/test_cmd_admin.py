@@ -826,6 +826,82 @@ def test_intents_minimal():
     print()
 
 
+def test_greeting_home_guild_only():
+    """S4-014: Begruessungs-DMs (on_member_join, erste DM) nur fuer die Heim-Guild GUILD_ID;
+    Zusatz-Guilds (nur /puzzle + gespiegeltes Daily) bekommen keine unaufgeforderte DM."""
+    print('[Begruessung nur Heim-Guild]')
+    import core.dm_log as dm_log_mod
+    tmpdir = setup_temp_config()
+    old = (bot_mod.GUILD_ID, bot_mod.bot, bot_mod.DM_STATE_FILE, dm_log_mod.DM_LOG_FILE)
+    bot_mod.DM_STATE_FILE = os.path.join(tmpdir, 'dm_state.json')
+    dm_log_mod.DM_LOG_FILE = os.path.join(tmpdir, 'dm_log.json')
+    HOME, EXTRA = 5000, 6000
+    try:
+        class _Guild:
+            def __init__(self, gid, members=()):
+                self.id = gid
+                self.members = {m: FakeMember(uid=m) for m in members}
+
+            def get_member(self, uid):
+                return self.members.get(uid)
+
+        class _Bot(_CapturingBot):
+            def get_guild(self, gid):
+                return home if gid == HOME else None
+
+        home = _Guild(HOME, members=[801])
+        bot_mod.bot = _Bot()
+        bot_mod.GUILD_ID = HOME
+
+        class _Member(FakeMember):
+            def __init__(self, uid, guild):
+                super().__init__(uid=uid)
+                self.guild = guild
+                self.dm = FakeChannel()
+
+            async def create_dm(self):
+                return self.dm
+
+        def _greeted():
+            return atomic_read(bot_mod.DM_STATE_FILE, dict).get('greeted', [])
+
+        m = _Member(802, _Guild(EXTRA))
+        run_async(bot_mod.on_member_join(m))
+        check('Beitritt Zusatz-Guild → keine DM', m.dm.sent == [])
+        check('Beitritt Zusatz-Guild → nicht als begruesst markiert', 802 not in _greeted())
+
+        m = _Member(801, home)
+        run_async(bot_mod.on_member_join(m))
+        check('Beitritt Heim-Guild → Begruessungs-DM', len(m.dm.sent) == 1)
+        check('Beitritt Heim-Guild → begruesst markiert', 801 in _greeted())
+
+        class _DM(FakeChannel, _discord.DMChannel):
+            pass
+
+        def _msg(uid):
+            msg = type('Msg', (), {})()
+            msg.author, msg.channel, msg.content = FakeUser(uid=uid), _DM(), 'Hallo'
+            return msg
+
+        msg = _msg(803)  # nur in einer Zusatz-Guild
+        run_async(bot_mod.on_message(msg))
+        check('erste DM von Nicht-Mitglied → keine Begruessung', msg.channel.sent == [])
+        check('erste DM von Nicht-Mitglied → nicht markiert', 803 not in _greeted())
+        home.members[803] = FakeMember(uid=803)  # tritt spaeter der Heim-Guild bei
+        msg = _msg(803)
+        run_async(bot_mod.on_message(msg))
+        check('erste DM als Heim-Mitglied → Begruessung', len(msg.channel.sent) == 1)
+
+        bot_mod.GUILD_ID = 0  # ohne GUILD_ID wie bisher: alle
+        m = _Member(804, _Guild(EXTRA))
+        run_async(bot_mod.on_member_join(m))
+        check('ohne GUILD_ID → Begruessung wie bisher', len(m.dm.sent) == 1)
+    finally:
+        (bot_mod.GUILD_ID, bot_mod.bot, bot_mod.DM_STATE_FILE, dm_log_mod.DM_LOG_FILE) = old
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_dm_permissions():
     """Tests fuer DM-Berechtigungen mit GUILD_ID."""
     print('[DM-Permissions]')

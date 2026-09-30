@@ -31,10 +31,10 @@ def test_puzzle():
         call_log = []
 
         async def fake_post_rookhub(channel, pool='random', user_id=None, exclude=None,
-                                    book_id=None):
+                                    book_id=None, lang='de'):
             call_log.append({'pool': pool, 'user_id': user_id,
                              'exclude': list(exclude) if exclude else None,
-                             'book_id': book_id})
+                             'book_id': book_id, 'lang': lang})
             return 1000 + len(call_log)   # eindeutige Puzzle-ID je Aufruf
 
         leg.post_rookhub_puzzle = fake_post_rookhub
@@ -71,6 +71,104 @@ def test_puzzle():
         finally:
             leg.post_rookhub_puzzle = orig_post
     finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_puzzle_reply_lang():
+    """S4-014: /puzzle ist auch in Zusatz-Guilds registriert – Antworten in der Sprache des
+    dortigen Daily-Channels (bzw. der Discord-Sprache), Heim-Guild/DM bleiben deutsch."""
+    print('[/puzzle Antwortsprache]')
+    import puzzle as leg
+    import puzzle.commands as pc
+    from puzzle import posting
+    tmpdir = setup_temp_config()
+    old_langs, old_home = dict(pc._channel_langs), pc._home_guild_id
+    orig_post = leg.post_rookhub_puzzle
+    try:
+        HOME, EXTRA, OTHER = 1000, 2000, 3000
+        pc._channel_langs.clear()
+        pc._channel_langs.update({111: 'de', 222: 'en'})
+        pc._home_guild_id = HOME
+
+        class _Ch:
+            def __init__(self, gid):
+                self.guild = type('G', (), {'id': gid})()
+
+        def _ia(channel_id, guild_id, locale='de', user=None):
+            ia = make_interaction(user=user)
+            ia.channel_id, ia.guild_id, ia.locale = channel_id, guild_id, locale
+            ia.client.get_channel = lambda cid: {111: _Ch(HOME), 222: _Ch(EXTRA)}.get(cid)
+            return ia
+
+        check('Daily-Channel en → en', pc.reply_lang(_ia(222, EXTRA)) == 'en')
+        check('anderer Channel der Zusatz-Guild → Sprache ihres Daily-Channels',
+              pc.reply_lang(_ia(999, EXTRA)) == 'en')
+        check('Heim-Guild → de (auch bei englischem Client)',
+              pc.reply_lang(_ia(999, HOME, locale='en-US')) == 'de')
+        pc._channel_langs[111] = 'en'
+        check('Heim-Guild → de (auch im Daily-Channel mit en)', pc.reply_lang(_ia(111, HOME)) == 'de')
+        pc._channel_langs[111] = 'de'
+        check('DM → de', pc.reply_lang(_ia(999, None, locale='en-US')) == 'de')
+        check('fremde Guild ohne Daily, Client en-US → en',
+              pc.reply_lang(_ia(999, OTHER, locale='en-US')) == 'en')
+        check('fremde Guild ohne Daily, Client de → de',
+              pc.reply_lang(_ia(999, OTHER, locale='de')) == 'de')
+        pc._home_guild_id = 0
+        check('ohne GUILD_ID → de', pc.reply_lang(_ia(999, OTHER, locale='en-US')) == 'de')
+        pc._home_guild_id = HOME
+
+        calls = []
+
+        async def fake_post(channel, pool='random', user_id=None, exclude=None,
+                            book_id=None, lang='de'):
+            calls.append(lang)
+            return 4242 + len(calls)
+        leg.post_rookhub_puzzle = fake_post
+        cmd = _captured_commands['puzzle']
+
+        ia = _ia(222, EXTRA)
+        run_async(cmd(ia, anzahl=1, buch=0, id='', user=None))
+        content = ia.followup.calls[0].get('content') or ''
+        check('Zusatz-Guild (en): Bestaetigung englisch', 'sent to you by DM' in content, content)
+        check('Zusatz-Guild (en): Puzzle-DM mit lang=en', calls == ['en'], str(calls))
+
+        ia = _ia(222, EXTRA)
+        run_async(cmd(ia, anzahl=0, buch=0, id='', user=None))
+        content = ia.response.calls[0].get('content') or ''
+        check('Zusatz-Guild (en): Validierung englisch', 'must be between 1 and 20' in content, content)
+
+        calls.clear()
+        ia = _ia(111, HOME)
+        run_async(cmd(ia, anzahl=1, buch=0, id='', user=None))
+        content = ia.followup.calls[0].get('content') or ''
+        check('Heim-Guild: Bestaetigung unveraendert deutsch',
+              content == '✅ 1 Puzzle(s) wurde(n) dir per DM gesendet.', content)
+        check('Heim-Guild: Puzzle-DM mit lang=de', calls == ['de'], str(calls))
+
+        # Link-Text der Puzzle-DM (random) folgt der Sprache; Daily unveraendert.
+        leg.post_rookhub_puzzle = orig_post
+        orig_get = posting.rookhub.get_puzzle
+        orig_url = posting.rookhub.puzzle_web_url
+        posting.rookhub.get_puzzle = lambda pool, exclude=None, book_id=None: {'id': 7, 'lineId': 'x:1'}
+        posting.rookhub.puzzle_web_url = lambda pid: f'https://rookhub.test/p/{pid}'
+        try:
+            class _DM(h.FakeChannel, h._discord.DMChannel):  # DM → kein Thread-Pfad
+                pass
+            dm_en, dm_de = _DM(), _DM()
+            run_async(posting.post_rookhub_puzzle(dm_en, 'random', lang='en'))
+            run_async(posting.post_rookhub_puzzle(dm_de, 'random'))
+            text_en = dm_en.sent[0].content if dm_en.sent else ''
+            text_de = dm_de.sent[0].content if dm_de.sent else ''
+            check('Puzzle-DM en: englischer Link-Text', 'Solve the puzzle on RookHub' in text_en, text_en)
+            check('Puzzle-DM de: Link-Text unveraendert', 'Rätsel auf RookHub lösen' in text_de, text_de)
+        finally:
+            posting.rookhub.get_puzzle, posting.rookhub.puzzle_web_url = orig_get, orig_url
+    finally:
+        leg.post_rookhub_puzzle = orig_post
+        pc._channel_langs.clear()
+        pc._channel_langs.update(old_langs)
+        pc._home_guild_id = old_home
         teardown_temp_config(tmpdir)
     print()
 

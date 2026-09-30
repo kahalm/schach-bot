@@ -7,7 +7,7 @@ from collections import defaultdict
 
 import discord
 
-from core import stats
+from core import i18n, stats
 from core.permissions import is_privileged, require_privileged
 
 # Funktionen werden ueber das puzzle-Paket referenziert (nicht direkt importiert),
@@ -22,6 +22,36 @@ log = logging.getLogger('schach-bot')
 # der 1-basierte Index in _list_pgn_files() — NICHT die RookHub-Buch-ID, die /kurs anzeigt und
 # /puzzle nimmt. Beschreibung, Autocomplete (Buchnamen) und Fehlertexte machen das sichtbar.
 LOCAL_BOOK_DESCRIBE = 'Lokales Buch – aus der Vorschlagsliste wählen, nicht die /kurs-ID'
+
+
+# Sprache der /puzzle-Antworten: /puzzle ist als einziger Befehl global registriert, also auch
+# in Zusatz-Guilds, deren Daily-Channel z. B. auf en steht (DAILY_EXTRA_CHANNEL_IDS=ID:en).
+# setup() bekommt die Channel-Sprachen und die Heim-Guild aus bot.py.
+_channel_langs: dict[int, str] = {}
+_home_guild_id = 0
+
+
+def reply_lang(interaction) -> str:
+    """Sprache der /puzzle-Antworten.
+
+    Heim-Guild → Deutsch (wie der Rest des Bots). Ein Daily-Channel → dessen Sprache. DM oder
+    ohne GUILD_ID → Deutsch (wie bisher). Zusatz-Guild → Sprache ihres Daily-Channels, sonst
+    die Discord-Sprache des Aufrufers (de → Deutsch, alles andere → Englisch)."""
+    gid = getattr(interaction, 'guild_id', None)
+    if _home_guild_id and gid == _home_guild_id:
+        return i18n.DEFAULT_LANG
+    cid = getattr(interaction, 'channel_id', None)
+    if isinstance(cid, int) and cid in _channel_langs:
+        return _channel_langs[cid]
+    if not _home_guild_id or not isinstance(gid, int):
+        return i18n.DEFAULT_LANG
+    client = getattr(interaction, 'client', None)
+    for ch_id, lang in _channel_langs.items():
+        ch = client.get_channel(ch_id) if client else None
+        if getattr(getattr(ch, 'guild', None), 'id', None) == gid:
+            return lang
+    locale = str(getattr(interaction, 'locale', '') or '').lower()
+    return 'de' if locale.startswith('de') else 'en'
 
 
 def local_book_choices(current: str = '') -> list:
@@ -52,32 +82,30 @@ def local_book_label(buch: int) -> str:
 async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: int = 0,
                       id: str = '', user: discord.Member | None = None,
                       option: discord.app_commands.Choice[str] | None = None):
+    lang = reply_lang(interaction)
     # Option: show_board / hide_board Praeferenz setzen
     if option is not None:
         uid = interaction.user.id
         if option.value == 'showBoard':
             _pkg._set_user_show_board(uid, True)
             await interaction.response.send_message(
-                '✅ Board-Anzeige aktiviert. Du siehst ab jetzt Brettbild + Lösung bei `/puzzle`.',
-                ephemeral=True)
+                i18n.t('puzzle.board_on', lang), ephemeral=True)
             return
         elif option.value == 'hideBoard':
             _pkg._set_user_show_board(uid, False)
             await interaction.response.send_message(
-                '✅ Board-Anzeige deaktiviert. Du bekommst ab jetzt nur den Link bei `/puzzle`.',
-                ephemeral=True)
+                i18n.t('puzzle.board_off', lang), ephemeral=True)
             return
 
     # Admin-Check: nur Admins duerfen Puzzles an andere User senden
     if user is not None and user.id != interaction.user.id:
         if not is_privileged(interaction):
             await interaction.response.send_message(
-                '⚠️ Nur Admins duerfen Puzzles an andere User senden.',
-                ephemeral=True)
+                i18n.t('puzzle.admin_only_other', lang), ephemeral=True)
             return
     if anzahl < 1 or anzahl > 20:
         await interaction.response.send_message(
-            '⚠️ `anzahl` muss zwischen 1 und 20 liegen.', ephemeral=True)
+            i18n.t('puzzle.anzahl_range', lang), ephemeral=True)
         return
     target_user = user or interaction.user
     log.info('/puzzle von %s: anzahl=%d buch=%d id=%s user=%s',
@@ -96,19 +124,19 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
                 _blind_moves = int(_blind_match.group(1))
                 if _blind_moves > 50:
                     await interaction.followup.send(
-                        '⚠️ Maximal 50 Blind-Züge erlaubt.', ephemeral=True)
+                        i18n.t('puzzle.blind_max', lang), ephemeral=True)
                     return
                 _lookup_id = id[:_blind_match.start()]
 
             # Erstaufruf nach Restart parst ggf. alle PGNs → nicht auf dem Event-Loop
             result = await asyncio.to_thread(_pkg.find_line_by_id, _lookup_id)
             if not result:
-                await interaction.followup.send(f'⚠️ Puzzle `{id}` nicht gefunden.', ephemeral=True)
+                await interaction.followup.send(i18n.t('puzzle.not_found', lang, id=id), ephemeral=True)
                 return
 
             if not _pkg._has_training_comment(result[1]):
                 await interaction.followup.send(
-                    f'⚠️ `{id}` hat keinen Trainingskommentar.', ephemeral=True)
+                    i18n.t('puzzle.no_training', lang, id=id), ephemeral=True)
                 return
 
             if _blind_moves:
@@ -117,13 +145,14 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
                 split = _pkg._split_for_blind(orig, _blind_moves)
                 if split is None:
                     await interaction.followup.send(
-                        f'⚠️ Puzzle `{line_id}` hat nicht genug Vorlauf-Züge für blind:{_blind_moves}.',
+                        i18n.t('puzzle.blind_too_short', lang, id=line_id, n=_blind_moves),
                         ephemeral=True)
                     return
                 # Ankuendigung erst NACH erfolgreicher Validierung — sonst
                 # bekommt der Empfaenger eine DM ohne folgendes Puzzle.
                 if user:
-                    await dm.send(f'**{interaction.user.display_name}** schickt dir ein Blind-Puzzle 🙈')
+                    await dm.send(i18n.t('puzzle.sends_you_blind', lang,
+                                         name=interaction.user.display_name))
                 blind_board, blind_san, puzzle_game = split
                 fname = line_id.split(':')[0]
                 meta  = _pkg._load_books_config().get(fname, {})
@@ -159,8 +188,10 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
                 if pgn_moves:
                     await _pkg._send_optional(dm, f'Lösung des Puzzles: ||`{pgn_moves}`||', label=f'Blind-Lösung {line_id}')
                 stats.inc(target_uid, 'blind_puzzles')
-                dest = f'an {target_user.mention}' if user else 'dir'
-                await interaction.followup.send(f'🙈 Blind-Puzzle `{line_id}:blind:{_blind_moves}` {dest} per DM gesendet.', ephemeral=True)
+                dest = _dest(lang, target_user if user else None)
+                await interaction.followup.send(
+                    i18n.t('puzzle.sent_blind', lang, ref=f'{line_id}:blind:{_blind_moves}', dest=dest),
+                    ephemeral=True)
                 return
 
             line_id, original_game = result
@@ -183,15 +214,15 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
                 img = None
 
             if user:
-                await dm.send(f'**{interaction.user.display_name}** schickt dir ein Rätsel 🧩')
+                await dm.send(i18n.t('puzzle.sends_you', lang, name=interaction.user.display_name))
 
             if not show_board:
                 # hideBoard: nur den klickbaren RookHub-Link (kein Embed/Bild/Buttons)
                 await _pkg._send_puzzle_link_only(dm, game, line_id, user_id=target_uid, diff=diff, turn=turn)
                 stats.inc(target_uid, 'puzzles')
-                dest = f'an {target_user.mention}' if user else 'dir'
+                dest = _dest(lang, target_user if user else None)
                 await interaction.followup.send(
-                    f'✅ Puzzle `{line_id}` {dest} per DM gesendet.', ephemeral=True)
+                    i18n.t('puzzle.sent_id', lang, id=line_id, dest=dest), ephemeral=True)
                 return
 
             embed = _pkg.build_puzzle_embed(game, turn=turn, difficulty=diff, rating=rating, line_id=line_id)
@@ -210,37 +241,45 @@ async def _cmd_puzzle(interaction: discord.Interaction, anzahl: int = 1, buch: i
 
             stats.inc(target_uid, 'puzzles')
 
-            dest = f'an {target_user.mention}' if user else 'dir'
+            dest = _dest(lang, target_user if user else None)
             await interaction.followup.send(
-                f'✅ Puzzle `{line_id}` {dest} per DM gesendet.', ephemeral=True)
+                i18n.t('puzzle.sent_id', lang, id=line_id, dest=dest), ephemeral=True)
             return
 
         if user:
-            await dm.send(f'**{interaction.user.display_name}** schickt dir ein Rätsel 🧩')
+            await dm.send(i18n.t('puzzle.sends_you', lang, name=interaction.user.display_name))
         # Auswahl kommt von RookHub (Pool "random", optional aus Buch `buch`); der Bot postet
         # nur den Link (gelöst wird auf RookHub). exclude verhindert Wiederholungen.
         book_id = buch or None
         seen: list[int] = []
         for _ in range(anzahl):
             pid = await _pkg.post_rookhub_puzzle(
-                dm, 'random', user_id=target_uid, exclude=seen or None, book_id=book_id)
+                dm, 'random', user_id=target_uid, exclude=seen or None, book_id=book_id,
+                lang=lang)
             if pid is None:
                 break
             seen.append(pid)
         sent = len(seen)
-        note = '' if not buch else (f' (aus Buch {buch})' if sent else
-                                    f' – Buch {buch} unbekannt? `/kurs` zeigt die IDs.')
-        dest = f'an {target_user.mention}' if user else 'dir'
+        note = '' if not buch else (i18n.t('puzzle.note_book', lang, buch=buch) if sent else
+                                    i18n.t('puzzle.note_book_unknown', lang, buch=buch))
+        dest = _dest(lang, target_user if user else None)
         if sent == anzahl:
-            msg = f'✅ {sent} Puzzle(s) wurde(n) {dest} per DM gesendet.{note}'
+            msg = i18n.t('puzzle.sent_n', lang, n=sent, dest=dest, note=note)
         elif sent > 0:
-            msg = f'⚠️ Nur {sent}/{anzahl} Puzzle(s) konnten {dest} gesendet werden – Details im Bot-Log.{note}'
+            msg = i18n.t('puzzle.sent_partial', lang, n=sent, total=anzahl, dest=dest, note=note)
         else:
-            msg = '❌ Es konnte kein Puzzle gesendet werden – Details im Bot-Log.'
+            msg = i18n.t('puzzle.sent_none', lang)
         await interaction.followup.send(msg, ephemeral=True)
     except Exception as e:
         log.exception('/puzzle fehlgeschlagen: %s', e)
-        await interaction.followup.send('❌ Ein Fehler ist aufgetreten.', ephemeral=True)
+        await interaction.followup.send(i18n.t('puzzle.error', lang), ephemeral=True)
+
+
+def _dest(lang: str, target_user=None) -> str:
+    """„dir“ bzw. „an @X“ in der Antwortsprache."""
+    if target_user is None:
+        return i18n.t('puzzle.dest_you', lang)
+    return i18n.t('puzzle.dest_user', lang, mention=target_user.mention)
 
 
 async def _cmd_buecher(interaction: discord.Interaction, buch: int = 0):
@@ -586,8 +625,16 @@ async def _cmd_blindpuzzle(interaction: discord.Interaction):
             'ein Buch als „blind" markiert?', ephemeral=True)
 
 
-def setup(bot: discord.ext.commands.Bot):
-    """Registriert alle Puzzle-Commands auf dem Bot."""
+def setup(bot: discord.ext.commands.Bot, channel_langs: dict[int, str] | None = None,
+          home_guild_id: int = 0):
+    """Registriert alle Puzzle-Commands auf dem Bot.
+
+    ``channel_langs`` (Daily-Channel → Sprache) und ``home_guild_id`` bestimmen die Sprache
+    der /puzzle-Antworten (siehe ``reply_lang``)."""
+    global _home_guild_id
+    _channel_langs.clear()
+    _channel_langs.update(channel_langs or {})
+    _home_guild_id = home_guild_id
     tree = bot.tree
 
     @tree.command(name='puzzle', description='Puzzle(s) aus den Büchern posten',

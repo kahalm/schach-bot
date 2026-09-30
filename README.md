@@ -75,7 +75,7 @@ Alle Einstellungen in `.env` (siehe `.env.example`):
 | `CHANNEL_ID` | ja | Channel-ID fuer den taeglichen Puzzle-Post |
 | `PUZZLE_HOUR` / `PUZZLE_MINUTE` | nein | Post-Uhrzeit in UTC (Standard: 9:00) |
 | `BOOKS_DIR` | nein | PGN-Verzeichnis (Standard: `books/`) |
-| `GUILD_ID` | nein | Server-ID fuer DM-Admin-Berechtigungen (0 = aus) |
+| `GUILD_ID` | nein | Heim-Server: DM-Admin-Berechtigungen, Begrüßungs-DMs nur für dessen Mitglieder, alle Befehle außer `/puzzle` nur dort (0 = aus) |
 | `LICHESS_TOKEN` | nein | OAuth-Token (Scope: `study:write`) fuer Studien-Upload |
 | `PUZZLE_STUDY_ID` | nein | Feste Studie fuer alle Puzzles (empfohlen mit Token) |
 | `TOURNAMENT_CHANNEL_ID` | nein | Channel fuer Turnier-Posts (0 = aus) |

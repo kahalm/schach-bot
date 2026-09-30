@@ -15,7 +15,7 @@ from test_cmd_info import (
     test_event_log, test_healthcheck,
 )
 from test_cmd_puzzle import (
-    test_puzzle, test_puzzle_blind_by_id, test_puzzle_blind_announce_after_validation, test_puzzle_link_only, test_kurs, test_train, test_next, test_endless, test_local_book_param, test_blind,
+    test_puzzle, test_puzzle_reply_lang, test_puzzle_blind_by_id, test_puzzle_blind_announce_after_validation, test_puzzle_link_only, test_kurs, test_train, test_next, test_endless, test_local_book_param, test_blind,
     test_buttons, test_format_blind_moves, test_puzzle_anzahl_validation,
     test_posted_reset_per_pool, test_build_puzzle_embed, test_build_daily_embed,
     test_post_rookhub_puzzle_board_vs_link, test_post_rookhub_puzzle_daily_uses_minimal_embed,
@@ -63,6 +63,7 @@ from test_cmd_admin import (
     test_daily, test_ignore_kapitel, test_test_cmd, test_announce,
     test_greeted, test_stats, test_dm_log, test_log,
     test_dm_log_internals, test_dm_log_incoming, test_dm_permissions, test_intents_minimal,
+    test_greeting_home_guild_only,
     test_suppress_empty_fen, test_es_tags,
 )
 from test_cmd_commandlog import test_command_log
@@ -98,6 +99,7 @@ def main():
     test_collection_embed_size_limit()
     test_youtube()
     test_puzzle()
+    test_puzzle_reply_lang()
     test_puzzle_blind_by_id()
     test_puzzle_blind_announce_after_validation()
     test_puzzle_link_only()
@@ -186,6 +188,7 @@ def main():
     test_dm_log_incoming()
     test_dm_permissions()
     test_intents_minimal()
+    test_greeting_home_guild_only()
     test_suppress_empty_fen()
     test_es_tags()
     test_command_log()

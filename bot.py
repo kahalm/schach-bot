@@ -167,7 +167,7 @@ import library
 from commands import reminder, resourcen, youtube, elo, release_notes, blind, test, wanted, schachrallye, weeklypost, chat, link, motivation, leaderboard
 from commands import help as help_cmd
 
-puzzle.setup(bot)
+puzzle.setup(bot, channel_langs=DAILY_CHANNEL_LANG, home_guild_id=GUILD_ID)
 library.setup(bot)
 reminder.setup(bot)
 resourcen.setup(bot)
@@ -318,7 +318,10 @@ async def on_message(message: discord.Message):
     # Eingehende DM loggen
     await asyncio.to_thread(dm_log.log_incoming, message.author.id, message.content or '[kein Text]')
 
-    # Erste DM → Bot stellt sich vor
+    # Erste DM → Bot stellt sich vor (nur Mitgliedern der Heim-Guild; nicht als begrüßt
+    # markieren, sonst fehlte die Begrüßung, wenn sie später beitreten)
+    if not _is_home_member(message.author):
+        return
     user_id = message.author.id
     should_greet = False
 
@@ -338,10 +341,21 @@ async def on_message(message: discord.Message):
         await message.channel.send(welcome_message_for(message.author))
 
 
+def _is_home_member(user) -> bool:
+    """Begrüßungs-DMs nur für die Heim-Guild (GUILD_ID): Die Willkommens-DM ist deutsch und
+    bewirbt Befehle, die es in Zusatz-Guilds (nur /puzzle) nicht gibt. Ohne GUILD_ID: alle."""
+    if not GUILD_ID:
+        return True
+    guild = bot.get_guild(GUILD_ID)
+    return guild is not None and guild.get_member(user.id) is not None
+
+
 @bot.event
 async def on_member_join(member: discord.Member):
     if member.bot:
         return
+    if GUILD_ID and getattr(member.guild, 'id', None) != GUILD_ID:
+        return  # Zusatz-Guild (gespiegeltes Daily): keine unaufgeforderte DM
     try:
         dm = await member.create_dm()
         await dm.send(welcome_message_for(member))
