@@ -16,8 +16,9 @@ Schnittstelle:
 - :func:`stop(runner)` schliesst sauber.
 
 Sicherheit:
-- HMAC-SHA256 ueber den rohen Request-Body, signed mit ``WEBHOOK_SECRET``.
-- Header ``X-Webhook-Signature: sha256=<hex>``.
+- HMAC-SHA256 ueber ``"<ts>.<body>"`` (rohe Request-Bytes), signed mit ``WEBHOOK_SECRET``.
+- Header ``X-Webhook-Signature: sha256=<hex>`` + ``X-Webhook-Timestamp: <unix-sekunden>``
+  (Pflicht, ±5 min Fenster = Replay-Schutz; ohne Zeitstempel → 401).
 - ``hmac.compare_digest`` gegen Timing-Angriffe.
 - 401 bei fehlender/falscher Signatur, 400 bei kaputtem JSON, 200 sonst (auch
   wenn der Daily-Post nicht zur gelieferten puzzleId passt — vermeidet
@@ -41,10 +42,10 @@ from core.secret_env import secret_from_env
 
 log = logging.getLogger('schach-bot')
 
-# Replay-/Timestamp-Schutz: wird ein ``X-Webhook-Timestamp``-Header mitgeschickt,
-# fliesst er in die HMAC ein UND muss innerhalb dieses Fensters (Sekunden) liegen.
-# Fehlt der Header (rookhub-Gegenstelle noch nicht nachgezogen), greift der alte
-# Pfad (HMAC nur ueber den Body) — rueckwaertskompatibel, s. _verify_signature.
+# Replay-/Timestamp-Schutz: der ``X-Webhook-Timestamp``-Header ist Pflicht, fliesst
+# in die HMAC ein UND muss innerhalb dieses Fensters (Sekunden) liegen. Der fruehere
+# rueckwaertskompatible Pfad (HMAC nur ueber den Body, ohne Zeitstempel = unbegrenzt
+# replaybar) ist entfernt, s. _verify_signature.
 _TIMESTAMP_HEADER = 'X-Webhook-Timestamp'
 _TIMESTAMP_TOLERANCE = 300  # ±5 min
 # Maximale akzeptierte Body-Groesse fuer Webhook-POSTs (Schutz vor Speicher-DoS).
@@ -55,37 +56,36 @@ def _verify_signature(secret: str, body: bytes, signature_header: str | None,
                       timestamp_header: str | None = None, now: float | None = None) -> bool:
     """Prueft den ``X-Webhook-Signature``-Header gegen HMAC-SHA256.
 
-    Replay-Schutz (opt-in, rueckwaertskompatibel): Wird ``timestamp_header``
-    (Wert des ``X-Webhook-Timestamp``-Headers, Unix-Sekunden) mitgegeben, MUSS
-    er innerhalb ±``_TIMESTAMP_TOLERANCE`` liegen und die HMAC wird ueber
-    ``"<ts>.<body>"`` gebildet (so kann ein abgefangener Request nach Ablauf des
-    Fensters nicht erneut eingespielt werden). Fehlt der Header, faellt die
-    Verifikation auf den alten Pfad (HMAC nur ueber ``body``) zurueck — damit
-    bricht nichts, solange die rookhub-Seite (``SchachBotWebhookService``) den
-    Timestamp noch nicht mitschickt. **rookhub muss separat nachgezogen werden.**
+    Replay-Schutz (Pflicht): ``timestamp_header`` (Wert des ``X-Webhook-Timestamp``-
+    Headers, Unix-Sekunden) MUSS gesetzt sein und innerhalb ±``_TIMESTAMP_TOLERANCE``
+    liegen; die HMAC wird ueber ``"<ts>.<body>"`` gebildet, so kann ein abgefangener
+    Request nach Ablauf des Fensters nicht erneut eingespielt werden. Fehlt der Header
+    oder ist er leer → ``False`` (wie ``BotStatsController.VerifySignature`` in der
+    Gegenrichtung). Der fruehere Rueckfall auf eine HMAC nur ueber ``body`` ist
+    entfernt: rookhub (``SchachBotWebhookService``) schickt den Zeitstempel in allen
+    drei Webhooks mit. Ein Rollback von rookhub auf einen Stand ohne
+    ``X-Webhook-Timestamp`` braucht deshalb auch den Bot-Rollback.
     """
     if not signature_header:
         return False
     if signature_header.startswith('sha256='):
         signature_header = signature_header[len('sha256='):]
 
-    if timestamp_header is not None and str(timestamp_header).strip() != '':
-        # Timestamp vorhanden → Fenster pruefen + in die HMAC einbeziehen.
-        try:
-            ts = int(str(timestamp_header).strip())
-        except (ValueError, TypeError):
-            log.warning('Webhook: ungueltiger Timestamp-Header %r', timestamp_header)
-            return False
-        if now is None:
-            now = time.time()
-        if abs(now - ts) > _TIMESTAMP_TOLERANCE:
-            log.warning('Webhook: Timestamp ausserhalb Fenster (ts=%s now=%s diff=%.0fs)',
-                        ts, int(now), abs(now - ts))
-            return False
-        signed = str(ts).encode('utf-8') + b'.' + body
-    else:
-        # Kein Timestamp-Header → alter Pfad (rueckwaertskompatibel).
-        signed = body
+    if timestamp_header is None or str(timestamp_header).strip() == '':
+        log.warning('Webhook: X-Webhook-Timestamp fehlt — abgewiesen (kein Replay-Schutz ohne Zeitstempel)')
+        return False
+    try:
+        ts = int(str(timestamp_header).strip())
+    except (ValueError, TypeError):
+        log.warning('Webhook: ungueltiger Timestamp-Header %r', timestamp_header)
+        return False
+    if now is None:
+        now = time.time()
+    if abs(now - ts) > _TIMESTAMP_TOLERANCE:
+        log.warning('Webhook: Timestamp ausserhalb Fenster (ts=%s now=%s diff=%.0fs)',
+                    ts, int(now), abs(now - ts))
+        return False
+    signed = str(ts).encode('utf-8') + b'.' + body
 
     expected = hmac.new(secret.encode('utf-8'), signed, hashlib.sha256).hexdigest()
     try:

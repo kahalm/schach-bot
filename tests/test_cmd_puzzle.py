@@ -854,21 +854,23 @@ def test_webhook_verify_signature():
 
     secret = 's3cret'
     body = b'{"puzzleId":42}'
-    good = _hmac.new(secret.encode(), body, _hashlib.sha256).hexdigest()
-
-    check('valid signature → True', _verify_signature(secret, body, good) is True)
-    check('sha256= prefix akzeptiert', _verify_signature(secret, body, 'sha256=' + good) is True)
-    check('missing header → False', _verify_signature(secret, body, None) is False)
-    check('wrong signature → False', _verify_signature(secret, body, 'deadbeef' * 8) is False)
-    check('empty signature → False', _verify_signature(secret, body, '') is False)
-    check('different secret → False', _verify_signature('other', body, good) is False)
-    check('different body → False', _verify_signature(secret, b'{"x":1}', good) is False)
-
-    # --- Timestamp-/Replay-Schutz (opt-in, rueckwaertskompatibel) ---
-    import time as _time
+    good = _hmac.new(secret.encode(), body, _hashlib.sha256).hexdigest()  # body-only (Altformat)
     now = 1_700_000_000
     ts = now  # frisch
     ts_sig = _hmac.new(secret.encode(), f'{ts}.'.encode() + body, _hashlib.sha256).hexdigest()
+
+    def verify(sig, key=secret, b=body):
+        return _verify_signature(key, b, sig, timestamp_header=str(ts), now=now)
+
+    check('valid signature → True', verify(ts_sig) is True)
+    check('sha256= prefix akzeptiert', verify('sha256=' + ts_sig) is True)
+    check('missing header → False', verify(None) is False)
+    check('wrong signature → False', verify('deadbeef' * 8) is False)
+    check('empty signature → False', verify('') is False)
+    check('different secret → False', verify(ts_sig, key='other') is False)
+    check('different body → False', verify(ts_sig, b=b'{"x":1}') is False)
+
+    # --- Timestamp-/Replay-Schutz (Pflicht) ---
     check('mit Timestamp: gueltige Sig+frischer TS → True',
           _verify_signature(secret, body, ts_sig, timestamp_header=str(ts), now=now) is True)
     # Alter Body-only-Signatur darf NICHT mehr passen, sobald ein TS mitkommt
@@ -886,9 +888,16 @@ def test_webhook_verify_signature():
           _verify_signature(secret, body, fut_sig, timestamp_header=str(fut_ts), now=now) is True)
     check('mit Timestamp: kaputter TS-Header → False',
           _verify_signature(secret, body, ts_sig, timestamp_header='abc', now=now) is False)
-    # Leerer Timestamp-Header → wie kein Header (Fallback auf body-only)
-    check('leerer Timestamp-Header → Fallback body-only',
-          _verify_signature(secret, body, good, timestamp_header='', now=now) is True)
+    # REGRESSION S4-005: ohne Zeitstempel gibt es keinen Replay-Schutz → abgewiesen,
+    # auch mit korrekter body-only-Signatur (frueher rueckwaertskompatibel akzeptiert).
+    check('ohne Timestamp-Header: body-only Sig → False',
+          _verify_signature(secret, body, good, now=now) is False)
+    check('ohne Timestamp-Header: sha256=body-only Sig → False',
+          _verify_signature(secret, body, 'sha256=' + good, timestamp_header=None, now=now) is False)
+    check('leerer Timestamp-Header: body-only Sig → False',
+          _verify_signature(secret, body, good, timestamp_header='', now=now) is False)
+    check('Timestamp nur Leerzeichen: body-only Sig → False',
+          _verify_signature(secret, body, good, timestamp_header='   ', now=now) is False)
     print()
 
 
@@ -899,6 +908,7 @@ def test_webhook_handler_dispatches_to_apply_solver_update():
     import hashlib as _hashlib
     import hmac as _hmac
     import json as _json
+    import time as _time
     from unittest.mock import MagicMock, AsyncMock
     from aiohttp import web
     from core import webhook_server
@@ -917,14 +927,19 @@ def test_webhook_handler_dispatches_to_apply_solver_update():
 
     handler = webhook_server._make_handler(bot=MagicMock(), secret=secret)
 
-    async def post_request(body_dict: dict, sig_override: str | None = None) -> web.Response:
+    async def post_request(body_dict: dict, sig_override: str | None = None,
+                           with_ts: bool = True) -> web.Response:
         body = _json.dumps(body_dict).encode('utf-8')
+        ts = str(int(_time.time()))
+        signed = (ts.encode() + b'.' + body) if with_ts else body
         sig = sig_override if sig_override is not None else \
-              _hmac.new(secret.encode(), body, _hashlib.sha256).hexdigest()
+              _hmac.new(secret.encode(), signed, _hashlib.sha256).hexdigest()
         # MagicMock-Request mit .read() async + headers
         req = MagicMock()
         req.read = AsyncMock(return_value=body)
         req.headers = {'X-Webhook-Signature': sig} if sig is not None else {}
+        if with_ts:
+            req.headers['X-Webhook-Timestamp'] = ts
         return await handler(req)
 
     # 1) Gueltige Signatur + matching puzzleId → apply_solver_update aufgerufen.
@@ -945,6 +960,13 @@ def test_webhook_handler_dispatches_to_apply_solver_update():
     resp = run_async(post_request(payload, sig_override='deadbeefdeadbeef'))
     check('invalid sig → status 401', resp.status == 401)
     check('invalid sig → kein apply', 'args' not in captured)
+
+    # 2b) REGRESSION S4-005: body-only signiert, ohne X-Webhook-Timestamp (Altformat /
+    #     mitgeschnittener Alt-Request) → 401, kein apply.
+    captured.clear()
+    resp = run_async(post_request(payload, with_ts=False))
+    check('ohne Timestamp → status 401', resp.status == 401)
+    check('ohne Timestamp → kein apply', 'args' not in captured)
 
     # 3) Korrekter Body, aber puzzleId passt nicht zum aktuellen Daily → 200, kein apply.
     captured.clear()
@@ -983,6 +1005,7 @@ def test_daily_regenerate_webhook():
     import hashlib as _hashlib
     import hmac as _hmac
     import json as _json
+    import time as _time
     from unittest.mock import MagicMock, AsyncMock, patch
     from aiohttp import web
     from core import webhook_server
@@ -997,13 +1020,17 @@ def test_daily_regenerate_webhook():
         posted['called'] = True
         posted['pool'] = pool
 
-    async def make_request(body_dict: dict, sig_override=None) -> web.Response:
+    async def make_request(body_dict: dict, sig_override=None, with_ts: bool = True) -> web.Response:
         body = _json.dumps(body_dict).encode('utf-8')
+        ts = str(int(_time.time()))
+        signed = (ts.encode() + b'.' + body) if with_ts else body
         sig = sig_override if sig_override is not None else \
-              _hmac.new(secret.encode(), body, _hashlib.sha256).hexdigest()
+              _hmac.new(secret.encode(), signed, _hashlib.sha256).hexdigest()
         req = MagicMock()
         req.read = AsyncMock(return_value=body)
         req.headers = {'X-Webhook-Signature': sig} if sig else {}
+        if with_ts:
+            req.headers['X-Webhook-Timestamp'] = ts
         return req
 
     # Fake-Message für alten Thread (channel_id=1 aus current())
@@ -1073,6 +1100,15 @@ def test_daily_regenerate_webhook():
         req = run_async(make_request({'date': '2026-06-06', 'puzzleId': 200}, sig_override='bad'))
         resp = run_async(handler(req))
         check('invalid sig → status 401', resp.status == 401)
+
+        # 4b) REGRESSION S4-005: Replay eines body-only signierten Alt-Requests fuer das
+        #     HEUTIGE Daily (ohne X-Webhook-Timestamp) → 401, kein Neu-Posten.
+        dr.current = lambda: {'date': today, 'channel_id': 1, 'message_id': 555, 'puzzle_id': 100}
+        posted.clear()
+        req = run_async(make_request({'date': today, 'puzzleId': 200}, with_ts=False))
+        resp = run_async(handler(req))
+        check('ohne Timestamp → status 401', resp.status == 401)
+        check('ohne Timestamp → kein Posting', not posted.get('called'))
 
         # 5) Fehlendes Pflichtfeld → 400
         dr.current = lambda: {'date': '2026-06-06', 'channel_id': 1, 'message_id': 555, 'puzzle_id': 100}

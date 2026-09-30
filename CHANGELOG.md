@@ -4,6 +4,20 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.12] - 2026-09-30
+### Security
+- **Webhook-Empfänger verlangt den Zeitstempel.** `/webhook/puzzle-attempt`, `/webhook/weekly-progress`
+  und `/webhook/daily-regenerate` akzeptierten ohne `X-Webhook-Timestamp` weiter eine HMAC nur über
+  den Body – ohne Zeitfenster, also beliebig oft wieder einspielbar (Port host-veröffentlicht,
+  Klartext-HTTP). RookHub schickt den Zeitstempel inzwischen in allen drei Webhooks mit, die
+  Gegenrichtung (`BotStatsController`) hat denselben Altzweig schon entfernt.
+- Jetzt: Fehlt `X-Webhook-Timestamp` oder ist er leer, antwortet der Bot mit 401 (WARNING im Log);
+  signiert wird nur noch `HMAC("<ts>.<body>")` im ±300-s-Fenster (`core/webhook_server.py`,
+  `_verify_signature`).
+- Betrieb: Ein Rollback von RookHub auf einen Stand ohne `X-Webhook-Timestamp` braucht ab dieser
+  Version auch den Bot-Rollback, sonst laufen die Webhooks ins 401 (der Bot holt Löser beim Start
+  per `refresh()` nach).
+
 ## [2.83.11] - 2026-09-30
 ### Security
 - **`:latest` entsteht nur noch aus einer Release-Marke `vX.Y.Z`, deren Commit auf `main` liegt.**
