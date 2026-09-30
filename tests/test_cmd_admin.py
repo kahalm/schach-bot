@@ -331,7 +331,8 @@ def test_test_cmd():
                                       'next': '2099-01-01T00:00:00+00:00'}},
         })
 
-        # Turnier: User subscribed + zukuenftiges Event
+        # Turnier: nur ein Blitz-Abo → fuer andere Tags gibt es keine Erinnerung (nur den Ping
+        # bei neuen Turnieren), /test simuliert daher auch keine (Review W4s S4-020)
         from datetime import date
         future = (date.today() + timedelta(days=5)).strftime('%Y-%m-%d')
         atomic_write(sr_mod.TURNIER_FILE, {
@@ -343,6 +344,9 @@ def test_test_cmd():
             'next_id': 2,
         })
 
+        def _dry_runs(ia):
+            return [c for c in ia.followup.calls if 'Dry-Run' in (c.get('content') or '')]
+
         try:
             ia = make_interaction(admin=True)
             run_async(cmd(ia, modus='status', kurs=0, puzzle=0, lichess=0))
@@ -352,7 +356,62 @@ def test_test_cmd():
             if reminder_calls:
                 content = reminder_calls[0].get('content', '')
                 check('test-reminder: motivation', 'motivation' in content)
-                check('test-reminder: turnier', 'turnier' in content)
+                check('test-reminder: Blitz-Abo → keine Turnier-Erinnerung',
+                      'turnier' not in content and not _dry_runs(ia), detail=content)
+
+            # Rallye-Abo: /test zeigt als Dry-Run genau das, was der Reminder-Loop posten wuerde
+            def _in(days):
+                return (date.today() + timedelta(days=days)).isoformat()
+            rallye = {
+                'events': [
+                    {'id': 1, 'name': 'Rallye frei', 'datum': _in(5), 'ort': 'Innsbruck',
+                     'tags': ['schachrallye'], 'approved': True},
+                    {'id': 2, 'name': 'Rallye pending', 'datum': _in(3),
+                     'tags': ['schachrallye'], 'approved': False},
+                    {'id': 3, 'name': 'Rallye erinnert', 'datum': _in(4),
+                     'tags': ['schachrallye'], 'reminded': True},
+                    {'id': 4, 'name': 'Rallye spaeter', 'datum': _in(10),
+                     'tags': ['schachrallye']},
+                    {'id': 5, 'name': 'Blitz bald', 'datum': _in(2), 'tags': ['blitz']},
+                ],
+                'subscribers': {'schachrallye': [12345, 777], 'blitz': [12345]},
+                'next_id': 6,
+            }
+            atomic_write(sr_mod.TURNIER_FILE, rallye)
+            old_sr = (sr_mod._bot, sr_mod._tournament_channel_id)
+            try:
+                sr_mod._tournament_channel_id = 0
+                ia = make_interaction(admin=True)
+                run_async(cmd(ia, modus='status', kurs=0, puzzle=0, lichess=0))
+                runs = _dry_runs(ia)
+                check('test-reminder: Rallye-Abo → ein Dry-Run', len(runs) == 1)
+                if runs:
+                    embeds = runs[0].get('embeds') or []
+                    want = sr_mod._reminder_embed(rallye['events'][0])
+                    check('dry-run: nur der faellige Termin (#1), Embed wie der Loop',
+                          [e.description for e in embeds] == [want.description]
+                          and embeds[0].title == want.title,
+                          detail=str([e.description for e in embeds]))
+                    check('dry-run: ohne Turnier-Channel → Warnung',
+                          'TOURNAMENT_CHANNEL_ID' in runs[0]['content'], detail=runs[0]['content'])
+                check('dry-run: markiert nichts als erinnert',
+                      atomic_read(sr_mod.TURNIER_FILE, default=dict) == rallye)
+
+                # Mit Turnier-Channel: Channel + Abonnenten genannt, im Channel nichts gepostet
+                channel = h.FakeChannel(channel_id=55555)
+                fake_bot = MagicMock()
+                fake_bot.get_channel = lambda cid: channel if cid == 55555 else None
+                sr_mod._bot, sr_mod._tournament_channel_id = fake_bot, 55555
+                ia = make_interaction(admin=True)
+                run_async(cmd(ia, modus='status', kurs=0, puzzle=0, lichess=0))
+                runs = _dry_runs(ia)
+                check('dry-run: mit Channel → Channel + 2 Abonnenten genannt',
+                      len(runs) == 1 and '<#55555>' in runs[0]['content']
+                      and '2 Abonnent' in runs[0]['content'],
+                      detail=runs[0]['content'] if runs else '')
+                check('dry-run: im Turnier-Channel nichts gepostet', channel.sent == [])
+            finally:
+                sr_mod._bot, sr_mod._tournament_channel_id = old_sr
 
             # Ohne Subscriptions → kein Reminder-Followup
             atomic_write(mot_mod.MOTIVATION_SUB_FILE, {'subscribers': {}})

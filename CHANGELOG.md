@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.28] - 2026-09-30
+### Fixed
+- **`/test` zeigt die Rallye-Erinnerung als Dry-Run statt einer eigenen Kopie.** Nach jedem
+  `/test` schickte der Bot eine „Turnier-Erinnerung“ per DM über alle abonnierten Tags und alle
+  künftigen Termine – auch nicht freigegebene, schon erinnerte oder Wochen entfernte, und auch
+  ohne Turnier-Channel. Der echte Reminder erinnert aber nur an freigegebene, noch nicht
+  erinnerte Schachrallye-Termine in den nächsten 7 Tagen, als Post im Turnier-Channel; für andere
+  Tags gibt es nur den Ping bei neuen Turnieren. `/test` meldete also Erfolg, wo der echte Pfad
+  schwieg. Jetzt wählt eine gemeinsame Funktion (`schachrallye.due_reminders`) die fälligen Termine
+  für den Loop und für `/test`; Rallye-Abonnenten unter den Admins sehen nach `/test` ephemer, was
+  der nächste Lauf posten würde (dasselbe Embed), ob ein Turnier-Channel gesetzt ist und wie viele
+  Abonnenten erwähnt würden. Gepostet oder als erinnert markiert wird dabei nichts.
+
 ## [2.83.27] - 2026-09-30
 ### Fixed
 - **Spieler-Tagging bei der Turnier-Freigabe nur noch aus dem Heim-Server.** Seit dem

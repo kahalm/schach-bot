@@ -336,6 +336,69 @@ async def _post_approved_event(event: dict, extra_mention_ids: set | None = None
 
 
 # ---------------------------------------------------------------------------
+# Rallye-Erinnerung (Modul-Ebene): der Reminder-Loop in setup() und /test (Dry-Run)
+# rufen dieselben Funktionen auf – keine zweite Kopie der Regeln.
+# ---------------------------------------------------------------------------
+
+def due_reminders(data, today: date) -> tuple[list[dict], list]:
+    """Was der Reminder-Loop an ``today`` erinnern wuerde – rein, ohne I/O.
+
+    Nur Termine mit Tag ``schachrallye``, freigegeben (``approved`` fehlt = Altbestand = frei),
+    noch nicht erinnert und 1–7 Tage in der Zukunft. Ohne Rallye-Subscriber ist nichts faellig.
+
+    Returns: (faellige Events in Dateireihenfolge, Rallye-Subscriber-IDs)
+    """
+    if not data or not isinstance(data, dict):
+        return [], []
+    events = data.get('events', [])
+    subs = data.get('subscribers', {}).get('schachrallye', [])
+    if not events or not subs:
+        return [], subs
+
+    due = []
+    for event in events:
+        if 'schachrallye' not in event.get('tags', []):
+            continue
+        if event.get('approved', True) is False:
+            continue
+        if event.get('reminded'):
+            continue
+        d = _parse_stored(event['datum'])
+        if d is None:
+            continue
+        if d <= today:
+            continue
+        if (d - today).days <= 7:
+            due.append(event)
+    return due, subs
+
+
+def _reminder_embed(event: dict) -> discord.Embed:
+    """Das Embed der Rallye-Erinnerung fuer ``event`` (Channel-Post des Reminder-Loops)."""
+    ts = _noon_utc_ts(_parse_stored(event['datum']))
+    name = event.get('name', '')
+    ort = _shorten_ort(event.get('ort', ''))
+    desc_text = f'**Termin #{event["id"]}**'
+    if name:
+        desc_text += f' \u2014 **{name}**'
+    desc_text += f' am <t:{ts}:D>'
+    if ort:
+        desc_text += f' \u00b7 {ort}'
+    return discord.Embed(
+        title='\U0001f3c7 Schachrallye \u2014 Erinnerung',
+        description=desc_text,
+        color=EMBED_COLOR,
+    )
+
+
+def _reminder_channel():
+    """Der Turnier-Channel des Reminders oder None (ohne TOURNAMENT_CHANNEL_ID / unbekannt)."""
+    if not _tournament_channel_id or _bot is None:
+        return None
+    return _bot.get_channel(_tournament_channel_id)
+
+
+# ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
 
@@ -952,58 +1015,24 @@ def setup(bot, tournament_channel_id: int = 0):
             log.exception('Rallye-Reminder-Loop fehlgeschlagen')
 
     async def _rallye_reminder_inner():
-        if not _tournament_channel_id:
-            return
-        channel = _bot.get_channel(_tournament_channel_id)
+        channel = _reminder_channel()
         if not channel:
             return
 
         data = atomic_read(TURNIER_FILE, default=dict)
-        if not data or not isinstance(data, dict):
-            return
-        events = data.get('events', [])
-        subs = data.get('subscribers', {}).get('schachrallye', [])
-        if not events or not subs:
-            return
-
-        today = date.today()
+        due, subs = due_reminders(data, date.today())
         remind_ids = []
 
-        for event in events:
-            if 'schachrallye' not in event.get('tags', []):
-                continue
-            if event.get('approved', True) is False:
-                continue
-            if event.get('reminded'):
-                continue
-            d = _parse_stored(event['datum'])
-            if d is None:
-                continue
-            if d <= today:
-                continue
-            if (d - today).days <= 7:
-                mentions = ' '.join(f'<@{uid}>' for uid in subs)
-                ts = _noon_utc_ts(d)
-                name = event.get('name', '')
-                ort = _shorten_ort(event.get('ort', ''))
-                desc_text = f'**Termin #{event["id"]}**'
-                if name:
-                    desc_text += f' \u2014 **{name}**'
-                desc_text += f' am <t:{ts}:D>'
-                if ort:
-                    desc_text += f' \u00b7 {ort}'
-                embed = discord.Embed(
-                    title='\U0001f3c7 Schachrallye \u2014 Erinnerung',
-                    description=desc_text,
-                    color=EMBED_COLOR,
-                )
-                try:
-                    await channel.send(content=mentions, embed=embed)
-                    # Erst bei erfolgreichem Versand als erinnert markieren — sonst ginge
-                    # die Erinnerung bei einem Sendefehler verloren (naechster Lauf retryt).
-                    remind_ids.append(event['id'])
-                except Exception:
-                    log.exception('Rallye-Erinnerung fehlgeschlagen fuer Event #%d', event['id'])
+        for event in due:
+            mentions = ' '.join(f'<@{uid}>' for uid in subs)
+            embed = _reminder_embed(event)
+            try:
+                await channel.send(content=mentions, embed=embed)
+                # Erst bei erfolgreichem Versand als erinnert markieren — sonst ginge
+                # die Erinnerung bei einem Sendefehler verloren (naechster Lauf retryt).
+                remind_ids.append(event['id'])
+            except Exception:
+                log.exception('Rallye-Erinnerung fehlgeschlagen fuer Event #%d', event['id'])
 
         if remind_ids:
             def _mark_reminded(data):

@@ -6,14 +6,13 @@ import logging
 import os
 import re
 import io
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import NamedTuple
 
 import chess
 import chess.pgn
 import discord
 
-from core.datetime_utils import noon_utc_ts as _noon_utc_ts
 from core.json_store import atomic_read
 from core.paths import CONFIG_DIR
 from core.permissions import require_privileged
@@ -626,11 +625,32 @@ async def _run_snapshots(interaction, kurs, show_puzzle, show_lichess):
 
 
 # ---------------------------------------------------------------------------
-# Test-Reminder per DM (Wochenpost + Turnier)
+# Test-Reminder: Motivations-DM + Rallye-Erinnerung als Dry-Run
 # ---------------------------------------------------------------------------
 
+_DRY_RUN_EMBEDS = 10  # Discord: hoechstens 10 Embeds je Nachricht
+
+
+def _reminder_dry_run_text(due: list, n_subs: int, channel) -> str:
+    """Kopfzeilen des Rallye-Dry-Runs: Channel-Zustand und was der naechste Lauf posten wuerde."""
+    lines = ['\U0001f3c7 **Rallye-Erinnerung \u2013 Dry-Run** (nichts gesendet, nichts markiert)']
+    if channel is None:
+        lines.append('\u26a0\ufe0f Kein Turnier-Channel (TOURNAMENT_CHANNEL_ID fehlt oder unbekannt) '
+                     '\u2013 der Reminder sendet nichts.')
+    else:
+        lines.append(f'Channel: <#{channel.id}> \u00b7 {n_subs} Abonnent(en)')
+    if due:
+        lines.append(f'F\u00e4llig: {len(due)} Termin(e) \u2013 so postet sie der n\u00e4chste Lauf:')
+        if len(due) > _DRY_RUN_EMBEDS:
+            lines.append(f'(+{len(due) - _DRY_RUN_EMBEDS} weitere nicht gezeigt)')
+    else:
+        lines.append('Nichts f\u00e4llig.')
+    return '\n'.join(lines)
+
+
 async def _trigger_test_reminders(interaction, bot):
-    """Sendet Test-Reminder per DM falls der User subscribed ist."""
+    """Motivations-DM an den Aufrufer (falls abonniert) und Rallye-Erinnerung als Dry-Run
+    (falls Rallye-Abonnent) – beide ueber die produktiven Funktionen, keine eigene Kopie."""
     uid = str(interaction.user.id)
     uid_int = interaction.user.id
     sent = []
@@ -646,46 +666,18 @@ async def _trigger_test_reminders(interaction, bot):
     except Exception as e:
         log.debug('Test-Reminder motivation: %s', e)
 
-    # --- Turnier-Erinnerung ---
+    # --- Rallye-Erinnerung als Dry-Run: dieselben Regeln und dasselbe Embed wie der echte
+    # Reminder-Loop (schachrallye.due_reminders/_reminder_embed); nichts wird gepostet/markiert ---
     try:
         import commands.schachrallye as sr
         turnier_data = atomic_read(sr.TURNIER_FILE, default=dict)
-        if isinstance(turnier_data, dict):
-            subs = turnier_data.get('subscribers', {})
-            user_tags = [tag for tag, uids in subs.items() if uid_int in uids]
-
-            if user_tags:
-                events = turnier_data.get('events', [])
-                today = datetime.now(timezone.utc).date()
-                upcoming = []
-                for ev in events:
-                    if not set(ev.get('tags', [])).intersection(user_tags):
-                        continue
-                    try:
-                        d = datetime.strptime(ev.get('datum', ''), '%Y-%m-%d').date()
-                    except ValueError:
-                        continue
-                    if d > today:
-                        upcoming.append(ev)
-
-                if upcoming:
-                    upcoming.sort(key=lambda e: e.get('datum', ''))
-                    lines = []
-                    for ev in upcoming[:5]:
-                        name = ev.get('name', f'Termin #{ev.get("id", "?")}')
-                        try:
-                            d = datetime.strptime(ev['datum'], '%Y-%m-%d').date()
-                            ts = _noon_utc_ts(d)
-                            lines.append(f'**{name}** \u2014 <t:{ts}:D>')
-                        except Exception:
-                            lines.append(f'**{name}** \u2014 {ev.get("datum", "")}')
-
-                    tags_str = ', '.join(user_tags)
-                    msg = f'\U0001f3c6 **Turnier-Erinnerung** (Tags: {tags_str})\n\n' + '\n'.join(lines)
-
-                    dm = await interaction.user.create_dm()
-                    await dm.send(msg)
-                    sent.append('turnier')
+        due, subs = sr.due_reminders(turnier_data, date.today())
+        if uid_int in subs:
+            kwargs = {'ephemeral': True}
+            if due:
+                kwargs['embeds'] = [sr._reminder_embed(e) for e in due[:_DRY_RUN_EMBEDS]]
+            await interaction.followup.send(
+                _reminder_dry_run_text(due, len(subs), sr._reminder_channel()), **kwargs)
     except Exception as e:
         log.debug('Test-Reminder turnier: %s', e)
 

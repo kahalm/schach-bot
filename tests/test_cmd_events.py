@@ -1066,6 +1066,20 @@ def test_rallye_loops():
             data = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
             return {e['id']: e.get('reminded') for e in data.get('events', [])}
 
+        # --- due_reminders (rein): dieselbe Auswahl, die der Loop gleich postet (W4s S4-020) ---
+        stored = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+        due, subs = schachrallye_mod.due_reminders(stored, today)
+        check('due_reminders: #1 und #7 faellig, Rallye-Subscriber',
+              [e['id'] for e in due] == [1, 7] and subs == [111, 222],
+              detail=f'{[e["id"] for e in due]} {subs}')
+        check('due_reminders: ohne Rallye-Subscriber nichts faellig',
+              schachrallye_mod.due_reminders(
+                  {**stored, 'subscribers': {'blitz': [333]}}, today)[0] == [])
+        check('due_reminders: kaputte Datei → nichts', schachrallye_mod.due_reminders([], today) == ([], []))
+        check('due_reminders: morgen rueckt #9 (dann 7 Tage) nach, #4 (9 Tage) nicht',
+              [e['id'] for e in schachrallye_mod.due_reminders(stored, today + timedelta(days=1))[0]]
+              == [1, 7, 9])
+
         # --- Lauf 1: nur #1 (3 Tage) und #7 (genau 7 Tage) werden erinnert ---
         run_async(reminder())
         check('Reminder: 2 Posts (#1 und #7)', len(channel.sent) == 2,
