@@ -26,12 +26,13 @@ def is_placeholder(value: str | None) -> bool:
     return (value or '').strip().lower().startswith(PLACEHOLDER_PREFIXES)
 
 
-def secret_from_env(name: str, feature: str) -> str:
+def secret_from_env(name: str, feature: str, env=None) -> str:
     """Wert der Umgebungsvariable ``name``; ``''``, wenn sie leer ODER ein Platzhalter ist.
 
     Beim Platzhalter einmal je Variable ein ERROR-Log, der ``feature`` als abgeschaltet nennt.
+    ``env`` (Standard: ``os.environ``) erlaubt ``core.config.load`` eine eigene Umgebung.
     """
-    value = os.getenv(name, '') or ''
+    value = (os.environ if env is None else env).get(name, '') or ''
     if is_placeholder(value):
         if name not in _reported:
             _reported.add(name)

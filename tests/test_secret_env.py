@@ -175,11 +175,15 @@ def test_all_bot_secrets_use_check():
     check('build-info prueft mit secret_from_env(ROOKHUB_STATS_SECRET)',
           "secret_from_env('ROOKHUB_STATS_SECRET'" in start_src
           and "os.environ.get('ROOKHUB_STATS_SECRET'" not in start_src)
-    bot_src = _read('bot.py')
-    check('bot.py: WEBHOOK_SECRET ueber secret_from_env',
-          re.search(r"^WEBHOOK_SECRET = secret_from_env\('WEBHOOK_SECRET'", bot_src, re.M) is not None)
+    # Seit S4-018 liest core/config.py die Umgebung; bot.py uebernimmt nur den geprueften Wert.
+    config_src = _read('core', 'config.py')
+    check('core/config.py: WEBHOOK_SECRET ueber secret_from_env',
+          "secret_from_env('WEBHOOK_SECRET'" in config_src)
+    check('bot.py: WEBHOOK_SECRET aus der geprueften Konfiguration',
+          'CFG.webhook_secret' in _read('bot.py'))
     for name in ('ROOKHUB_LINK_SECRET', 'ROOKHUB_STATS_SECRET', 'WEBHOOK_SECRET'):
-        raw = [f for f in ('bot.py', 'core/discord_link.py', 'puzzle/rookhub.py', 'core/webhook_server.py')
+        raw = [f for f in ('bot.py', 'core/config.py', 'core/discord_link.py', 'puzzle/rookhub.py',
+                           'core/webhook_server.py')
                if re.search(rf"os\.(getenv|environ\.get)\(\s*'{name}'", _read(*f.split('/')))]
         check(f'{name} nirgends ungeprueft aus os.getenv', not raw, f'{raw}')
 

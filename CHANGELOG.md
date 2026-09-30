@@ -4,6 +4,22 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.23] - 2026-09-30
+### Changed
+- **`bot.py`: Env-Parsing als Funktion, Start nur noch über `main()`.** Der Einstieg brach beim
+  Import ohne `DISCORD_TOKEN` mit `SystemExit` ab und rief am Modulende `bot.run(...)` auf; er
+  ließ sich in Tests nur mit Fake-Token und gestubbtem Bot laden, andere Tests wichen auf
+  Quelltext-Vergleiche aus.
+- Jetzt liest und prüft `core/config.py` (`load()` → `BotConfig`) alle Start-Werte; ungültige
+  Zahlen brechen wie bisher mit derselben Meldung ab. Token-Prüfung, `dm_log.install()`,
+  `set_guild_id()` und `bot.run()` stehen in `main()` hinter `if __name__ == '__main__'`
+  (`python bot.py` startet unverändert). `import bot` registriert nur noch Befehle und Events.
+- Erster Schritt der Zerlegung (`/help` liegt seit 2.83.20 in `commands/help.py`); die
+  Admin-Befehle (`commands/admin.py`) und der Daily-Loop (`puzzle/daily_task.py`) folgen
+  getrennt. Neues Netz dafür: `tests/test_bot_import.py` lädt `bot.py` mit dem echten
+  discord.py ohne Token und prüft die Befehlsliste (48) samt generierter Hilfe;
+  `tests/test_config.py` prüft das Env-Parsing.
+
 ## [2.83.22] - 2026-09-30
 ### Fixed
 - **Keine Begrüßungs-DM mehr an Mitglieder fremder Guilds.** `on_member_join` begrüßte jeden

@@ -20,77 +20,34 @@ from datetime import datetime, time, timezone
 
 from core import stats, dm_log, command_log
 from core import discord_link
-from core import i18n as _i18n
+from core import config as _config
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 from core.permissions import require_privileged, set_guild_id, display_name_cached
-from core.secret_env import secret_from_env
 from core.version import VERSION, GIT_SHA, START_TIME, EMBED_COLOR
 
 from dotenv import load_dotenv
 load_dotenv()
 
-DISCORD_TOKEN   = os.getenv('DISCORD_TOKEN')
-if not DISCORD_TOKEN:
-    raise SystemExit('DISCORD_TOKEN fehlt in .env – siehe .env.example')
-try:
-    CHANNEL_ID = int(os.getenv('CHANNEL_ID', '0'))
-except ValueError:
-    raise SystemExit(f"CHANNEL_ID ungültig: {os.getenv('CHANNEL_ID')!r} — muss eine Zahl sein")
-# Zusaetzliche Daily-Channels (auch in anderen Guilds) — das Tagespuzzle wird in jeden
-# gepostet (gespiegelt), Solver-Tracking laeuft fuer alle. Komma-separiert; je Eintrag
-# entweder ``ID`` oder ``ID:sprache`` (de/en). Sprache pro Channel waehlbar — Default
-# DAILY_DEFAULT_LANG (sonst de). CHANNEL_ID nutzt den Default.
-DAILY_DEFAULT_LANG = _i18n.norm(os.getenv('DAILY_DEFAULT_LANG', 'de'))
-DAILY_CHANNEL_IDS: list[int] = [CHANNEL_ID] if CHANNEL_ID else []
-DAILY_CHANNEL_LANG: dict[int, str] = {CHANNEL_ID: DAILY_DEFAULT_LANG} if CHANNEL_ID else {}
-for _part in os.getenv('DAILY_EXTRA_CHANNEL_IDS', '').replace(' ', '').split(','):
-    if not _part:
-        continue
-    _id, _, _lang = _part.partition(':')
-    try:
-        _cid = int(_id)
-    except ValueError:
-        raise SystemExit(f"DAILY_EXTRA_CHANNEL_IDS enthält ungültige ID: {_id!r} — Format: ID oder ID:sprache (de/en), komma-getrennt")
-    if not _cid:
-        continue
-    if _cid not in DAILY_CHANNEL_IDS:
-        DAILY_CHANNEL_IDS.append(_cid)
-    DAILY_CHANNEL_LANG[_cid] = _i18n.norm(_lang) if _lang else DAILY_DEFAULT_LANG
+# Env-Parsing + Pruefung in core/config.py (ungueltige Zahlen → SystemExit wie bisher); das
+# Token prueft erst main(). Die Modul-Namen bleiben fuer die Verdrahtung und die Tests.
+CFG = _config.load()
+DISCORD_TOKEN = CFG.discord_token
+CHANNEL_ID = CFG.channel_id
+DAILY_DEFAULT_LANG = CFG.daily_default_lang
+DAILY_CHANNEL_IDS: list[int] = list(CFG.daily_channel_ids)
+DAILY_CHANNEL_LANG: dict[int, str] = dict(CFG.daily_channel_lang)
+TOURNAMENT_CHANNEL_ID = CFG.tournament_channel_id
+GUILD_ID = CFG.guild_id
+WOCHENPOST_CHANNEL_ID = CFG.wochenpost_channel_id
+PUZZLE_HOUR, PUZZLE_MINUTE = CFG.puzzle_hour, CFG.puzzle_minute
+WEBHOOK_BIND_HOST, WEBHOOK_PORT, WEBHOOK_SECRET = (
+    CFG.webhook_bind_host, CFG.webhook_port, CFG.webhook_secret)
 
 
 def _daily_lang(cid: int) -> str:
     return DAILY_CHANNEL_LANG.get(cid, DAILY_DEFAULT_LANG)
-try:
-    TOURNAMENT_CHANNEL_ID = int(os.getenv('TOURNAMENT_CHANNEL_ID') or os.getenv('RALLYE_CHANNEL_ID', '0'))
-except ValueError:
-    raise SystemExit(f"TOURNAMENT_CHANNEL_ID ungültig: {os.getenv('TOURNAMENT_CHANNEL_ID')!r} — muss eine Zahl sein")
-try:
-    GUILD_ID = int(os.getenv('GUILD_ID', '0'))
-except ValueError:
-    raise SystemExit(f"GUILD_ID ungültig: {os.getenv('GUILD_ID')!r} — muss eine Zahl sein")
-try:
-    WOCHENPOST_CHANNEL_ID = int(os.getenv('WOCHENPOST_CHANNEL_ID', '0'))
-except ValueError:
-    raise SystemExit(f"WOCHENPOST_CHANNEL_ID ungültig: {os.getenv('WOCHENPOST_CHANNEL_ID')!r} — muss eine Zahl sein")
-try:
-    PUZZLE_HOUR = int(os.getenv('PUZZLE_HOUR', '9'))
-    PUZZLE_MINUTE = int(os.getenv('PUZZLE_MINUTE', '0'))
-except ValueError:
-    raise SystemExit(
-        f"PUZZLE_HOUR/PUZZLE_MINUTE ungültig: "
-        f"{os.getenv('PUZZLE_HOUR')!r}/{os.getenv('PUZZLE_MINUTE')!r} — müssen Zahlen sein")
-if not (0 <= PUZZLE_HOUR <= 23 and 0 <= PUZZLE_MINUTE <= 59):
-    raise SystemExit(f'PUZZLE_HOUR/PUZZLE_MINUTE ungültig: {PUZZLE_HOUR}:{PUZZLE_MINUTE}')
 
-# Webhook-Empfaenger: HTTP-Server fuer RookHub-Solver-Events. Leer = deaktiviert.
-WEBHOOK_BIND_HOST = os.getenv('WEBHOOK_BIND_HOST', '0.0.0.0')
-try:
-    WEBHOOK_PORT = int(os.getenv('WEBHOOK_PORT', '9000'))
-except ValueError:
-    raise SystemExit(f"WEBHOOK_PORT ungültig: {os.getenv('WEBHOOK_PORT')!r} — muss eine Zahl sein")
-# Platzhalter aus .env.example (change_me_…) zaehlt wie leer (ERROR im Log).
-WEBHOOK_SECRET = secret_from_env('WEBHOOK_SECRET', 'Webhook-Empfaenger (RookHub-Solver-Events)')
 
 DM_STATE_FILE   = os.path.join(CONFIG_DIR, 'dm_state.json')
 
@@ -115,7 +72,7 @@ WELCOME_MESSAGE = (
     'Mit `/help` siehst du alle Befehle im Detail.'
 )
 
-ROOKHUB_WEB_URL = os.getenv('ROOKHUB_WEB_URL', '').rstrip('/')
+ROOKHUB_WEB_URL = CFG.rookhub_web_url
 
 
 def welcome_message_for(user) -> str:
@@ -737,6 +694,15 @@ async def on_app_command_error(interaction: discord.Interaction, error):
 
 # ---------------------------------------------------------------------------
 
-dm_log.install()
-set_guild_id(GUILD_ID)
-bot.run(DISCORD_TOKEN)
+def main():
+    """Startet den Bot – nur beim direkten Aufruf (``python bot.py``). ``import bot`` (Tests)
+    registriert Befehle und Events, braucht aber kein Token und verbindet nicht."""
+    if not DISCORD_TOKEN:
+        raise SystemExit(_config.TOKEN_MISSING)
+    dm_log.install()
+    set_guild_id(GUILD_ID)
+    bot.run(DISCORD_TOKEN)
+
+
+if __name__ == '__main__':
+    main()
