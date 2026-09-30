@@ -102,17 +102,51 @@ def _get_results(path: str, params=None, timeout: int = _TIMEOUT):
     return r
 
 
-def send_heartbeat(timeout: int = _LOOKUP_TIMEOUT) -> bool:
-    """Sendet ein Lebenszeichen an RookHubs ``/api/client-log`` (landet in ``rookhub-logs-*`` in
-    Elasticsearch), damit der log-watcher einen toten/hängenden Bot an AUSBLEIBENDEN Heartbeats
-    erkennt — der Bot selbst loggt nicht nach ES. Fire-and-forget: Fehler werden geschluckt.
+# Einmal pro Prozess warnen, wenn RookHub den signierten Heartbeat ablehnt.
+_heartbeat_rejected_warned = False
 
-    Nutzt die API-URL oder (Fallback, via nginx-Proxy) die Web-URL. ``True`` bei erfolgreichem POST.
+_HEARTBEAT_PATH = '/api/bot/heartbeat'
+
+
+def send_heartbeat(timeout: int = _LOOKUP_TIMEOUT) -> bool:
+    """Sendet ein Lebenszeichen an RookHub, damit der log-watcher einen toten/haengenden Bot an
+    AUSBLEIBENDEN Heartbeats erkennt. Der Waechter sucht den Bot-Heartbeat in ``rookhub-logs-*``;
+    die eigenen Logs des Bots (``core/log_setup.py``, ``schach-bot-logs-*``) prueft er dafuer nicht.
+    Fire-and-forget: Fehler werden geschluckt.
+
+    * Mit ``ROOKHUB_STATS_SECRET``: ``POST /api/bot/heartbeat``, signiert wie die uebrigen
+      ``/api/bot/*``-Aufrufe (``X-Bot-Timestamp`` + ``X-Bot-Signature`` ueber den Pfad, siehe
+      :func:`_bot_auth_headers`). Nur so entsteht die Zeile mit ``labels.HeartbeatService =
+      schach-bot``, die ein Anonymer nicht faelschen kann (S5-008).
+    * 404 darauf (RookHub vor diesem Endpunkt) oder ohne Secret: Rueckfall auf den anonymen
+      Altpfad ``/api/client-log`` (``kind=heartbeat_bot``).
+    * 401/403 (Secret passt nicht): KEIN anonymer Rueckfall, einmal WARNING – sonst saehe ein
+      falsch konfigurierter Bot fuer den Waechter gesund aus.
+
+    Nutzt die API-URL oder (Fallback, via nginx-Proxy) die Web-URL. ``True``, wenn der signierte
+    Heartbeat angenommen wurde (2xx) bzw. der Altpfad-POST durchging.
     """
+    global _heartbeat_rejected_warned
     base = ROOKHUB_API_URL or ROOKHUB_WEB_URL
     if not base:
         return False
     try:
+        headers = _bot_auth_headers(_HEARTBEAT_PATH)
+        if headers:
+            r = requests.post(f'{base}{_HEARTBEAT_PATH}', headers=headers, timeout=timeout)
+            if 200 <= r.status_code < 300:
+                _heartbeat_rejected_warned = False
+                return True
+            if r.status_code != 404:
+                if r.status_code in (401, 403) and not _heartbeat_rejected_warned:
+                    _heartbeat_rejected_warned = True
+                    log.warning('RookHub lehnt den signierten Bot-Heartbeat ab (HTTP %s) — '
+                                'ROOKHUB_STATS_SECRET pruefen; der log-watcher meldet den Bot '
+                                'sonst als tot.', r.status_code)
+                else:
+                    log.debug('RookHub-Heartbeat: HTTP %s', r.status_code)
+                return False
+            # 404: RookHub kennt den signierten Endpunkt noch nicht → Altpfad.
         requests.post(f'{base}/api/client-log',
                       json={'kind': 'heartbeat_bot', 'detail': 'alive', 'url': '/bot'},
                       timeout=timeout)

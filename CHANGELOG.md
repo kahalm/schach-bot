@@ -4,6 +4,24 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.15] - 2026-09-30
+### Security
+- **Bot-Heartbeat signiert.** Das Lebenszeichen ging anonym an `POST /api/client-log`
+  (`kind=heartbeat_bot`). Dieselbe Zeile konnte jeder ohne Anmeldung erzeugen – ein toter Bot wäre
+  für den log-watcher gesund geblieben, solange jemand alle paar Minuten diesen Aufruf schickt.
+- Jetzt: Mit `ROOKHUB_STATS_SECRET` meldet sich der Bot an `POST /api/bot/heartbeat`, signiert wie
+  die übrigen `/api/bot/*`-Aufrufe (`X-Bot-Timestamp` + `X-Bot-Signature` über den Pfad). RookHub
+  schreibt daraus die Zeile mit `labels.HeartbeatService = schach-bot`. Antwortet RookHub mit 404
+  (Stand vor dem Endpunkt) oder fehlt das Secret, nimmt der Bot wie bisher `/api/client-log`. Bei
+  401/403 (Secret passt nicht) gibt es keinen anonymen Rückfall, sondern einmal eine WARNING.
+- Veralteten Kommentar „der Bot selbst loggt nicht nach ES“ korrigiert (der Bot loggt über
+  `core/log_setup.py` nach `schach-bot-logs-*`; der Heartbeat-Check des Wächters liest aber
+  `rookhub-logs-*`).
+- Betrieb: Sobald RookHub mit `/api/bot/heartbeat` und dieser Bot laufen, schreibt der Bot keine
+  Zeile `ClientLog heartbeat_bot` mehr. Die Heartbeat-Prüfung des log-watchers dann gleichzeitig
+  auf `labels.HeartbeatService = schach-bot` umstellen, sonst meldet er den Bot als tot.
+  Reihenfolge: RookHub → Bot → log-watcher-Image → Wächter-Konfig.
+
 ## [2.83.14] - 2026-09-30
 ### Security
 - **Slacker-DM: der DM-Text geht nicht mehr nach Elasticsearch.** Der Activity-Watch von

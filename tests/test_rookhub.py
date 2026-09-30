@@ -116,6 +116,120 @@ def test_send_heartbeat_falls_back_to_web():
     check('send_heartbeat Fallback auf Web-URL', captured['url'] == 'http://web:8087/api/client-log')
 
 
+def _heartbeat_env(secret, api='http://rookhub:5001', web=''):
+    """Setzt URL/Secret fuer die Heartbeat-Tests, gibt die Rueckstell-Funktion zurueck."""
+    orig = (rh.ROOKHUB_API_URL, rh.ROOKHUB_WEB_URL, rh.ROOKHUB_STATS_SECRET, rh.requests.post,
+            rh.log, rh._heartbeat_rejected_warned)
+    rh.ROOKHUB_API_URL, rh.ROOKHUB_WEB_URL, rh.ROOKHUB_STATS_SECRET = api, web, secret
+    rh._heartbeat_rejected_warned = False
+
+    def restore():
+        (rh.ROOKHUB_API_URL, rh.ROOKHUB_WEB_URL, rh.ROOKHUB_STATS_SECRET, rh.requests.post,
+         rh.log, rh._heartbeat_rejected_warned) = orig
+    return restore
+
+
+def test_send_heartbeat_signed():
+    """S5-008: mit Secret → POST /api/bot/heartbeat, signiert ueber den Pfad, kein anonymer Altpfad."""
+    import hashlib as _hl
+    import hmac as _hm
+    restore = _heartbeat_env('geheim')
+    calls = []
+
+    def fake_post(url, json=None, timeout=None, headers=None):
+        calls.append({'url': url, 'json': json, 'headers': headers or {}})
+        return _FakeResp(204)
+
+    try:
+        _patch_post(fake_post)
+        ok = rh.send_heartbeat()
+        check('signierter Heartbeat → True', ok is True)
+        check('genau ein Aufruf', len(calls) == 1)
+        c = calls[0] if calls else {'url': '', 'headers': {}}
+        check('Ziel /api/bot/heartbeat', c['url'] == 'http://rookhub:5001/api/bot/heartbeat')
+        ts = c['headers'].get('X-Bot-Timestamp', '')
+        want = 'sha256=' + _hm.new(b'geheim', f'{ts}./api/bot/heartbeat'.encode(),
+                                   _hl.sha256).hexdigest()
+        check('X-Bot-Timestamp gesetzt', ts.isdigit())
+        check('X-Bot-Signature = HMAC("<ts>./api/bot/heartbeat")',
+              c['headers'].get('X-Bot-Signature') == want)
+        check('kein anonymer client-log-Aufruf', not any('/api/client-log' in x['url'] for x in calls))
+
+        # Web-URL-Fallback nutzt denselben signierten Pfad.
+        rh.ROOKHUB_API_URL, rh.ROOKHUB_WEB_URL = '', 'http://web:8087'
+        calls.clear()
+        rh.send_heartbeat()
+        check('Web-URL → http://web:8087/api/bot/heartbeat',
+              bool(calls) and calls[0]['url'] == 'http://web:8087/api/bot/heartbeat')
+    finally:
+        restore()
+
+
+def test_send_heartbeat_signed_404_falls_back():
+    """RookHub ohne den Endpunkt (404) → einmal Altpfad /api/client-log."""
+    restore = _heartbeat_env('geheim')
+    calls = []
+
+    def fake_post(url, json=None, timeout=None, headers=None):
+        calls.append({'url': url, 'json': json, 'headers': headers})
+        return _FakeResp(404 if url.endswith('/api/bot/heartbeat') else 204)
+
+    try:
+        _patch_post(fake_post)
+        ok = rh.send_heartbeat()
+        check('404 → Altpfad, True', ok is True)
+        check('404 → zwei Aufrufe (signiert, dann client-log)',
+              [c['url'].rsplit('/api/', 1)[-1] for c in calls] == ['bot/heartbeat', 'client-log'])
+        check('Altpfad kind=heartbeat_bot', len(calls) == 2 and calls[1]['json']['kind'] == 'heartbeat_bot')
+        check('Altpfad ohne Bot-Signatur', len(calls) == 2 and not calls[1]['headers'])
+    finally:
+        restore()
+
+
+def test_send_heartbeat_signed_rejected_no_fallback():
+    """401 (Secret passt nicht) → kein anonymer Rueckfall, False, WARNING nur einmal."""
+    restore = _heartbeat_env('falsch')
+    calls, warnings = [], []
+
+    class _Log:
+        def warning(self, *a, **k):
+            warnings.append(a)
+
+        def debug(self, *a, **k):
+            pass
+
+    def fake_post(url, json=None, timeout=None, headers=None):
+        calls.append(url)
+        return _FakeResp(401)
+
+    try:
+        _patch_post(fake_post)
+        rh.log = _Log()
+        check('401 → False', rh.send_heartbeat() is False)
+        rh.send_heartbeat()
+        check('401 → nie client-log', not any(u.endswith('/api/client-log') for u in calls))
+        check('401 → WARNING genau einmal', len(warnings) == 1)
+    finally:
+        restore()
+
+
+def test_send_heartbeat_without_secret_uses_legacy():
+    """Ohne ROOKHUB_STATS_SECRET kann der Bot nicht signieren → direkt Altpfad (wie bisher)."""
+    restore = _heartbeat_env('')
+    calls = []
+
+    def fake_post(url, json=None, timeout=None, headers=None):
+        calls.append(url)
+        return _FakeResp(204)
+
+    try:
+        _patch_post(fake_post)
+        check('ohne Secret → True', rh.send_heartbeat() is True)
+        check('ohne Secret → nur /api/client-log', calls == ['http://rookhub:5001/api/client-log'])
+    finally:
+        restore()
+
+
 def test_lookup_and_url():
     rh.ROOKHUB_API_URL = 'http://rookhub:5001'
     rh.ROOKHUB_WEB_URL = 'https://rookhub.example'
@@ -517,6 +631,8 @@ def main():
               test_get_books_cached,
               test_lookup_200_html_or_nondict_not_crash,
               test_send_heartbeat_ok, test_send_heartbeat_no_url, test_send_heartbeat_falls_back_to_web,
+              test_send_heartbeat_signed, test_send_heartbeat_signed_404_falls_back,
+              test_send_heartbeat_signed_rejected_no_fallback, test_send_heartbeat_without_secret_uses_legacy,
               test_lookup_and_url, test_url_no_fallback_to_api,
               test_lookup_caches_hit, test_lookup_caches_404,
               test_lookup_200_without_id_not_cached, test_id_cache_bounded,
