@@ -1,8 +1,14 @@
-"""DM-Log: jede ausgehende DM wird pro User in config/dm_log.json festgehalten.
+"""DM-Log: jede ausgehende und eingehende DM wird pro User in config/dm_log.json festgehalten.
 
 Aktivierung einmalig über ``install()`` beim Bot-Start. Danach wird
 ``discord.DMChannel.send`` transparent gewrappt — keine Call-Site muss
-geändert werden.
+geändert werden. Eingehende DMs schreibt ``bot.on_message`` über
+``log_incoming()`` (Prefix ``[IN]``).
+
+Umfang (Datenschutzerklärung, S4-008): Text auf 300 Zeichen gekürzt, ``?dl=``-Tokens
+maskiert, Einträge älter als 30 Tage fallen beim nächsten Schreiben weg; lesbar nur per
+``/dm-log`` (Admins/Moderatoren). Der Inhalt bleibt in dieser Datei – nach Elasticsearch
+geht aus diesem Modul nichts (die Slacker-DM im Motivations-Watch loggt nur die Länge).
 
 JSON-Format:
     {

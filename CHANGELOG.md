@@ -4,6 +4,20 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.14] - 2026-09-30
+### Security
+- **Slacker-DM: der DM-Text geht nicht mehr nach Elasticsearch.** Der Activity-Watch von
+  `/motivation` schrieb bei jeder Slacker-DM den kompletten DM-Text (`dm_text`) ins ES-Log, neben
+  Username, Spielname und Minuten – für Admins in Kibana lesbar, ohne dass die
+  Datenschutzerklärung das nannte.
+- Jetzt: ES bekommt vom Text nur noch die Länge (`dm_text_length`). Der Spielname bleibt und stammt
+  wie bisher nur aus der Präsenz von `/motivation`-Abonnenten. Das DM-Log (`config/dm_log.json`,
+  ein- und ausgehend, 300 Zeichen, 30 Tage, `/dm-log`) bleibt unverändert; der Modul-Kommentar
+  in `core/dm_log.py` beschreibt diesen Umfang jetzt vollständig (Grundlage für den Bot-Abschnitt
+  der RookHub-Datenschutzerklärung).
+- Betrieb: Vor diesem Stand geschriebene `labels.dm_text` bleiben bis zum Ablauf der ES-Aufbewahrung
+  im Index.
+
 ## [2.83.13] - 2026-09-30
 ### Security
 - **Privilegierte Intents nur noch, soweit der Bot sie nutzt.** Der Bot forderte `message_content`,

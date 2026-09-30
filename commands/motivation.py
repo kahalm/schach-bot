@@ -26,7 +26,6 @@ import discord
 from discord.ext import tasks
 
 from core.datetime_utils import parse_utc as _parse_utc, parse_zeit as _parse_zeit
-from core.discord_link import mask_dl_tokens
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 from core.permissions import is_privileged, display_name_cached
@@ -257,12 +256,14 @@ async def _check_activities():
             dm = await user_obj.create_dm()
             await dm.send(text)
             state['dm_sent'] = now.isoformat()
+            # Datensparsamkeit (S4-008): den DM-Text nur als Laenge nach ES, nie den Inhalt;
+            # der Spielname kommt nur aus der Praesenz von /motivation-Abonnenten (einziger Weg hierher).
             log.info('Slacker-DM an User %s (spielt %s seit %d min, linked=%s)',
                      uid_str, current_game, round(elapsed_minutes), progress is not None,
                      extra={'es_fields': {
                          'tags': ['motivation'],
                          'username': user_obj.name,
-                         'dm_text': mask_dl_tokens(text),   # ?dl=-Token nie ins ES
+                         'dm_text_length': len(text),
                          'game': current_game,
                          'elapsed_minutes': round(elapsed_minutes),
                          'linked': progress is not None,

@@ -473,8 +473,9 @@ def test_activity_watcher():
         check('nicht verknuepft DM → Registrier-CTA enthalten',
               'registr' in dm_text.lower() or 'rookhub' in dm_text.lower() or 'link' in dm_text.lower())
 
-        # 12b) S4-002: die DM traegt das persoenliche ?dl=-Token (Registrier-CTA), das
-        # ES-Log (labels.dm_text) darf es aber nicht im Klartext enthalten.
+        # 12b) S4-002/S4-008: die DM traegt das persoenliche ?dl=-Token (Registrier-CTA). Das
+        # ES-Log bekommt vom DM-Text nur die Laenge (kein dm_text, kein Token, kein Inhalt);
+        # der Spielname bleibt (nur Abonnenten landen hier).
         import logging as _logging
         import os
         from core import discord_link as _dlink
@@ -505,12 +506,20 @@ def test_activity_watcher():
                 os.environ['ROOKHUB_WEB_URL'] = _orig_web
         sent = sent_dms[0] if sent_dms else ''
         token = sent.split('dl=', 1)[1].split()[0] if 'dl=' in sent else ''
-        es_texts = [getattr(r, 'es_fields', {}).get('dm_text', '') for r in _records
-                    if 'dm_text' in (getattr(r, 'es_fields', None) or {})]
+        slacker = [r for r in _records if 'motivation' in
+                   ((getattr(r, 'es_fields', None) or {}).get('tags') or [])
+                   and 'Slacker-DM an User' in r.getMessage()]
+        es = getattr(slacker[0], 'es_fields', {}) if slacker else {}
+        es_dump = repr(es) + (slacker[0].getMessage() if slacker else '')
         check('Slacker-DM an Unverknuepften traegt dl-Token', len(token) > 20)
-        check('ES dm_text vorhanden', len(es_texts) == 1)
-        check('ES dm_text: dl-Token maskiert',
-              bool(es_texts) and 'dl=***' in es_texts[0] and token not in es_texts[0])
+        check('ES-Log der Slacker-DM vorhanden', len(slacker) == 1)
+        check('ES: kein dm_text-Feld mehr (S4-008)', 'dm_text' not in es)
+        check('ES: dm_text_length = Laenge der gesendeten DM',
+              bool(sent) and es.get('dm_text_length') == len(sent))
+        check('ES: weder dl-Token noch DM-Inhalt im Log',
+              bool(token) and token not in es_dump and 'dl=' not in es_dump
+              and sent not in es_dump)
+        check('ES: Spielname des Abonnenten bleibt', es.get('game') == 'Valorant')
 
         # 13) Kein Spiel aktiv → Watch-State wird geloescht
         fake_member.activities = []
