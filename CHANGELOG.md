@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.17] - 2026-09-30
+### Fixed
+- **`docker-compose.yml` reicht `DAILY_EXTRA_CHANNEL_IDS` und `DAILY_DEFAULT_LANG` durch.** Die
+  Repo-Compose zählt die Variablen einzeln auf (kein `env_file`), die `.env` liegt nicht im Image.
+  Wer den Bot nach `.env.example` aus dem Repo aufsetzte, bekam still nur den Haupt-Channel und
+  Deutsch – die Spiegel-Channels und die Channel-Sprache kamen nie im Container an. Der
+  Prod-Stack reichte beide schon durch; das Repo bildet ihn jetzt wieder ab.
+- `WEBHOOK_BIND_HOST` bleibt bewusst draußen: Im Container muss der Bot auf `0.0.0.0` binden,
+  sonst erreicht das Port-Mapping den Webhook nicht (Hinweis in `.env.example` und Compose).
+- Neuer Guard `tests/test_compose_env.py`: Jeder Schlüssel aus `.env.example` muss in
+  `docker-compose.yml` stehen oder mit Begründung auf der Ausnahmeliste; `env_file` ist dort
+  verboten.
+
 ## [2.83.16] - 2026-09-30
 ### Security
 - **Gemeinfreiheits-Sperre: kein SFTPGo-Link mehr am Schloss vorbei.** Der SFTPGo-Share deckt die

@@ -6,6 +6,9 @@ services:
       - DISCORD_TOKEN=${DISCORD_TOKEN}
       - GUILD_ID=${GUILD_ID:-0}
       - CHANNEL_ID=${CHANNEL_ID}
+      # Spiegel-Channels fuer das Tagespuzzle (ID oder ID:sprache, komma-getrennt); leer = nur CHANNEL_ID.
+      - DAILY_EXTRA_CHANNEL_IDS=${DAILY_EXTRA_CHANNEL_IDS:-}
+      - DAILY_DEFAULT_LANG=${DAILY_DEFAULT_LANG:-de}
       - LICHESS_TOKEN=${LICHESS_TOKEN}
       - ROOKHUB_API_URL=${ROOKHUB_API_URL}
       - ROOKHUB_WEB_URL=${ROOKHUB_WEB_URL}
@@ -29,6 +32,8 @@ services:
       # Elasticsearch-Logging (optional). Leer = deaktiviert.
       - ES_URL=${ES_URL:-}
       - ES_INDEX_PREFIX=${ES_INDEX_PREFIX:-schach-bot-logs}
+    # WEBHOOK_BIND_HOST bewusst nicht durchgereicht: im Container fest 0.0.0.0 (sonst erreicht
+    # das Port-Mapping den Webhook nicht). Ausnahme in tests/test_compose_env.py.
     ports:
       # Host-Port (= Port in der RookHub-URL) -> fester Container-Port 9000. Erreichbar via Host-IP.
       - "${WEBHOOK_PORT:-9000}:9000"
