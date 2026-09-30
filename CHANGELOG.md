@@ -4,6 +4,18 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.29] - 2026-09-30
+### Changed
+- **KI-Chat-Befehle nur noch mit `CLAUDE_API_KEY`.** Ohne Key (in beiden Stacks seit dem
+  25.09. abgeschaltet) standen `/chat_whitelist` und `/chat_clear` weiter in der Befehlsliste und
+  in `/help`, eine DM an den Bot blieb aber stumm. Jetzt registriert `commands/chat.py` die Befehle
+  und den DM-Listener nur mit Claude-Client; ohne Key fehlen sie auch in `/help`, und beim Start
+  steht eine Info-Zeile im Log. Eine schon gespeicherte Chat-Historie bleibt in
+  `config/chat.json` liegen und ist mit Key wieder per `/chat_clear` löschbar.
+### Removed
+- **`upload_many_to_lichess`** (107 Zeilen, Multi-Kapitel-Upload in eine Lichess-Studie) samt
+  Re-Export in `puzzle/__init__.py`: außer dem Re-Export gab es keinen Aufrufer und keinen Test.
+
 ## [2.83.28] - 2026-09-30
 ### Fixed
 - **`/test` zeigt die Rallye-Erinnerung als Dry-Run statt einer eigenen Kopie.** Nach jedem

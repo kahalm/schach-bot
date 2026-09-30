@@ -471,7 +471,15 @@ async def _chat_response(user_id: int, text: str, channel=None, persist: bool = 
 
 
 def setup(bot: commands.Bot):
-    """Registriert Chat-Commands und DM-Listener."""
+    """Registriert Chat-Commands und DM-Listener – nur mit Claude-Client (``CLAUDE_API_KEY``).
+
+    Ohne Client ist der KI-Chat aus: keine Befehle (``/help`` zeigt sie dann auch nicht) und
+    kein DM-Listener, statt Befehle anzubieten, auf die der Bot stumm bleibt.
+    """
+    if _client is None:
+        log.info('KI-Chat aus (kein CLAUDE_API_KEY): /chat_whitelist, /chat_clear und '
+                 'DM-Listener nicht registriert.')
+        return
     tree = bot.tree
 
     # --- DM-Listener ---

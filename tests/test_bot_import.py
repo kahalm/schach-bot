@@ -20,10 +20,12 @@ import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Registrierter Bestand (48). Neuer/entfernter Befehl → Liste bewusst mitpflegen.
+# Registrierter Bestand ohne CLAUDE_API_KEY (46); mit Key kommen die zwei KI-Chat-Befehle dazu
+# (S4-019). Neuer/entfernter Befehl → Liste bewusst mitpflegen.
+CHAT_COMMANDS = ['chat_clear', 'chat_whitelist']
 EXPECTED_COMMANDS = sorted([
-    'announce', 'autor', 'bestenliste', 'bibliothek', 'blind', 'blindpuzzle', 'chat_clear',
-    'chat_whitelist', 'daily', 'dm-log', 'elo', 'endless', 'greeted', 'help', 'ignore_kapitel',
+    'announce', 'autor', 'bestenliste', 'bibliothek', 'blind', 'blindpuzzle',
+    'daily', 'dm-log', 'elo', 'endless', 'greeted', 'help', 'ignore_kapitel',
     'kurs', 'link', 'log', 'motivation', 'motivation_send', 'next', 'puzzle', 'randompuzzle',
     'reindex', 'release-notes', 'reminder', 'resourcen', 'schachrallye', 'schachrallye_add',
     'schachrallye_del', 'schachrallye_sub', 'schachrallye_unsub', 'stats', 'tag', 'test',
@@ -108,10 +110,11 @@ def check(label, ok, detail=''):
         print(msg)
 
 
-def test_import_without_token():
-    print('[import bot ohne Token, echtes discord.py]')
+def _import_probe(claude_key: str):
+    """``import bot`` im eigenen Prozess; liefert (proc, RESULT-Dict oder None)."""
     env = dict(os.environ)
     env['DISCORD_TOKEN'] = ''  # leer gesetzt: load_dotenv ueberschreibt nichts
+    env['CLAUDE_API_KEY'] = claude_key  # ebenso: KI-Chat an/aus unabhaengig von der Umgebung
     env['BOT_REPO'] = REPO
     for k in ('GUILD_ID', 'CHANNEL_ID', 'DAILY_EXTRA_CHANNEL_IDS', 'ES_URL'):
         env.pop(k, None)
@@ -119,16 +122,36 @@ def test_import_without_token():
         proc = subprocess.run([sys.executable, '-c', _PROBE], cwd=cwd, env=env,
                               capture_output=True, text=True, timeout=120)
     line = next((l for l in proc.stdout.splitlines() if l.startswith('RESULT ')), None)
-    check('import bot ohne DISCORD_TOKEN laeuft durch', proc.returncode == 0 and line is not None,
+    return proc, (json.loads(line[len('RESULT '):]) if line else None)
+
+
+def _check_names(label, names, expected):
+    check(label, names == expected,
+          f"neu: {sorted(set(names) - set(expected))}, "
+          f"fehlt: {sorted(set(expected) - set(names))}")
+
+
+def test_import_without_token():
+    print('[import bot ohne Token, echtes discord.py]')
+    proc, res = _import_probe('')
+    check('import bot ohne DISCORD_TOKEN laeuft durch', proc.returncode == 0 and res is not None,
           (proc.stderr or proc.stdout)[-800:])
-    if line is None:
+    if res is None:
         return
-    res = json.loads(line[len('RESULT '):])
     check('import ruft bot.run nicht auf', res['runs'] == 0, str(res['runs']))
     check('bot.main() vorhanden', res['has_main'])
-    check('Befehlsliste == erwarteter Bestand', res['names'] == EXPECTED_COMMANDS,
-          f"neu: {sorted(set(res['names']) - set(EXPECTED_COMMANDS))}, "
-          f"fehlt: {sorted(set(EXPECTED_COMMANDS) - set(res['names']))}")
+    _check_names('Befehlsliste == erwarteter Bestand (ohne CLAUDE_API_KEY, KI-Chat aus)',
+                 res['names'], EXPECTED_COMMANDS)
+
+    # Mit Key registriert der KI-Chat seine zwei Befehle (Client wird nur gebaut, kein Netz);
+    # die Pruefungen unten laufen auf diesem vollen Bestand.
+    proc, res = _import_probe('probe-key')
+    check('import bot mit CLAUDE_API_KEY laeuft durch', proc.returncode == 0 and res is not None,
+          (proc.stderr or proc.stdout)[-800:])
+    if res is None:
+        return
+    _check_names('mit CLAUDE_API_KEY: Bestand + /chat_clear, /chat_whitelist',
+                 res['names'], sorted(EXPECTED_COMMANDS + CHAT_COMMANDS))
     valid = {'puzzle', 'bibliothek', 'community', 'info', 'admin', None}
     bad = {n: a for n, a in res['areas'].items() if a not in valid}
     check('jeder Befehl mit gueltigem extras[help]', not bad, str(bad))

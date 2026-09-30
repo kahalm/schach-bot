@@ -307,8 +307,8 @@ schach-bot/
 
 | Command | Beschreibung | Zugriff |
 |---------|-------------|---------|
-| `/chat_whitelist [user] [aktion]` | Chat-Zugang verwalten | Admin |
-| `/chat_clear` | Eigene Chat-Historie loeschen | alle |
+| `/chat_whitelist [user] [aktion]` | Chat-Zugang verwalten (nur mit `CLAUDE_API_KEY`) | Admin |
+| `/chat_clear` | Eigene Chat-Historie loeschen (nur mit `CLAUDE_API_KEY`) | alle |
 
 ### Info & Admin
 
@@ -420,7 +420,9 @@ Woechentliche Aufgaben/Themen, gepostet als Thread in einem konfigurierten Chann
 
 ## KI-Chat
 
-Powered by Claude (`claude-sonnet-4-6`), aktiviert durch `CLAUDE_API_KEY` in `.env`.
+Powered by Claude (`claude-sonnet-4-6`), aktiviert durch `CLAUDE_API_KEY` in `.env`. Ohne Key
+registriert der Bot weder `/chat_whitelist` und `/chat_clear` (sie fehlen dann auch in `/help`)
+noch den DM-Listener. Eine schon gespeicherte Historie bleibt in `config/chat.json` liegen.
 
 - **Zugang**: Per `/chat_whitelist` oder global freigeschaltet
 - **Interaktion**: User schreiben dem Bot per DM, Claude antwortet

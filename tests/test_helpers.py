@@ -581,6 +581,11 @@ for mod in (elo_mod, resourcen_mod, youtube_mod, wanted_mod,
         mod.setup(_cap_bot, wochenpost_channel_id=0)
     elif mod is leaderboard_mod:
         mod.setup(_cap_bot, channel_id=0)
+    elif mod is chat_mod:
+        # Der KI-Chat registriert seine Befehle nur mit Claude-Client (CLAUDE_API_KEY);
+        # fuer die Befehlstests mit Attrappe, danach ist _client wieder None.
+        with _mock.patch.object(chat_mod, '_client', MagicMock()):
+            mod.setup(_cap_bot)
     else:
         mod.setup(_cap_bot)
 

@@ -286,6 +286,39 @@ def test_chat_no_key():
     # _client ist None wenn kein Key gesetzt (Standard im Test)
     check('_client ist None im Test', chat_mod._client is None)
 
+    # Ohne Client keine Chat-Befehle und kein DM-Listener (Review W4s S4-019): sonst stehen
+    # /chat_clear und /chat_whitelist in /help, eine DM an den Bot bleibt aber stumm.
+    from unittest.mock import MagicMock, patch
+
+    class _Tree:
+        def __init__(self):
+            self.names = []
+
+        def command(self, **kwargs):
+            self.names.append(kwargs.get('name'))
+            return lambda f: f
+
+    class _Bot:
+        def __init__(self):
+            self.tree = _Tree()
+            self.listeners = []
+
+        def listen(self, event):
+            self.listeners.append(event)
+            return lambda f: f
+
+    off = _Bot()
+    chat_mod.setup(off)
+    check('ohne Key: keine Chat-Befehle registriert', off.tree.names == [], str(off.tree.names))
+    check('ohne Key: kein DM-Listener', off.listeners == [], str(off.listeners))
+
+    on = _Bot()
+    with patch.object(chat_mod, '_client', MagicMock()):
+        chat_mod.setup(on)
+    check('mit Client: /chat_whitelist + /chat_clear registriert',
+          sorted(on.tree.names) == ['chat_clear', 'chat_whitelist'], str(on.tree.names))
+    check('mit Client: DM-Listener', on.listeners == ['on_message'], str(on.listeners))
+
 
 def test_puzzle_context():
     """Tests fuer Puzzle-Kontext im KI-Chat."""

@@ -54,7 +54,7 @@ from .lichess import (  # noqa: F401
     _extract_study_id, _export_pgn_for_lichess,
     _LICHESS_COOLDOWN_SECS, LichessRateLimitError,
     _lichess_cooldown_until, _lichess_rate_limited, _lichess_set_cooldown,
-    _lichess_request, upload_to_lichess, upload_many_to_lichess,
+    _lichess_request, upload_to_lichess,
 )
 
 # --- Embed-Bau ---
