@@ -55,6 +55,40 @@ print('RESULT ' + json.dumps({
 }))
 '''
 
+# N10-004: main() installiert ueber setup_hook einen SIGTERM-Handler (→ bot.close()) und leert
+# nach bot.run die ES-Warteschlange. bot.run wird durch einen Mini-Lauf ersetzt, der wie
+# discord.py setup_hook im laufenden Loop aufruft und sich dann selbst SIGTERM schickt; ohne
+# Handler beendet der Kernel-Standard den Prozess sofort (Exit -15, kein RESULT).
+_SIGTERM_PROBE = r'''
+import asyncio, json, os, signal, sys
+sys.path.insert(0, os.environ['BOT_REPO'])
+import bot
+order, closed = [], []
+
+async def _fake_close():
+    closed.append(1)
+
+def _fake_run(token, *a, **k):
+    async def _sim():
+        await bot.bot.setup_hook()
+        os.kill(os.getpid(), signal.SIGTERM)
+        for _ in range(100):
+            if closed:
+                break
+            await asyncio.sleep(0.02)
+    asyncio.run(_sim())
+    order.append('run')
+
+bot.bot.close = _fake_close
+bot.bot.run = _fake_run
+bot.DISCORD_TOKEN = 'probe-token'
+bot.dm_log.install = lambda: None
+from core import es_client as _es
+_es.shutdown = lambda: order.append('es_shutdown')
+bot.main()
+print('RESULT ' + json.dumps({'closed': len(closed), 'order': order}))
+'''
+
 PASS = 'OK  '
 FAIL = 'FAIL'
 total = 0
@@ -106,8 +140,30 @@ def test_import_without_token():
     print()
 
 
+def test_sigterm_closes_bot():
+    print('[SIGTERM → bot.close(), danach ES-Flush (N10-004)]')
+    env = dict(os.environ)
+    env['DISCORD_TOKEN'] = ''
+    env['BOT_REPO'] = REPO
+    for k in ('GUILD_ID', 'CHANNEL_ID', 'DAILY_EXTRA_CHANNEL_IDS', 'ES_URL'):
+        env.pop(k, None)
+    with tempfile.TemporaryDirectory(prefix='schach_sigterm_') as cwd:
+        proc = subprocess.run([sys.executable, '-c', _SIGTERM_PROBE], cwd=cwd, env=env,
+                              capture_output=True, text=True, timeout=120)
+    line = next((l for l in proc.stdout.splitlines() if l.startswith('RESULT ')), None)
+    check('SIGTERM beendet den Prozess nicht hart', proc.returncode == 0 and line is not None,
+          f'rc={proc.returncode} ' + (proc.stderr or proc.stdout)[-600:])
+    if line is None:
+        return
+    res = json.loads(line[len('RESULT '):])
+    check('SIGTERM ruft bot.close() auf', res['closed'] == 1, str(res))
+    check('ES-Warteschlange nach bot.run geleert', res['order'] == ['run', 'es_shutdown'], str(res))
+    print()
+
+
 if __name__ == '__main__':
     print('=== test_bot_import.py ===\n')
     test_import_without_token()
+    test_sigterm_closes_bot()
     print(f'--- {total} checks, {failed} failed ---')
     sys.exit(1 if failed else 0)

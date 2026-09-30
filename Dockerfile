@@ -20,8 +20,10 @@ RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 # --- Laufzeit: ohne Compiler und -dev-Pakete, nur die cairo-Laufzeitbibliothek ---
 FROM python:3.13-slim
 
+# tini als init (PID 1): reicht SIGTERM von docker stop/Watchtower an python weiter (bot.py
+# schliesst dann sauber) und raeumt Zombies ab - im Image, damit es nicht an der Stack-Compose haengt.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libcairo2 \
+    && apt-get install -y --no-install-recommends libcairo2 tini \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /opt/venv /opt/venv
@@ -47,4 +49,5 @@ ENV GIT_SHA=$GIT_SHA
 ARG GIT_REF=
 ENV GIT_REF=$GIT_REF
 
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["python", "bot.py"]

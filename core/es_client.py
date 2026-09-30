@@ -4,8 +4,10 @@ Konfiguration via Umgebungsvariablen:
   ES_URL          http://host:9200  (leer = ES deaktiviert)
   ES_INDEX_PREFIX schach-bot-logs   (Default)
 
-Alle Netzwerkfehler werden still geschluckt – ES-Ausfall darf den Bot
-nicht beeinträchtigen.
+Netzwerkfehler erreichen den Bot nie – ES-Ausfall darf ihn nicht beeinträchtigen. Verlorene
+Dokumente (ES-Antwort >= 300, Fehler/Timeout, volle Warteschlange) werden aber gezählt und
+höchstens einmal je Stunde als Warnung ins Log geschrieben (Datei-Log, nicht still).
+Beim Beenden sendet :func:`shutdown` die Warteschlange kurz nach.
 """
 
 import json
@@ -13,6 +15,7 @@ import logging
 import os
 import queue
 import threading
+import time
 from datetime import datetime, timezone
 
 log = logging.getLogger('schach-bot')
@@ -24,35 +27,115 @@ _INDEX_PREFIX: str = os.environ.get('ES_INDEX_PREFIX', 'schach-bot-logs')
 _queue: queue.Queue = queue.Queue(maxsize=2000)
 _worker_started = False
 _worker_lock = threading.Lock()
+_worker_thread: threading.Thread | None = None
+_stop = threading.Event()
+
+_POST_TIMEOUT = 3          # Sekunden je Dokument
+_FLUSH_SECONDS = 2.0       # beim Beenden hoechstens so lange nachsenden
+_WARN_INTERVAL = 3600.0    # Verlust-Warnung hoechstens einmal je Stunde
+
+# Verlorene Dokumente seit der letzten Warnung (Zugriff aus Worker UND Aufrufer-Threads).
+_stats_lock = threading.Lock()
+_stats = {'rejected': 0, 'failed': 0, 'dropped': 0}
+_last_status: int | None = None
+_last_warn: float | None = None
 
 
-def _worker():
+def _count(key: str, status: int | None = None) -> None:
+    global _last_status
+    with _stats_lock:
+        _stats[key] += 1
+        if status is not None:
+            _last_status = status
+
+
+def _new_session():
     import requests
     session = requests.Session()
     session.headers['Content-Type'] = 'application/json'
+    return session
+
+
+def _post(session, url, doc) -> None:
+    """Ein Dokument senden; Fehler nie nach oben, aber zaehlen."""
+    try:
+        resp = session.post(url, data=json.dumps(doc, ensure_ascii=False, default=str),
+                            timeout=_POST_TIMEOUT)
+    except Exception:
+        _count('failed')
+        return
+    status = getattr(resp, 'status_code', None)
+    if isinstance(status, int) and status >= 300:
+        _count('rejected', status)   # z. B. fehlende Pipeline, Mapping-Konflikt unter labels.*
+
+
+def _maybe_warn(force: bool = False) -> None:
+    """Hoechstens einmal je Stunde (``force``: beim Beenden) verlorene Dokumente melden."""
+    global _last_status, _last_warn
+    now = time.monotonic()
+    with _stats_lock:
+        if not any(_stats.values()):
+            return
+        if not force and _last_warn is not None and now - _last_warn < _WARN_INTERVAL:
+            return
+        snap, status = dict(_stats), _last_status
+        for key in _stats:
+            _stats[key] = 0
+        _last_status, _last_warn = None, now
+    log.warning('ES-Versand: %d Dokument(e) von ES abgelehnt (zuletzt HTTP %s), %d nicht gesendet '
+                '(Fehler/Timeout), %d verworfen (Warteschlange voll bzw. beim Beenden).',
+                snap['rejected'], status or '-', snap['failed'], snap['dropped'])
+
+
+def _worker():
+    session = _new_session()
+    while not _stop.is_set():
+        try:
+            url, doc = _queue.get(timeout=1)
+        except queue.Empty:
+            _maybe_warn()
+            continue
+        try:
+            _post(session, url, doc)
+        finally:
+            _queue.task_done()
+        _maybe_warn()
+    # Beenden: kurz nachsenden, den Rest als verworfen zaehlen und einmal melden.
+    deadline = time.monotonic() + _FLUSH_SECONDS
     while True:
         try:
-            url, doc = _queue.get(timeout=5)
-            try:
-                session.post(url, data=json.dumps(doc, ensure_ascii=False, default=str),
-                             timeout=3)
-            except Exception:
-                pass  # ES-Fehler nie nach oben propagieren
-            finally:
-                _queue.task_done()
+            url, doc = _queue.get_nowait()
         except queue.Empty:
-            continue
+            break
+        try:
+            if time.monotonic() < deadline:
+                _post(session, url, doc)
+            else:
+                _count('dropped')
+        finally:
+            _queue.task_done()
+    _maybe_warn(force=True)
 
 
 def _ensure_worker():
-    global _worker_started
+    global _worker_started, _worker_thread
     if _worker_started:
         return
     with _worker_lock:
         if not _worker_started:
             t = threading.Thread(target=_worker, daemon=True, name='es-sender')
             t.start()
+            _worker_thread = t
             _worker_started = True
+
+
+def shutdown() -> None:
+    """Beim Beenden des Bots: Worker stoppen, Warteschlange hoechstens ``_FLUSH_SECONDS``
+    nachsenden, Verluste einmal ins Log. Ohne laufenden Worker (ES aus) ein No-op."""
+    _stop.set()
+    t = _worker_thread
+    if t is not None and t.is_alive():
+        t.join(_FLUSH_SECONDS + _POST_TIMEOUT + 2)
 
 
 def enabled() -> bool:
@@ -118,7 +201,7 @@ def send_log(level: str, message: str, extra: dict | None = None):
         url = f"{_ES_URL}/{_index_name(_INDEX_PREFIX)}/_doc?pipeline=logs-schema-normalize"
         _queue.put_nowait((url, doc))
     except queue.Full:
-        pass
+        _count('dropped')
 
 
 def send_event(event_type: str, payload: dict):
@@ -136,4 +219,4 @@ def send_event(event_type: str, payload: dict):
         url = f"{_ES_URL}/{_index_name(event_prefix)}/_doc"
         _queue.put_nowait((url, doc))
     except queue.Full:
-        pass
+        _count('dropped')

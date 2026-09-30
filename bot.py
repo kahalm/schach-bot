@@ -16,9 +16,10 @@ import discord
 from discord.ext import tasks, commands
 import json
 import os
+import signal
 from datetime import datetime, time, timezone
 
-from core import stats, dm_log, command_log
+from core import stats, dm_log, command_log, es_client
 from core import discord_link
 from core import config as _config
 from core.json_store import atomic_read, atomic_update
@@ -694,6 +695,27 @@ async def on_app_command_error(interaction: discord.Interaction, error):
 
 # ---------------------------------------------------------------------------
 
+def _install_sigterm_close(loop) -> bool:
+    """SIGTERM (``docker stop``, Watchtower-Neustart) → ``bot.close()`` im Event-Loop.
+
+    Ohne Handler schliesst der Bot die Gateway-Sitzung nie selbst, und ``docker stop`` endet
+    nach 10 s mit SIGKILL. True, wenn der Handler sitzt."""
+    tasks_held = []   # Referenz halten, sonst darf der GC den close-Task mitten im Lauf einsammeln
+
+    def _on_sigterm():
+        log.info('SIGTERM empfangen – Bot wird beendet.')
+        tasks_held.append(loop.create_task(bot.close()))
+    try:
+        loop.add_signal_handler(signal.SIGTERM, _on_sigterm)
+    except (NotImplementedError, RuntimeError):   # Windows bzw. nicht im Hauptthread
+        return False
+    return True
+
+
+async def _setup_hook():
+    _install_sigterm_close(asyncio.get_running_loop())
+
+
 def main():
     """Startet den Bot – nur beim direkten Aufruf (``python bot.py``). ``import bot`` (Tests)
     registriert Befehle und Events, braucht aber kein Token und verbindet nicht."""
@@ -701,7 +723,11 @@ def main():
         raise SystemExit(_config.TOKEN_MISSING)
     dm_log.install()
     set_guild_id(GUILD_ID)
-    bot.run(DISCORD_TOKEN)
+    bot.setup_hook = _setup_hook   # der SIGTERM-Handler braucht den laufenden Loop
+    try:
+        bot.run(DISCORD_TOKEN)
+    finally:
+        es_client.shutdown()   # Warteschlange kurz nachsenden, Verluste ins Log
 
 
 if __name__ == '__main__':

@@ -55,6 +55,7 @@ Runtime state lives in `config/` (gitignored, auto-created).
 - **Atomic JSON persistence** (`core/json_store.py`): Thread-safe read/write/update with per-file locks and `tempfile` → `os.replace`.
 - **In-memory caches**: Ignore lists, chapter ignores, books config, puzzle lines (with Pickle disk cache). Invalidated on write or via `/reindex`.
 - **Button reactions** (`puzzle/buttons.py`): `PuzzleView` with mutex-paired buttons. Clicks defer immediately, side-effects run as background tasks.
+- **Stopp** (`docker stop`, Watchtower): `tini` ist im Image PID 1 (`ENTRYPOINT`) und reicht SIGTERM weiter; `main()` setzt über `setup_hook` einen SIGTERM-Handler → `bot.close()`, danach sendet `es_client.shutdown()` die ES-Warteschlange kurz nach. Verlorene ES-Dokumente (Antwort ≥ 300, Fehler, volle Warteschlange) meldet `core/es_client.py` höchstens einmal je Stunde als Warnung im Log.
 
 ## Test-Regeln (PFLICHT!)
 

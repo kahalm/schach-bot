@@ -4,6 +4,21 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.26] - 2026-09-30
+### Fixed
+- **Sauberer Stopp statt SIGKILL nach 10 Sekunden.** `python bot.py` lief im Container als PID 1
+  ohne Signal-Handler; ein SIGTERM von `docker stop` oder dem nächtlichen Watchtower-Neustart kam
+  nie an, Docker beendete den Bot erst nach 10 s hart. Die Gateway-Sitzung blieb offen (der Bot
+  wirkte bis zum Heartbeat-Timeout online), und wartende Log-Dokumente für Elasticsearch gingen
+  verloren. Jetzt ist `tini` im Image der Init-Prozess und reicht das Signal weiter, `bot.py`
+  schließt die Verbindung per `bot.close()` und sendet danach die ES-Warteschlange höchstens
+  2 Sekunden lang nach. Die Stack-Compose braucht dafür kein `init: true`.
+- **Verlorene Elasticsearch-Dokumente werden gemeldet.** Der ES-Sender ignorierte die Antwort und
+  verwarf bei voller Warteschlange still; lehnte ES Dokumente ab (fehlende Pipeline,
+  Mapping-Konflikt) oder hing es, sah der log-watcher nur Stille. Jetzt zählt der Sender
+  Ablehnungen (HTTP ≥ 300), Fehler/Timeouts und verworfene Dokumente und schreibt sie höchstens
+  einmal je Stunde als Warnung ins Log (`bot.log`), beim Beenden einmal zusammengefasst.
+
 ## [2.83.25] - 2026-09-30
 ### Fixed
 - **`/reminder` versucht einen unzustellbaren Nutzer nicht mehr jede Minute.** Scheiterte die DM

@@ -348,6 +348,20 @@ def test_supply_chain_pinned():
           bases and len(set(bases)) == 1 and bases[0].startswith('python:3.13'), f'{bases}')
 
 
+def test_docker_init():
+    """Review W4s N10-004: tini als init im Image, sonst ist python PID 1 und docker stop endet
+    nach 10 s mit SIGKILL (Stack-Compose setzt kein init: true)."""
+    stages = _dockerfile_stages(_read('Dockerfile'))
+    runtime = stages[-1] if stages else ''
+    check('Laufzeit-Stage installiert tini',
+          re.search(r'apt-get install[^\n]*(?:\\\n[^\n]*)*\btini\b', runtime) is not None)
+    entry = re.findall(r'^ENTRYPOINT\s+(.+)$', runtime, re.M)
+    check('ENTRYPOINT startet tini (exec-Form)',
+          entry and entry[-1].strip() == '["/usr/bin/tini", "--"]', f'{entry}')
+    check('CMD startet bot.py weiter in exec-Form',
+          re.search(r'^CMD \["python", "bot\.py"\]\s*$', runtime, re.M) is not None)
+
+
 def test_docs_name_runner():
     check('CLAUDE.md nennt python tests/run_all.py',
           'python tests/run_all.py' in _read('CLAUDE.md'))
@@ -359,7 +373,8 @@ def test_docs_name_runner():
 
 def main():
     for t in (test_release_workflow_gated, test_release_tags_guarded, test_every_test_file_has_runner,
-              test_collect, test_books_exception, test_docs_name_runner, test_supply_chain_pinned):
+              test_collect, test_books_exception, test_docs_name_runner, test_supply_chain_pinned,
+              test_docker_init):
         print(f'== {t.__name__} ==')
         t()
     print()
