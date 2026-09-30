@@ -8,6 +8,7 @@ import discord
 from discord.ext import tasks
 
 import puzzle
+from core import dm_delivery
 from core.datetime_utils import parse_utc as _parse_utc
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
@@ -32,7 +33,9 @@ async def _reminder_loop_inner():
     if not isinstance(data, dict):
         return
     now = datetime.now(timezone.utc)
-    updated_nexts: dict[str, str] = {}
+    # uid -> (gelesenes next, {next?, retries, unreachable}); remove: uid -> gelesenes next
+    updates: dict[str, tuple[str, dict]] = {}
+    remove: dict[str, str] = {}
 
     for uid_str, entry in list(data.items()):
         raw_next = entry.get('next')
@@ -57,6 +60,9 @@ async def _reminder_loop_inner():
         missed = int((now - next_time).total_seconds() // (hours * 3600))
 
         uid = int(uid_str)
+        error = None
+        first_dm_sent = False   # Nachhol-Zweig: Hinweis-DM raus → Termin rueckt auf jeden Fall vor
+        posted = 0
         try:
             user = await _bot.fetch_user(uid)
             dm = await user.create_dm()
@@ -66,35 +72,73 @@ async def _reminder_loop_inner():
                     f'Ich war leider offline und habe **{missed}** '
                     f'Reminder verpasst. Hier ist ein Puzzle zum Nachholen:'
                 )
-                await puzzle.post_puzzle(dm, count=1, book_idx=entry.get('buch', 0), user_id=uid)
+                first_dm_sent = True
+                posted = await puzzle.post_puzzle(dm, count=1, book_idx=entry.get('buch', 0), user_id=uid)
                 log.info('Reminder: %d verpasst, 1 nachgereicht für User %s.', missed, uid)
             else:
-                await puzzle.post_puzzle(
+                posted = await puzzle.post_puzzle(
                     dm,
                     count=entry.get('puzzle', 1),
                     book_idx=entry.get('buch', 0),
                     user_id=uid,
                 )
                 log.info('Reminder: %d Puzzle(s) an User %s gesendet.', entry.get('puzzle', 1), uid)
-        except discord.Forbidden:
-            log.warning('Reminder: DM an %s nicht möglich (DMs deaktiviert).', uid)
-            continue
         except Exception as e:
-            log.warning('Reminder: Fehler für User %s: %s', uid, e)
-            continue
+            error = e
 
-        # Nur bei Erfolg: nächsten Zeitpunkt vorrücken
-        new_next = next_time + timedelta(hours=hours) * (missed + 1)
-        updated_nexts[uid_str] = new_next.isoformat()
+        # Zustellpolitik wie bei /motivation (core/dm_delivery): unzustellbar → regulaerer
+        # Termin + Zaehler, nach MAX_UNREACHABLE_DAYS entfernen; voruebergehend → hoechstens
+        # MAX_TRANSIENT_RETRIES Minuten-Retries. Vorher: jede Minute ein neuer Versuch, endlos.
+        outcome = dm_delivery.outcome_of(None if first_dm_sent else error)
+        retries = int(entry.get('retries', 0) or 0)
+        unreachable = int(entry.get('unreachable', 0) or 0)
+        new_next = (next_time + timedelta(hours=hours) * (missed + 1)).isoformat()
+        if outcome == dm_delivery.SENT:
+            if error is not None:
+                log.warning('Reminder: Fehler für User %s: %s', uid, error)
+            retries = 0
+            if first_dm_sent or posted:
+                unreachable = 0
+        elif outcome == dm_delivery.UNREACHABLE:
+            log.warning('Reminder: DM an %s nicht möglich (DMs deaktiviert).', uid)
+            retries, unreachable = 0, unreachable + 1
+            if dm_delivery.unreachable_expired(unreachable, hours):
+                log.info('Reminder: User %s %d-mal in Folge nicht erreichbar – Reminder '
+                         'automatisch beendet.', uid, unreachable)
+                remove[uid_str] = raw_next
+                continue
+        else:
+            log.warning('Reminder: Fehler für User %s: %s', uid, error)
+            retries += 1
+            if retries < dm_delivery.MAX_TRANSIENT_RETRIES:
+                new_next = None   # naechste Minute erneut, Termin bleibt
+            else:
+                log.warning('Reminder: User %s nach %d Fehlversuchen übersprungen – nächster '
+                            'regulärer Termin.', uid, retries)
+                retries = 0
+        updates[uid_str] = (raw_next, {'next': new_next, 'retries': retries,
+                                       'unreachable': unreachable})
 
-    # Atomares Update: nur next-Felder aktualisieren (bewahrt parallele Aenderungen)
-    if updated_nexts:
-        def _update_nexts(data):
-            for uid_str, new_next in updated_nexts.items():
-                if uid_str in data:
-                    data[uid_str]['next'] = new_next
+    # Atomares Update: nur die eigenen Felder, und nur wenn der Eintrag unveraendert ist
+    # (ein zwischenzeitlich neu gesetzter /reminder wird weder ueberschrieben noch geloescht).
+    if updates or remove:
+        def _apply(data):
+            for uid_str, (seen_next, fields) in updates.items():
+                cur = data.get(uid_str)
+                if not isinstance(cur, dict) or cur.get('next') != seen_next:
+                    continue
+                if fields['next']:
+                    cur['next'] = fields['next']
+                for key in ('retries', 'unreachable'):
+                    if fields[key]:
+                        cur[key] = fields[key]
+                    else:
+                        cur.pop(key, None)
+            for uid_str, seen_next in remove.items():
+                if isinstance(data.get(uid_str), dict) and data[uid_str].get('next') == seen_next:
+                    del data[uid_str]
             return data
-        atomic_update(REMINDER_FILE, _update_nexts)
+        atomic_update(REMINDER_FILE, _apply)
 
 
 def setup(bot):

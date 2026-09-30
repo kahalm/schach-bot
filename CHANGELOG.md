@@ -4,6 +4,20 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.25] - 2026-09-30
+### Fixed
+- **`/reminder` versucht einen unzustellbaren Nutzer nicht mehr jede Minute.** Scheiterte die DM
+  (DMs geschlossen, Konto weg oder ein anderer Fehler), rückte der Reminder-Loop den Termin nicht
+  vor und versuchte es in jeder Minute erneut – ohne Ende, samt Warnzeile. Im Nachhol-Zweig nach
+  einer Bot-Pause bekam der Nutzer außerdem die Nachricht „Ich war leider offline …“ jede Minute
+  wieder, wenn danach etwas schiefging. Jetzt gilt dieselbe Zustellregel wie bei `/motivation`
+  (neu `core/dm_delivery.py`): Bei gesperrten DMs oder gelöschtem Konto rückt der Termin
+  regulär vor und ein Zähler läuft mit; liegen die Fehlschläge in Folge so weit auseinander wie
+  fünf tägliche (4-Stunden-Reminder: 25 Versuche), wird der Reminder beendet. Andere Fehler
+  werden höchstens dreimal im Minutentakt wiederholt, dann folgt der nächste reguläre Termin.
+  Sobald die erste DM des Nachhol-Zweigs raus ist, rückt der Termin auf jeden Fall vor. Ein
+  zwischenzeitlich neu gesetzter `/reminder` wird dabei weder überschrieben noch gelöscht.
+
 ## [2.83.24] - 2026-09-30
 ### Fixed
 - **Wochenpost-Ankündigung legt bei einem Fehler keinen weiteren Thread mehr an.** Der Bot legte

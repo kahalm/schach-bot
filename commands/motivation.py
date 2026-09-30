@@ -25,6 +25,7 @@ from zoneinfo import ZoneInfo
 import discord
 from discord.ext import tasks
 
+from core import dm_delivery
 from core.datetime_utils import parse_utc as _parse_utc, parse_zeit as _parse_zeit
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
@@ -42,9 +43,9 @@ _DEFAULT_HOUR = 18
 _DEFAULT_MINUTE = 0
 
 # Retry-/Erreichbarkeits-Grenzen, damit ein unzustellbarer User nicht endlos
-# stuendlich angepingt wird (und die Logs flutet).
-_MAX_TRANSIENT_RETRIES = 3   # 60-min-Retries bei voruebergehenden Fehlern, dann erst morgen wieder
-_MAX_UNREACHABLE_DAYS = 5    # Tage in Folge unzustellbar (DMs gesperrt) → Abo automatisch beenden
+# stuendlich angepingt wird (und die Logs flutet) – gemeinsam mit dem Reminder (core/dm_delivery).
+_MAX_TRANSIENT_RETRIES = dm_delivery.MAX_TRANSIENT_RETRIES  # 60-min-Retries, dann erst morgen wieder
+_MAX_UNREACHABLE_DAYS = dm_delivery.MAX_UNREACHABLE_DAYS    # Tage in Folge unzustellbar → Abo beenden
 _MAX_UNLINKED_DAYS = 5       # Tage in Folge ohne verknuepftes RookHub-Konto → Abo automatisch beenden
 
 _bot = None
@@ -370,16 +371,14 @@ async def _run_motivation_dms():
 
         # 'sent' | 'unreachable' (DMs gesperrt/Account weg) | 'transient' (voruebergehend,
         # inkl. RookHubUnavailable → 60-min-Retry statt falscher Unlinked-DM)
-        outcome = 'sent'
+        outcome = dm_delivery.SENT
         link_box: dict = {}
         try:
             await _send_motivation_to(int(uid_str), link_box=link_box)
             log.info('Motivations-DM an User %s gesendet.', uid_str,
                      extra={'es_fields': {'tags': ['motivation']}})
-        except (discord.Forbidden, discord.NotFound):
-            outcome = 'unreachable'
-        except Exception:
-            outcome = 'transient'
+        except Exception as e:
+            outcome = dm_delivery.outcome_of(e)
 
         # Standard-Folgetermin: morgen zur Wunschzeit.
         next_day = (now_vienna + timedelta(days=1)).replace(
@@ -388,7 +387,7 @@ async def _run_motivation_dms():
         new_unreachable = 0
         new_unlinked = int(info.get('unlinked', 0) or 0)
 
-        if outcome == 'sent':
+        if outcome == dm_delivery.SENT:
             next_dt = next_day
             # Die DM ist raus (bei fehlender Verknuepfung mit Registrier-Hinweis). Wer aber
             # dauerhaft kein RookHub-Konto verknuepft, wird abgemeldet: der Bot fragte fuer ihn
@@ -407,11 +406,11 @@ async def _run_motivation_dms():
                     continue
                 log.info('Motivations-DM: User %s ohne verknuepftes RookHub-Konto '
                          '(Tag %d/%d).', uid_str, new_unlinked, _MAX_UNLINKED_DAYS)
-        elif outcome == 'unreachable':
+        elif outcome == dm_delivery.UNREACHABLE:
             # User kann keine DM empfangen (gesperrt) → NICHT stuendlich haemmern,
             # erst morgen erneut; nach _MAX_UNREACHABLE_DAYS Tagen Abo automatisch beenden.
             new_unreachable = info.get('unreachable', 0) + 1
-            if new_unreachable >= _MAX_UNREACHABLE_DAYS:
+            if dm_delivery.unreachable_expired(new_unreachable, 24, _MAX_UNREACHABLE_DAYS):
                 log.info('Motivations-DM: User %s seit %d Tagen nicht erreichbar (DMs gesperrt?) '
                          '— Abo automatisch beendet.', uid_str, new_unreachable)
                 to_remove.append(uid_str)

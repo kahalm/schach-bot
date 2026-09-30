@@ -373,6 +373,129 @@ def test_reminder():
     print()
 
 
+def test_reminder_delivery_policy():
+    """N10-002: Unzustellbar/Fehler im Reminder-Loop → kein Versuch in jeder Minute mehr.
+    Zustellpolitik wie /motivation (core/dm_delivery)."""
+    print('[/reminder Zustellpolitik]')
+    import discord
+    import puzzle as _leg
+    import commands.reminder as reminder_mod
+    from core import dm_delivery
+
+    tmpdir = setup_temp_config()
+    from commands.reminder import _reminder_loop, REMINDER_FILE as RF   # nach dem Temp-Pfad
+    _orig_post, _orig_bot = _leg.post_puzzle, reminder_mod._bot
+    calls = {'fetch': 0, 'dm': [], 'post': 0}
+    mode = {'fetch': None, 'dm': None, 'post': None}   # je Stufe: Ausnahme oder None
+
+    class _DM:
+        async def send(self, content=None, **kw):
+            if mode['dm']:
+                raise mode['dm']
+            calls['dm'].append(content)
+
+    class _User:
+        async def create_dm(self):
+            return _DM()
+
+    class _Bot:
+        async def fetch_user(self, uid):
+            calls['fetch'] += 1
+            if mode['fetch']:
+                raise mode['fetch']
+            return _User()
+
+    async def _post(channel, count=1, book_idx=0, user_id=None, show_board=True):
+        calls['post'] += 1
+        if mode['post']:
+            raise mode['post']
+        return count
+
+    def _reset(**m):
+        calls.update(fetch=0, dm=[], post=0)
+        mode.update(fetch=None, dm=None, post=None)
+        mode.update(m)
+
+    def _entry(uid='44444'):
+        return (atomic_read(RF, dict) or {}).get(uid)
+
+    try:
+        _leg.post_puzzle = _post
+        reminder_mod._bot = _Bot()
+        now = datetime.now(timezone.utc)
+        long_ago = (now - timedelta(hours=9)).isoformat()   # hours=4 → missed=2 → Nachhol-Zweig
+        just_due = (now - timedelta(minutes=1)).isoformat()
+
+        # A) Nachhol-Zweig, DMs gesperrt → Termin rueckt vor, unreachable=1, naechste Minute Ruhe.
+        _reset(dm=discord.Forbidden('403'))
+        atomic_write(RF, {'44444': {'hours': 4, 'puzzle': 1, 'buch': 0, 'next': long_ago}})
+        run_async(_reminder_loop())
+        e = _entry()
+        check('Forbidden im Nachhol-Zweig → Termin vorgerueckt', reminder_mod._parse_utc(e['next']) > now)
+        check('Forbidden → unreachable=1', e.get('unreachable') == 1)
+        fetches = calls['fetch']
+        run_async(_reminder_loop())
+        check('naechste Minute kein Discord-Aufruf', calls['fetch'] == fetches)
+
+        # B) Nachhol-Zweig: Hinweis-DM raus, dann Fehler → Termin rueckt trotzdem vor
+        #    (vorher: „Ich war leider offline" jede Minute erneut).
+        _reset(post=RuntimeError('pick_random_lines kaputt'))
+        atomic_write(RF, {'44444': {'hours': 4, 'puzzle': 1, 'buch': 0, 'next': long_ago}})
+        run_async(_reminder_loop())
+        run_async(_reminder_loop())
+        check('Offline-Hinweis nur einmal', len(calls['dm']) == 1)
+        check('nach erster DM vorgerueckt', reminder_mod._parse_utc(_entry()['next']) > now)
+
+        # C) Konto weg (NotFound) am Limit → Eintrag entfernt (taeglich: 5. Mal wie /motivation).
+        _reset(fetch=discord.NotFound('404'))
+        atomic_write(RF, {'44444': {'hours': 24, 'puzzle': 1, 'buch': 0, 'next': just_due,
+                                    'unreachable': dm_delivery.MAX_UNREACHABLE_DAYS - 1},
+                          '55555': {'hours': 24, 'puzzle': 1, 'buch': 0,
+                                    'next': (now + timedelta(hours=3)).isoformat()}})
+        run_async(_reminder_loop())
+        check('unzustellbar am Limit → Eintrag entfernt', _entry() is None)
+        check('andere Eintraege bleiben', _entry('55555') is not None)
+
+        # D) voruebergehender Fehler → hoechstens MAX_TRANSIENT_RETRIES Minuten-Retries, dann vor.
+        _reset(fetch=RuntimeError('503'))
+        atomic_write(RF, {'44444': {'hours': 4, 'puzzle': 1, 'buch': 0, 'next': just_due}})
+        run_async(_reminder_loop())
+        check('transient → Termin bleibt, retries=1',
+              _entry()['next'] == just_due and _entry().get('retries') == 1)
+        for _ in range(dm_delivery.MAX_TRANSIENT_RETRIES - 1):
+            run_async(_reminder_loop())
+        check('nach MAX_TRANSIENT_RETRIES vorgerueckt, retries zurueck',
+              reminder_mod._parse_utc(_entry()['next']) > now and 'retries' not in _entry())
+        fetches = calls['fetch']
+        run_async(_reminder_loop())
+        check('danach kein Minuten-Versuch mehr', calls['fetch'] == fetches == dm_delivery.MAX_TRANSIENT_RETRIES)
+
+        # E) Erfolg setzt die Zaehler zurueck.
+        _reset()
+        atomic_write(RF, {'44444': {'hours': 4, 'puzzle': 1, 'buch': 0, 'next': just_due,
+                                    'unreachable': 3, 'retries': 1}})
+        run_async(_reminder_loop())
+        e = _entry()
+        check('Erfolg → Zaehler weg, Termin vor',
+              'unreachable' not in e and 'retries' not in e and reminder_mod._parse_utc(e['next']) > now)
+
+        # Gemeinsame Regel: taeglich ab dem 5. Mal, Wochen-Reminder ab dem 2., 4 h ab dem 25.
+        check('unreachable_expired taeglich 4/5',
+              not dm_delivery.unreachable_expired(4, 24) and dm_delivery.unreachable_expired(5, 24))
+        check('unreachable_expired woechentlich 1/2',
+              not dm_delivery.unreachable_expired(1, 168) and dm_delivery.unreachable_expired(2, 168))
+        check('unreachable_expired 4 h 24/25',
+              not dm_delivery.unreachable_expired(24, 4) and dm_delivery.unreachable_expired(25, 4))
+        check('outcome_of', dm_delivery.outcome_of(None) == dm_delivery.SENT
+              and dm_delivery.outcome_of(discord.Forbidden('x')) == dm_delivery.UNREACHABLE
+              and dm_delivery.outcome_of(discord.NotFound('x')) == dm_delivery.UNREACHABLE
+              and dm_delivery.outcome_of(RuntimeError('x')) == dm_delivery.TRANSIENT)
+    finally:
+        _leg.post_puzzle, reminder_mod._bot = _orig_post, _orig_bot
+        teardown_temp_config(tmpdir)
+    print()
+
+
 def test_wanted():
     """Tests fuer /wanted, /wanted_list, /wanted_vote, /wanted_delete."""
     print('[/wanted]')

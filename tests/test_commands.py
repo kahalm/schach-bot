@@ -27,7 +27,7 @@ from test_cmd_puzzle import (
 )
 from test_cmd_community import (
     test_elo, test_resourcen, test_collection_limits, test_collection_embed_size_limit, test_youtube,
-    test_reminder, test_wanted, test_collection_duplicate_url,
+    test_reminder, test_reminder_delivery_policy, test_wanted, test_collection_duplicate_url,
 )
 from test_cmd_events import (
     test_schachrallye, test_turnier_sub, test_turnier_prune,
@@ -119,6 +119,7 @@ def main():
     test_reindex()
     test_reindex_requires_admin()
     test_reminder()
+    test_reminder_delivery_policy()
     test_announce()
     test_greeted()
     test_stats()
