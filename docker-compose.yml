@@ -18,6 +18,8 @@ services:
       - TOURNAMENT_CHANNEL_ID=${TOURNAMENT_CHANNEL_ID:-0}
       - WOCHENPOST_CHANNEL_ID=${WOCHENPOST_CHANNEL_ID:-0}
       - LIBRARY_INDEX=/app/library/index.txt
+      # Gemeinfreiheits-Sperre (1/true/yes/on); leer = aus.
+      - LIBRARY_ENFORCE_PD=${LIBRARY_ENFORCE_PD:-}
       - CLAUDE_API_KEY=${CLAUDE_API_KEY}
       - SFTPGO_BASE_URL=${SFTPGO_BASE_URL}
       - SFTPGO_SHARE_ID=${SFTPGO_SHARE_ID}

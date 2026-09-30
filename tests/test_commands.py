@@ -54,7 +54,7 @@ from test_cmd_motivation import (
 from test_cmd_library import (
     test_bibliothek, test_tag, test_autor, test_reindex, test_reindex_requires_admin,
     test_parse_index_entry, test_auto_tag, test_build_library_catalog,
-    test_sftpgo_password_separated, test_public_domain_from,
+    test_sftpgo_password_separated, test_public_domain_from, test_pd_lock_share_link,
     test_library_cache_threadsafe, test_format_view_missing_file,
     test_library_catalog_golden,
 )
@@ -127,6 +127,7 @@ def main():
     test_format_view_missing_file()
     test_sftpgo_password_separated()
     test_public_domain_from()
+    test_pd_lock_share_link()
     test_dm_log()
     test_log()
     test_schachrallye()

@@ -4,6 +4,24 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.16] - 2026-09-30
+### Security
+- **Gemeinfreiheits-Sperre: kein SFTPGo-Link mehr am Schloss vorbei.** Der SFTPGo-Share deckt die
+  ganze Bibliothek ab. Wer bei aktiver Sperre (`LIBRARY_ENFORCE_PD`) ein freies Buch über 8 MB
+  anforderte, bekam den Browse-Link samt Share-Passwort und konnte im SFTPGo-Web-Client zu jedem
+  gesperrten Buch navigieren und es laden.
+- Jetzt: Solange die Sperre aktiv ist und ein Buch im Katalog gesperrt ist (auch ein per
+  `ignore.json` ausgeblendetes), gibt der Bot keinen Share-Link aus – weder in `/bibliothek`
+  (`_send_book`, Format-Buttons) noch über das Chat-Werkzeug `send_library_book`. Die Meldung
+  „Datei zu groß“ nennt dann den Grund. Ohne Sperre oder ohne gesperrtes Buch bleibt alles wie
+  bisher.
+- `docker-compose.yml` reicht `LIBRARY_ENFORCE_PD` jetzt durch; vorher kam der Schalter nie im
+  Container an (kein `env_file`, `.env` nicht im Image).
+- Betrieb: In `/opt/stacks/SchachDiscordBot{,Dev}/compose.yaml` fehlt `LIBRARY_ENFORCE_PD` unter
+  `environment:` ebenfalls – dort nachtragen, sonst bleibt die Sperre auch mit gesetzter `.env` aus.
+  Große freie Bücher gibt es bei aktiver Sperre erst wieder über einen eigenen Share, der nur freie
+  Bücher enthält.
+
 ## [2.83.15] - 2026-09-30
 ### Security
 - **Bot-Heartbeat signiert.** Das Lebenszeichen ging anonym an `POST /api/client-log`

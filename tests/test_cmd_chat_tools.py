@@ -918,5 +918,29 @@ def test_tool_send_library_book():
         check('verschwundene Datei → error statt Crash', 'error' in result)
         check('verschwundene Datei → nichts gesendet', len(channel9.sent) == 0)
 
+        # 10. Review W4s S4-022: Sperre an + gesperrtes Buch im Katalog → kein Share-Link
+        # auch fuer ein freies grosses Buch (der Share deckt die ganze Bibliothek ab).
+        import library as _library
+        lib_json = os.path.join(tmpdir, 'library.json')
+        with open(lib_json, 'w', encoding='utf-8') as f:
+            json.dump([fake_entry, {'id': 'x--gesperrt', 'title': 'Gesperrt', 'author': 'X',
+                                    'files': [], 'publicDomainFrom': '2999-01-01'}], f)
+        channel10 = FakeChannel()
+        ctx10 = {'user_id': 42, 'channel': channel10}
+        with patch('library.LIBRARY_FILE', lib_json), \
+             patch('library.LIBRARY_ENFORCE_PD', True), \
+             patch('library._search_library', return_value=[fake_entry]), \
+             patch('library._collect_formats', return_value={'pdf': big_file}), \
+             patch('library._sftpgo_configured', return_value=True), \
+             patch('library._sftpgo_message', return_value='🔗 Download-Link'):
+            _library._reload_library()
+            result_str = run_async(_tool_send_library_book(
+                {'query': 'Test'}, ctx10))
+            result = json.loads(result_str)
+        _library._reload_library()
+        check('Sperre an + gesperrtes Buch → kein Share-Link gesendet',
+              len(channel10.sent) == 0, [m.content for m in channel10.sent])
+        check('Sperre an + gesperrtes Buch → error „zu gross“', 'error' in result)
+
     finally:
         teardown_temp_config(tmpdir)

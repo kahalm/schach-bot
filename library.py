@@ -460,19 +460,23 @@ def build_library_catalog() -> tuple[int, int, int, int, int]:
 # ---------------------------------------------------------------------------
 
 _library_cache: list[dict] = []
+# Voller Katalog inkl. per ignore.json ausgeblendeter Einträge: die liegen trotzdem
+# im SFTPGo-Share und zählen für _share_exposes_locked mit.
+_library_all: list[dict] = []
 _library_loaded: bool = False
 # Der Cache wird aus mehreren Worker-Threads (asyncio.to_thread) gelesen UND per /reindex
 # invalidiert — ohne Lock kann ein konkurrierender Aufbau einen teilgefüllten Cache liefern.
 _library_lock = threading.Lock()
 
 def _ensure_library() -> list[dict]:
-    global _library_cache, _library_loaded
+    global _library_cache, _library_all, _library_loaded
     if _library_loaded:
         return _library_cache
     with _library_lock:
         # Double-checked: ein anderer Thread kann den Cache gefüllt haben, während wir warteten.
         if not _library_loaded:
             full = _load_library()
+            _library_all = full
             _library_cache = [e for e in full if not _is_excluded(e)]
             _library_loaded = True
     return _library_cache
@@ -651,6 +655,34 @@ def _sftpgo_configured() -> bool:
     return bool(_SFTPGO_BASE_URL and _SFTPGO_SHARE_ID)
 
 
+def _share_exposes_locked() -> bool:
+    """True, wenn der SFTPGo-Share bei aktiver Sperre gesperrte Bücher preisgäbe.
+
+    Der Share deckt das ganze Bibliotheksverzeichnis ab (.env.example); der
+    Browse-Link öffnet mit dem gemeinsamen Passwort den SFTPGo-Web-Client, in dem
+    man frei navigiert, also auch zu gesperrten Büchern (Review W4s S4-022).
+    Solange ein Katalog-Buch (auch ein per ignore.json ausgeblendetes) gesperrt
+    ist, gibt der Bot deshalb keinen Share-Link aus.
+    """
+    if not LIBRARY_ENFORCE_PD:
+        return False
+    _ensure_library()
+    return any(_is_locked(e) for e in _library_all)
+
+
+def _sftpgo_link_allowed() -> bool:
+    """Darf für eine Datei über dem Upload-Limit der Share-Link raus?"""
+    return _sftpgo_configured() and not _share_exposes_locked()
+
+
+def _share_block_note() -> str:
+    """Zusatz zur „zu groß“-Meldung, wenn nur die Gemeinfreiheits-Sperre den Link verhindert."""
+    if _sftpgo_configured() and _share_exposes_locked():
+        return ('\nDen Link über den Datei-Share gibt es bei aktiver Gemeinfreiheits-Sperre '
+                'nicht (der Share enthält auch noch gesperrte Bücher).')
+    return ''
+
+
 def _sftpgo_rel_path(local_path: str) -> str | None:
     """Gibt den relativen Pfad der Datei innerhalb der Library zurück."""
     if not _LOCAL_BASE:
@@ -710,7 +742,7 @@ async def _send_book(interaction: discord.Interaction,
         # ein hakendes Laufwerk würde sonst den ganzen Bot einfrieren.
         size = await asyncio.to_thread(os.path.getsize, path)
         if size > _MAX_UPLOAD:
-            if _sftpgo_configured():
+            if _sftpgo_link_allowed():
                 await interaction.followup.send(
                     _sftpgo_message(entry, path, fmt), ephemeral=True)
                 pw_msg = _sftpgo_password_message()
@@ -720,7 +752,8 @@ async def _send_book(interaction: discord.Interaction,
             else:
                 mb = size / (1024 * 1024)
                 await interaction.followup.send(
-                    f'⚠️ Datei zu groß ({mb:.1f} MB, Discord-Limit 8 MB).', ephemeral=True)
+                    f'⚠️ Datei zu groß ({mb:.1f} MB, Discord-Limit 8 MB).{_share_block_note()}',
+                    ephemeral=True)
             return
         dm = await interaction.user.create_dm()
         book_file = await asyncio.to_thread(
@@ -750,6 +783,7 @@ class _FormatView(discord.ui.View):
         Buecher liegen auf Syncthing-/Netzpfaden."""
         super().__init__(timeout=60)
         self.entry = entry
+        link_ok = _sftpgo_link_allowed()
         for fmt, path in formats.items():
             if sizes is not None and fmt in sizes:
                 size = sizes[fmt]
@@ -763,7 +797,7 @@ class _FormatView(discord.ui.View):
                     size = 0
             mb    = size / (1024 * 1024)
             big   = size > _MAX_UPLOAD
-            link  = big and bool(_sftpgo_configured())
+            link  = big and link_ok
             label = f'{_FORMAT_LABEL.get(fmt, fmt.upper())}  {mb:.1f} MB'
             if link:
                 style = discord.ButtonStyle.success   # grün  → SFTPGo-Link
@@ -800,7 +834,7 @@ class _FormatView(discord.ui.View):
             elif big:
                 try:
                     mb = (await asyncio.to_thread(os.path.getsize, path)) / (1024 * 1024)
-                    msg = f'⚠️ Datei zu groß ({mb:.1f} MB, Discord-Limit 8 MB).'
+                    msg = f'⚠️ Datei zu groß ({mb:.1f} MB, Discord-Limit 8 MB).{_share_block_note()}'
                 except OSError:
                     msg = '⚠️ Datei nicht mehr verfügbar (evtl. zwischenzeitlich synchronisiert/verschoben).'
                 await interaction.response.send_message(msg, ephemeral=True)

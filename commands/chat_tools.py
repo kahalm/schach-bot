@@ -743,7 +743,7 @@ async def _tool_send_library_book(tool_input, ctx) -> str:
     import library as _lib
     from library import (
         _search_library, _collect_formats, _author_str,
-        _sftpgo_configured, _sftpgo_message, _sftpgo_password_message, _MAX_UPLOAD,
+        _sftpgo_link_allowed, _sftpgo_message, _sftpgo_password_message, _MAX_UPLOAD,
     )
 
     channel = ctx.get('channel')
@@ -806,7 +806,7 @@ async def _tool_send_library_book(tool_input, ctx) -> str:
             await channel.send(
                 content=f'📖 **{title}** — {author} `[{fmt.upper()}]`',
                 file=book_file)
-        elif _sftpgo_configured():
+        elif _sftpgo_link_allowed():
             await channel.send(_sftpgo_message(entry, path, fmt))
             pw_msg = _sftpgo_password_message()
             if pw_msg:

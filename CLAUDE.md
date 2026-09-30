@@ -32,7 +32,7 @@ Copy `.env.example` to `.env` and fill in:
 - `CHANNEL_ID` – Discord channel for daily posts
 - `PUZZLE_HOUR` / `PUZZLE_MINUTE` – Daily post time (UTC)
 - `BOOKS_DIR` – Directory containing PGN files (default: `books/`) – für die lokalen Commands (/endless, /reminder, /ignore_kapitel, Chat-Werkzeug); deren `buch` ist der 1-basierte Index dieser alphabetischen Liste (Autocomplete zeigt die Namen), NICHT die RookHub-Buch-ID aus /kurs, die /puzzle nimmt
-- `LIBRARY_ENFORCE_PD` – Gemeinfreiheits-Sperre der Bibliothek durchsetzen (`1`/`true`/`yes`/`on`). Default **aus**: das pro-Buch-Sidecar-Feld `publicDomainFrom` (ISO-Datum, ab wann gemeinfrei) wird gespeichert, sperrt aber nichts. Aktiviert → noch nicht freie Bücher werden in `/bibliothek` mit 🔒 markiert und nicht zum Download/SFTPGo freigegeben
+- `LIBRARY_ENFORCE_PD` – Gemeinfreiheits-Sperre der Bibliothek durchsetzen (`1`/`true`/`yes`/`on`). Default **aus**: das pro-Buch-Sidecar-Feld `publicDomainFrom` (ISO-Datum, ab wann gemeinfrei) wird gespeichert, sperrt aber nichts. Aktiviert → noch nicht freie Bücher werden in `/bibliothek` mit 🔒 markiert und nicht zum Download/SFTPGo freigegeben; solange eins gesperrt ist, gibt der Bot auch für freie Bücher > 8 MB keinen SFTPGo-Link aus (der Share deckt die ganze Bibliothek ab, `library._share_exposes_locked`). Muss in der Stack-Compose unter `environment:` stehen (kein `env_file`)
 
 Runtime state lives in `config/` (gitignored, auto-created).
 

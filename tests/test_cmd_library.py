@@ -433,6 +433,100 @@ def test_sftpgo_password_separated():
     print()
 
 
+def test_pd_lock_share_link():
+    """Review W4s S4-022: bei aktiver Gemeinfreiheits-Sperre keinen Share-Link.
+
+    Der SFTPGo-Share deckt die ganze Bibliothek ab; der Browse-Link fuer ein
+    FREIES grosses Buch oeffnet mit dem gemeinsamen Passwort den Web-Client, in
+    dem man zu jedem gesperrten Buch navigieren kann. Solange der Katalog ein
+    gesperrtes Buch enthaelt, darf der Bot den Link deshalb nicht ausgeben."""
+    print('[pd_lock_share_link]')
+    import library
+
+    tmpdir = tempfile.mkdtemp(prefix='pd_share_')
+    orig = (library.LIBRARY_ENFORCE_PD, library.LIBRARY_FILE, library._SFTPGO_BASE_URL,
+            library._SFTPGO_SHARE_ID, library._SFTPGO_SHARE_PASSWORD)
+    orig_inc = library.stats.inc
+    try:
+        big = os.path.join(tmpdir, 'frei.pdf')
+        with open(big, 'wb') as f:
+            f.truncate(9 * 1024 * 1024)   # > 8 MB → Share-Pfad
+        free = {'id': 'a--frei', 'title': 'Freies Buch', 'author': 'A',
+                'files': [big], 'publicDomainFrom': '1900-01-01'}
+        locked = {'id': 'b--gesperrt', 'title': 'Gesperrtes Buch', 'author': 'B',
+                  'files': [os.path.join(tmpdir, 'gesperrt.pdf')],
+                  'publicDomainFrom': '2999-01-01'}
+
+        def _catalog(entries):
+            library.LIBRARY_FILE = os.path.join(tmpdir, 'library.json')
+            with open(library.LIBRARY_FILE, 'w', encoding='utf-8') as f:
+                json.dump(entries, f)
+            library._reload_library()
+
+        def _send(entry):
+            ia = make_interaction()
+            run_async(library._send_book(ia, entry, big, 'pdf'))
+            return ' '.join(str(c.get('content') or '') for c in ia.followup.calls)
+
+        library._SFTPGO_BASE_URL = 'https://sftp.example'
+        library._SFTPGO_SHARE_ID = 'share1'
+        library._SFTPGO_SHARE_PASSWORD = 'geheim123'
+        library.stats.inc = lambda *a, **k: None
+        _catalog([free, locked])
+
+        # --- Sperre an + gesperrtes Buch im Katalog: kein Link, kein Passwort ---
+        library.LIBRARY_ENFORCE_PD = True
+        out = _send(free)
+        check('Sperre an: freies grosses Buch bekommt KEINEN Share-Link',
+              'pubshares' not in out, out[:200])
+        check('Sperre an: kein Share-Passwort', 'geheim123' not in out, out[:200])
+        check('Sperre an: Meldung „zu groß“ mit Grund', 'zu groß' in out and 'Sperre' in out,
+              out[:200])
+        view = library._FormatView(free, {'pdf': big}, {'pdf': 9 * 1024 * 1024})
+        btn = view.children[0] if view.children else None
+        check('Sperre an: Format-Button ohne 🔗 (kein Link-Stil)',
+              btn is not None and '🔗' not in btn.label
+              and btn.style is not library.discord.ButtonStyle.success,
+              getattr(btn, 'label', None))
+        if btn is not None:
+            ia = make_interaction()
+            run_async(btn.callback(ia))
+            out = ' '.join(str(c.get('content') or '')
+                           for c in ia.response.calls + ia.followup.calls)
+            check('Sperre an: Button-Klick liefert keinen Share-Link',
+                  'pubshares' not in out and 'geheim123' not in out, out[:200])
+
+        # --- gesperrtes Buch nur per ignore.json ausgeblendet: liegt trotzdem im Share ---
+        orig_excl = library._is_excluded
+        try:
+            library._is_excluded = lambda e: e['id'] == 'b--gesperrt'
+            library._reload_library()
+            check('ausgeblendetes gesperrtes Buch zaehlt mit (kein Link)',
+                  'pubshares' not in _send(free))
+        finally:
+            library._is_excluded = orig_excl
+
+        # --- Sperre an, aber nichts (mehr) gesperrt: Link wie bisher ---
+        _catalog([free, dict(locked, publicDomainFrom='1901-01-01')])
+        check('Sperre an, nichts gesperrt: Share-Link wie bisher', 'pubshares' in _send(free))
+
+        # --- Sperre aus (Default): Link wie bisher, auch mit Zukunftsdatum im Katalog ---
+        _catalog([free, locked])
+        library.LIBRARY_ENFORCE_PD = False
+        out = _send(free)
+        check('Sperre aus: Share-Link wie bisher', 'pubshares' in out, out[:200])
+        view = library._FormatView(free, {'pdf': big}, {'pdf': 9 * 1024 * 1024})
+        check('Sperre aus: Format-Button mit 🔗',
+              view.children and '🔗' in view.children[0].label)
+    finally:
+        (library.LIBRARY_ENFORCE_PD, library.LIBRARY_FILE, library._SFTPGO_BASE_URL,
+         library._SFTPGO_SHARE_ID, library._SFTPGO_SHARE_PASSWORD) = orig
+        library.stats.inc = orig_inc
+        library._reload_library()
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    print()
+
+
 def test_library_cache_threadsafe():
     """Bug-First: _ensure_library darf bei nebenläufigen Aufrufen (asyncio.to_thread liest aus
     mehreren Worker-Threads) NUR EINMAL laden und einen konsistenten Cache liefern — ohne Lock
