@@ -4,6 +4,18 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.31] - 2026-10-01
+### Fixed
+- **Bibliothek: schnelle Klicks auf Vor/Zurück überholen sich nicht mehr.** Seit 2.83.18 baut
+  `_library_page` die Seite in einem Thread; zwei schnelle Klicks liefen dadurch gleichzeitig, und
+  der erste las beim Neuaufbau der Buch-Auswahl schon die Seite des zweiten. Das Embed zeigte dann
+  Seite 2, die Auswahl die Bücher von Seite 3 mit den Dateigrößen von Seite 2. Jetzt arbeitet eine
+  Sperre je Ansicht die Klicks nacheinander ab (zweimal Weiter = zwei Seiten weiter, wie vor
+  2.83.18), und die aktuelle Seite gilt erst, wenn Embed und Größen fertig sind.
+- Auch der SFTPGo-Link (`Path.resolve` auf dem Bibliotheks-Mount) und das Chat-Tool „Buch
+  schicken“ (Suche, Formatprüfung, Link) lesen die Bibliothek jetzt in einem Thread statt im
+  Event-Loop. Anzeige unverändert.
+
 ## [2.83.30] - 2026-09-30
 ### Changed
 - **Doku: vollständige Modulliste und die Deploy-Kopplung mit RookHub.** Die Architektur-Tabelle

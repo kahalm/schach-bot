@@ -759,7 +759,9 @@ async def _tool_send_library_book(tool_input, ctx) -> str:
 
     preferred = tool_input.get('format', 'pdf')
 
-    hits = _search_library(query, limit=5)
+    # Suche (lädt ggf. den Katalog), Formatprüfung (isfile) und Link-Bau (Path.resolve)
+    # lesen den Bibliotheks-Mount → Thread, wie in library.py (Review W4s S4-025).
+    hits = await asyncio.to_thread(_search_library, query, limit=5)
     if not hits:
         return json.dumps(
             {'error': f'Kein Buch gefunden fuer: {query}'},
@@ -779,7 +781,7 @@ async def _tool_send_library_book(tool_input, ctx) -> str:
              'title': title},
             ensure_ascii=False)
 
-    formats = _collect_formats(entry)
+    formats = await asyncio.to_thread(_collect_formats, entry)
     if not formats:
         return json.dumps(
             {'error': 'Buch gefunden aber keine Datei verfuegbar', 'title': title},
@@ -810,7 +812,8 @@ async def _tool_send_library_book(tool_input, ctx) -> str:
                 content=f'📖 **{title}** — {author} `[{fmt.upper()}]`',
                 file=book_file)
         elif _sftpgo_link_allowed():
-            await channel.send(_sftpgo_message(entry, path, fmt, size))
+            await channel.send(
+                await asyncio.to_thread(_sftpgo_message, entry, path, fmt, size))
             pw_msg = _sftpgo_password_message()
             if pw_msg:
                 await channel.send(pw_msg)

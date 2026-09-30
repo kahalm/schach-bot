@@ -2,6 +2,7 @@
 
 import os
 import json
+import asyncio
 import tempfile
 import shutil
 from unittest.mock import MagicMock
@@ -546,6 +547,7 @@ def test_library_view_no_loop_io():
     orig_search = lib_mod._search_library
     orig_isfile, orig_getsize = os.path.isfile, os.path.getsize
     orig_sftp = (lib_mod._SFTPGO_BASE_URL, lib_mod._SFTPGO_SHARE_ID)
+    orig_base, orig_lstat = lib_mod._LOCAL_BASE, os.lstat
     orig_inc = lib_mod.stats.inc
     loop_calls = []
 
@@ -597,8 +599,11 @@ def test_library_view_no_loop_io():
         check('Weiter: genau eine Auswahl in der View',
               sum(isinstance(c, lib_mod._BookSelect) for c in getattr(view, 'children', [])) == 1)
 
-        # Format-Button mit SFTPGo-Link: Groesse kommt aus dem View-Bau, kein getsize im Loop
+        # Format-Button mit SFTPGo-Link: Groesse kommt aus dem View-Bau, kein getsize im Loop;
+        # der Link-Bau (_sftpgo_rel_path -> Path.resolve, ein lstat je Pfadteil) laeuft im Thread.
         lib_mod._SFTPGO_BASE_URL, lib_mod._SFTPGO_SHARE_ID = 'https://sftp.example', 's1'
+        lib_mod._LOCAL_BASE = tmpdir
+        os.lstat = _guard(orig_lstat, 'lstat')
         lib_mod.stats.inc = lambda *a, **k: None
         big = entries[9]['files'][0]
         fv = lib_mod._FormatView(entries[9], {'pdf': big}, {'pdf': 10 * 1024 * 1024})
@@ -606,13 +611,103 @@ def test_library_view_no_loop_io():
         ia3 = make_interaction()
         run_async(fv.children[0].callback(ia3))
         msg = str(ia3.response.calls[0].get('content') if ia3.response.calls else '')
-        check('SFTPGo-Link per Button: kein getsize im Event-Loop, Groesse stimmt',
-              not loop_calls and 'pubshares' in msg and '10.0 MB' in msg, f'{loop_calls} {msg[:80]}')
+        check('SFTPGo-Link per Button: kein getsize/lstat im Event-Loop, Groesse stimmt',
+              not loop_calls and 'pubshares' in msg and '10.0 MB' in msg
+              and 'path=/buch09.pdf' in msg, f'{loop_calls} {msg[:160]}')
     finally:
         os.path.isfile, os.path.getsize = orig_isfile, orig_getsize
+        os.lstat = orig_lstat
+        lib_mod._LOCAL_BASE = orig_base
         lib_mod._search_library = orig_search
         lib_mod._SFTPGO_BASE_URL, lib_mod._SFTPGO_SHARE_ID = orig_sftp
         lib_mod.stats.inc = orig_inc
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    print()
+
+
+def test_library_view_page_race():
+    """Review W4s S4-025 (Nacharbeit): schnelle Klicks auf Weiter/Zurueck ueberholen sich nicht.
+
+    Seit _library_page im Thread laeuft, gibt jeder Klick den Loop frei; discord.py startet
+    je Klick einen eigenen Task ohne Sperre je View. Setzte der Klick self.current VOR dem
+    await, las _update_select danach den Index des spaeteren Klicks: Embed von Seite 2,
+    Auswahl mit den Buechern von Seite 3 und den Groessen von Seite 2. Hier ist der Thread
+    fuer Seite 2 langsam, zwei Klicks laufen nebenlaeufig."""
+    print('[library view page race]')
+    import time
+    import library as lib_mod
+
+    tmpdir = tempfile.mkdtemp(prefix='lib_race_')
+    orig_sizes = lib_mod._first_file_sizes
+    try:
+        entries = []
+        for i in range(25):   # 3 Seiten: 10 / 10 / 5
+            f = os.path.join(tmpdir, f'r{i:02d}.pdf')
+            with open(f, 'wb') as fh:
+                fh.truncate((i + 1) * 1024 * 1024)
+            entries.append({'id': f'r{i}', 'title': f'Race {i:02d}', 'author': 'A',
+                            'tags': [], 'file_type': 'pdf', 'files': [f]})
+        pages = [entries[i:i + 10] for i in range(0, len(entries), 10)]
+        first_sizes = orig_sizes(pages[0])
+
+        def _slow_page2(ents):
+            if ents and ents[0]['id'] == 'r10':
+                time.sleep(0.3)
+            return orig_sizes(ents)
+        lib_mod._first_file_sizes = _slow_page2
+
+        for steps, want_page in (((1, 1), 3), ((1, -1), 1)):
+            label = '+'.join('Weiter' if st > 0 else 'Zurueck' for st in steps)
+            view = lib_mod.LibraryPaginationView(pages, query='race', sizes=first_sizes)
+            edits = []   # (Embed-Seite, Embed-Titel, Auswahl-Labels, Auswahl-Beschreibungen)
+
+            def _ia():
+                ia = make_interaction()
+                orig_edit = ia.response.edit_message
+
+                async def _edit(**kw):
+                    # Stand im Moment des Edits festhalten (discord.py serialisiert die View hier)
+                    emb, v = kw.get('embed'), kw.get('view')
+                    sel = next((c for c in v.children if isinstance(c, lib_mod._BookSelect)), None)
+                    foot = emb.footer.text if emb is not None and emb.footer else ''
+                    edits.append((foot, [fl['name'] for fl in emb.fields],
+                                  [o.label for o in sel.options] if sel else [],
+                                  [o.description for o in sel.options] if sel else []))
+                    await orig_edit(**kw)
+                ia.response.edit_message = _edit
+                return ia
+
+            ias = [_ia() for _ in steps]
+
+            async def _clicks():
+                btn = {1: view.next_button, -1: view.prev_button}
+                await asyncio.gather(*(btn[st](ia, None) for st, ia in zip(steps, ias)))
+            run_async(_clicks())
+
+            check(f'{label}: jeder Klick beantwortet',
+                  all(len(ia.response.calls) == 1 for ia in ias) and len(edits) == len(steps),
+                  str([ia.response.calls for ia in ias]))
+            consistent = True
+            for foot, names, labels, descs in edits:
+                shown = int(foot.split()[1].split('/')[0]) - 1 if foot else -1
+                page = pages[shown] if 0 <= shown < len(pages) else []
+                want_labels = [e['title'] for e in page]
+                want_mb = [f'{(int(e["id"][1:]) + 1):.1f} MB' for e in page]
+                if (labels != want_labels or len(names) != len(page)
+                        or any(t not in n for t, n in zip(want_labels, names))
+                        or len(descs) != len(want_mb)
+                        or any(mb not in d for mb, d in zip(want_mb, descs))):
+                    consistent = False
+            check(f'{label}: Auswahl (Buecher + Groessen) passt in jedem Edit zur Embed-Seite',
+                  consistent, str([(f, l[:2], d[:2]) for f, _, l, d in edits]))
+            last = edits[-1][0] if edits else ''
+            check(f'{label}: letzter Edit zeigt Seite {want_page}/3, view.current passt',
+                  last == f'Seite {want_page}/3' and view.current == want_page - 1,
+                  f'{last!r} current={view.current}')
+            check(f'{label}: genau eine Auswahl in der View',
+                  sum(isinstance(c, lib_mod._BookSelect) for c in view.children) == 1)
+    finally:
+        lib_mod._first_file_sizes = orig_sizes
         shutil.rmtree(tmpdir, ignore_errors=True)
     print()
 

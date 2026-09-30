@@ -703,7 +703,9 @@ def _sftpgo_message(entry: dict, path: str, fmt: str, size: int | None = None) -
     Das Passwort wird bewusst NICHT in diese Nachricht gepackt — es geht als
     separate Nachricht (`_sftpgo_password_message`), damit es nicht im selben
     (kopier-/weiterleitbaren) Block wie der Link steht. ``size`` (Bytes) geben
-    die Aufrufer im Event-Loop mit, dann fällt das getsize hier weg.
+    die Aufrufer mit, wenn sie sie schon kennen, dann fällt das getsize weg.
+    _sftpgo_rel_path (Path.resolve) liest trotzdem den Bibliotheks-Mount →
+    aus dem Event-Loop nur per asyncio.to_thread aufrufen.
     """
     from urllib.parse import quote
     rel        = _sftpgo_rel_path(path) or os.path.basename(path)
@@ -745,8 +747,8 @@ async def _send_book(interaction: discord.Interaction,
         size = await asyncio.to_thread(os.path.getsize, path)
         if size > _MAX_UPLOAD:
             if _sftpgo_link_allowed():
-                await interaction.followup.send(
-                    _sftpgo_message(entry, path, fmt, size), ephemeral=True)
+                msg = await asyncio.to_thread(_sftpgo_message, entry, path, fmt, size)
+                await interaction.followup.send(msg, ephemeral=True)
                 pw_msg = _sftpgo_password_message()
                 if pw_msg:
                     await interaction.followup.send(pw_msg, ephemeral=True)
@@ -827,9 +829,9 @@ class _FormatView(discord.ui.View):
                     ephemeral=True)
                 return
             if big and link:
-                # Direkt antworten (kein defer nötig)
-                await interaction.response.send_message(
-                    _sftpgo_message(self.entry, path, fmt, size), ephemeral=True)
+                # Direkt antworten (kein defer nötig); Link-Bau liest den Mount → Thread
+                msg = await asyncio.to_thread(_sftpgo_message, self.entry, path, fmt, size)
+                await interaction.response.send_message(msg, ephemeral=True)
                 pw_msg = _sftpgo_password_message()
                 if pw_msg:
                     await interaction.followup.send(pw_msg, ephemeral=True)
@@ -963,6 +965,8 @@ class LibraryPaginationView(discord.ui.View):
         self.pages = pages
         self.query = query
         self.current = 0
+        # Vor/Zurück nacheinander abarbeiten, siehe _show_page.
+        self._nav_lock = asyncio.Lock()
         self._update_select(sizes)
 
     def _update_select(self, sizes: list[int | None] | None = None):
@@ -973,21 +977,32 @@ class LibraryPaginationView(discord.ui.View):
                 break
         self.add_item(_BookSelect(self.pages[self.current], sizes))
 
+    async def _show_page(self, interaction: discord.Interaction, step: int):
+        """Blättert um ``step`` Seiten und zeigt die Seite an.
+
+        discord.py startet je Klick einen eigenen Task, und _library_page gibt den
+        Loop frei. Ohne Sperre überholen sich schnelle Klicks: Embed der einen,
+        Auswahl der anderen Seite. Deshalb laufen die Klicks einer View nacheinander
+        (zweimal Weiter = zwei Seiten, Edits in Klick-Reihenfolge). ``self.current``
+        gilt erst nach dem Thread, damit Embed, Auswahl und Größen dieselbe Seite
+        zeigen, auch wenn der Thread fehlschlägt (Review W4s S4-025).
+        """
+        async with self._nav_lock:
+            idx = max(0, min(len(self.pages) - 1, self.current + step))
+            embed, sizes = await _library_page(self.pages, idx, self.query)
+            self.current = idx
+            self._update_select(sizes)
+            await interaction.response.edit_message(embed=embed, view=self)
+
     @discord.ui.button(label='◀ Zurück', style=discord.ButtonStyle.secondary)
     async def prev_button(self, interaction: discord.Interaction,
                            button: discord.ui.Button):
-        self.current = max(0, self.current - 1)
-        embed, sizes = await _library_page(self.pages, self.current, self.query)
-        self._update_select(sizes)
-        await interaction.response.edit_message(embed=embed, view=self)
+        await self._show_page(interaction, -1)
 
     @discord.ui.button(label='Weiter ▶', style=discord.ButtonStyle.secondary)
     async def next_button(self, interaction: discord.Interaction,
                            button: discord.ui.Button):
-        self.current = min(len(self.pages) - 1, self.current + 1)
-        embed, sizes = await _library_page(self.pages, self.current, self.query)
-        self._update_select(sizes)
-        await interaction.response.edit_message(embed=embed, view=self)
+        await self._show_page(interaction, 1)
 
 
 # ---------------------------------------------------------------------------

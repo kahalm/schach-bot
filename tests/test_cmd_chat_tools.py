@@ -952,5 +952,29 @@ def test_tool_send_library_book():
               len(channel10.sent) == 0, [m.content for m in channel10.sent])
         check('Sperre an + gesperrtes Buch → error „zu gross“', 'error' in result)
 
+        # 11. Review W4s S4-025: Suche (Katalog-Laden), Formatpruefung (isfile) und Link-Bau
+        # (Path.resolve) lesen den Bibliotheks-Mount → nicht im Event-Loop-Thread.
+        import threading
+        loop_hits = []
+
+        def _rec(name, ret):
+            def _f(*a, **k):
+                if threading.current_thread() is threading.main_thread():
+                    loop_hits.append(name)
+                return ret
+            return _f
+        channel11 = FakeChannel()
+        with patch('library._search_library', side_effect=_rec('search', [fake_entry])), \
+             patch('library._collect_formats', side_effect=_rec('formats', {'pdf': big_file})), \
+             patch('library._sftpgo_configured', return_value=True), \
+             patch('library._sftpgo_message', side_effect=_rec('link', '🔗 Download-Link')), \
+             patch('core.stats.inc'):
+            result = json.loads(run_async(_tool_send_library_book(
+                {'query': 'Test'}, {'user_id': 42, 'channel': channel11})))
+        check('Chat-Tool: Suche/Formate/Link ohne Datei-I/O im Event-Loop',
+              not loop_hits and result.get('sent') is True
+              and [m.content for m in channel11.sent] == ['🔗 Download-Link'],
+              f'{loop_hits} {result}')
+
     finally:
         teardown_temp_config(tmpdir)
