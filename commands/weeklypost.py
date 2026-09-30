@@ -18,7 +18,9 @@ import discord
 from discord.ext import tasks
 
 from core.datetime_utils import fmt_mmss, parse_utc as _parse_utc
-from core.discord_text import escape_display_name
+from core.discord_text import (
+    EMBED_FIELD_VALUE_MAX, EMBED_TITLE_MAX, clip, escape_display_name, fit_list,
+)
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
 from core.version import EMBED_COLOR
@@ -29,13 +31,15 @@ log = logging.getLogger('schach-bot')
 WEEKLY_STATE_FILE = os.path.join(CONFIG_DIR, 'weekly_posts.json')
 _CATCHUP_DAYS = 7        # nur Posts der letzten Woche nachholen (kein uralter Backlog)
 _POLL_MINUTES = 30
+_MAX_ATTEMPTS = 10       # Fehlversuche je Post (alle 30 min), danach aufgeben + einmal warnen
 
 _bot = None
 _channel_id = 0
 
 
 def _state_default():
-    return {"posted_ids": [], "last_poll": None, "seeded": False, "threads": {}}
+    # pending: {post_id: {thread_id, failures}} fuer angelegte, noch nicht fertig angekuendigte Posts
+    return {"posted_ids": [], "last_poll": None, "seeded": False, "threads": {}, "pending": {}}
 
 
 def _posted_ids() -> set:
@@ -52,9 +56,42 @@ def _mark_posted(post_id):
         ids = data.setdefault('posted_ids', [])
         if post_id not in ids:
             ids.append(post_id)
+        (data.get('pending') or {}).pop(str(post_id), None)
         data['last_poll'] = datetime.now(timezone.utc).isoformat()
         return data
     atomic_update(WEEKLY_STATE_FILE, _u, _state_default)
+
+
+def _pending(post_id) -> dict:
+    data = atomic_read(WEEKLY_STATE_FILE, default=_state_default)
+    if not isinstance(data, dict):
+        return {}
+    entry = (data.get('pending') or {}).get(str(post_id))
+    return entry if isinstance(entry, dict) else {}
+
+
+def _update_pending(post_id, thread_id=None, add_failure=False) -> dict:
+    """Merkt den angelegten Thread bzw. zaehlt einen Fehlversuch; gibt den Zwischenstand zurueck."""
+    result = {}
+
+    def _u(data):
+        if not isinstance(data, dict):
+            data = _state_default()
+        pending = data.get('pending')
+        if not isinstance(pending, dict):
+            pending = data['pending'] = {}
+        entry = pending.get(str(post_id))
+        if not isinstance(entry, dict):
+            entry = pending[str(post_id)] = {}
+        if thread_id:
+            entry['thread_id'] = int(thread_id)
+        if add_failure:
+            entry['failures'] = int(entry.get('failures', 0) or 0) + 1
+        result.update(entry)
+        return data
+
+    atomic_update(WEEKLY_STATE_FILE, _u, _state_default)
+    return result
 
 
 def _seed_if_first_run(all_ids) -> bool:
@@ -94,11 +131,39 @@ def _thread_name(post: dict) -> str:
     return (date_prefix or title or 'Wochenpost')[:100]
 
 
+async def _existing_thread(channel, thread_id):
+    """Der bei einem frueheren, gescheiterten Lauf angelegte Thread – oder None (geloescht)."""
+    getter = getattr(channel, 'get_thread', None)
+    thread = getter(thread_id) if callable(getter) else None
+    if thread is None and _bot is not None:
+        try:
+            thread = await _bot.fetch_channel(thread_id)
+        except Exception:
+            thread = None
+    return thread
+
+
+async def _announcement_thread(channel, post: dict):
+    """Thread fuer die Ankuendigung: den eines frueheren Fehlversuchs wiederverwenden, sonst neu
+    anlegen und SOFORT vormerken – scheitert danach der Versand, legt der naechste Lauf keinen
+    weiteren leeren Thread an."""
+    pid = post.get('id')
+    old_id = _pending(pid).get('thread_id')
+    if old_id:
+        thread = await _existing_thread(channel, old_id)
+        if thread is not None:
+            return thread
+    thread = await channel.create_thread(name=_thread_name(post), type=discord.ChannelType.public_thread)
+    _update_pending(pid, thread_id=getattr(thread, 'id', None))
+    return thread
+
+
 async def _post_announcement(channel, post: dict):
     title = (post.get('title') or 'Wochenpost').strip() or 'Wochenpost'
     url = rookhub.weekly_web_url(post.get('id'))
-    thread = await channel.create_thread(name=_thread_name(post), type=discord.ChannelType.public_thread)
-    embed = discord.Embed(title=title, color=EMBED_COLOR)
+    thread = await _announcement_thread(channel, post)
+    # RookHub erlaubt Titel bis 300 Zeichen, Discord im Embed-Titel nur 256 (sonst HTTP 400).
+    embed = discord.Embed(title=clip(title, EMBED_TITLE_MAX), color=EMBED_COLOR)
     base_line = '\U0001f4ec Neuer Wochenpost zum Durchspielen auf RookHub'
     # Optionale, vom Admin gesetzte Kurzbeschreibung (RookHub-Feld) voranstellen, falls vorhanden.
     desc = (post.get('description') or '').strip()
@@ -193,12 +258,17 @@ def format_weekly_results(results: dict) -> str:
         hint = ' (💡)' if p.get('hintsUsed', 0) > 0 else ''   # 💡 wenn (bei mind. 1 Puzzle) mit Tipps gelöst
         mode = _mode_suffix(p)   # z.B. „· 2× einfach" (Figuren ziehbar); reines Training bleibt leer
         lines.append(f"{mark}{name} — {p.get('solvedCount', 0)}/{total} · {_fmt_secs(p.get('totalSeconds', 0))}{hint}{mode}")
-    more = len(players) - len(lines)
-    body = '\n'.join(lines)
-    if more > 0:
-        body += f'\n+{more} weitere'
     head = f'{completed} erledigt' if completed else 'noch keiner fertig'
-    return f'{body}\n_({head})_'
+
+    def _render(shown):
+        body = '\n'.join(shown)
+        more = len(players) - len(shown)
+        if more > 0:
+            body += f'\n+{more} weitere'
+        return f'{body}\n_({head})_'
+
+    # Discord lehnt Feldwerte > 1024 Zeichen ab: dann fallen hinten Zeilen weg („+N weitere").
+    return fit_list(lines, _render, EMBED_FIELD_VALUE_MAX)
 
 
 async def apply_weekly_update(bot, weekly_id, results: dict) -> None:
@@ -289,6 +359,13 @@ async def run_weekly_announcements():
         except Exception:
             log.exception('Wochenpost-Ankündigung #%s fehlgeschlagen', p.get('id'),
                           extra={'es_fields': {'tags': ['weekly']}})
+            state = _update_pending(p.get('id'), add_failure=True)
+            if state.get('failures', 0) >= _MAX_ATTEMPTS:
+                # Dauerfehler (z. B. fehlendes Recht im Thread): nicht eine Woche lang alle 30 min.
+                _mark_posted(p.get('id'))
+                log.warning('Wochenpost #%s nach %d Fehlversuchen aufgegeben (Thread %s) – '
+                            'bitte von Hand ankündigen.', p.get('id'), state.get('failures'),
+                            state.get('thread_id') or '-', extra={'es_fields': {'tags': ['weekly']}})
 
 
 def setup(bot, wochenpost_channel_id: int = 0):

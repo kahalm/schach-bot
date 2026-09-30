@@ -38,6 +38,7 @@ from test_cmd_weeklypost import (
     test_weekly_announcer, test_weekly_results_format, test_weekly_results_modes,
     test_weekly_announcement_prefills_progress,
     test_weekly_announcement_includes_description,
+    test_weekly_announcement_retry_reuses_thread, test_weekly_discord_limits,
 )
 from test_cmd_leaderboard import (
     test_leaderboard_format, test_leaderboard_monthly_schedule,
@@ -153,6 +154,8 @@ def main():
     test_weekly_results_modes()
     test_weekly_announcement_prefills_progress()
     test_weekly_announcement_includes_description()
+    test_weekly_announcement_retry_reuses_thread()
+    test_weekly_discord_limits()
     test_leaderboard_format()
     test_leaderboard_monthly_schedule()
     test_leaderboard_command()

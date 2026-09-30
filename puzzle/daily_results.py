@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 
 from core import i18n
 from core.datetime_utils import fmt_mmss
-from core.discord_text import escape_display_name
+from core.discord_text import EMBED_FIELD_VALUE_MAX, escape_display_name, fit_list
 from core.json_store import atomic_read, atomic_write
 from core.paths import CONFIG_DIR
 
@@ -192,14 +192,20 @@ def format_solver_line(results: dict, max_names: int = MAX_NAMES, lang: str = 'd
         xs = '❌' * min(int(s.get('wrongAttempts', 0) or 0), 10)
         inner = (f'{tm} {xs}' if tm and xs else (tm or xs))
         shown.append((f'{name} ({inner})' if inner else name) + hint)
-    body = ''
-    if shown:
-        more = named - len(shown)
-        body = ', '.join(shown) + (f' {i18n.t("daily.more", lang, n=more)}' if more > 0 else '')
-    if anon > 0:
-        body = (body + ' · ' if body else '') + i18n.t('daily.anon', lang, n=anon)
     suffix = i18n.t('daily.attempts_suffix', lang, n=attempts) if attempts > total else ''
-    return i18n.t('daily.solved', lang, n=total, body=body) + suffix
+
+    def _render(names):
+        body = ''
+        if names:
+            more = named - len(names)
+            body = ', '.join(names) + (f' {i18n.t("daily.more", lang, n=more)}' if more > 0 else '')
+        if anon > 0:
+            body = (body + ' · ' if body else '') + i18n.t('daily.anon', lang, n=anon)
+        return i18n.t('daily.solved', lang, n=total, body=body) + suffix
+
+    # Discord lehnt Feldwerte > 1024 Zeichen ab (15 lange Namen mit ❌ reichen dafuer):
+    # dann fallen hinten Namen weg und zaehlen bei „+N weitere" mit.
+    return fit_list(shown, _render, EMBED_FIELD_VALUE_MAX)
 
 
 def _field_name(f):

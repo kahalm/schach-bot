@@ -220,3 +220,139 @@ def test_weekly_results_modes():
                          'trainingCount': None, 'easyCount': 'zwei'}]}
     check('Muell-Werte kippen das Format nicht', 'einfach' not in wp.format_weekly_results(junk))
     print()
+
+
+class _FlakyThread:
+    """Thread, dessen send scheitert, solange ``fail`` gesetzt ist (z. B. Discord 400/5xx)."""
+    _counter = 0
+
+    def __init__(self, name, box):
+        _FlakyThread._counter += 1
+        self.id = 700000 + _FlakyThread._counter
+        self.name = name
+        self.sent = []
+        self._box = box
+
+    async def send(self, content=None, **kwargs):
+        if self._box['fail']:
+            raise RuntimeError('400 Bad Request (Invalid Form Body)')
+        from test_helpers import FakeMessage
+        msg = FakeMessage(content=content, **kwargs)
+        self.sent.append(msg)
+        return msg
+
+
+class _ThreadChannel(FakeChannel):
+    """Channel mit Thread-Cache wie discord.TextChannel.get_thread."""
+
+    def __init__(self, box, channel_id=88888):
+        super().__init__(channel_id=channel_id)
+        self._box = box
+        self.deleted = set()
+
+    async def create_thread(self, name='thread', **kwargs):
+        thread = _FlakyThread(name, self._box)
+        self.threads.append(thread)
+        return thread
+
+    def get_thread(self, thread_id):
+        return next((t for t in self.threads if t.id == thread_id and t.id not in self.deleted), None)
+
+
+def test_weekly_announcement_retry_reuses_thread():
+    """N10-001: scheitert der Versand nach create_thread, legt der naechste Lauf keinen weiteren
+    Thread an, sondern nutzt den vorgemerkten; nach _MAX_ATTEMPTS Fehlversuchen wird aufgegeben."""
+    print('[weekly announcement retry reuses thread]')
+    tmpdir = setup_temp_config()
+    box = {'fail': True}
+    ch = _ThreadChannel(box)
+
+    async def _fetch_channel(cid):
+        raise RuntimeError('404 Unknown Channel')
+
+    fake_bot = MagicMock()
+    fake_bot.get_channel = lambda cid: ch if cid == 88888 else None
+    fake_bot.fetch_channel = _fetch_channel
+    old_bot, old_cid = wp._bot, wp._channel_id
+    orig_get, orig_results = wp.rookhub.get_weekly_posts, wp.rookhub.get_weekly_results
+    wp._bot, wp._channel_id = fake_bot, 88888
+    try:
+        from test_helpers import atomic_write
+        now = datetime.now(timezone.utc)
+        atomic_write(wp.WEEKLY_STATE_FILE, {'posted_ids': [], 'seeded': True, 'threads': {}})  # Altbestand ohne pending
+        post = {'id': 11, 'title': 'Woche 11', 'scheduledAt': _iso(now - timedelta(minutes=5))}
+        wp.rookhub.get_weekly_posts = lambda timeout=15: [post]
+        wp.rookhub.get_weekly_results = lambda wid, timeout=15: None
+
+        run_async(wp.run_weekly_announcements())
+        run_async(wp.run_weekly_announcements())
+        check('2 gescheiterte Laeufe → nur 1 Thread', len(ch.threads) == 1)
+        check('Fehlversuche gezaehlt', wp._pending(11).get('failures') == 2)
+        check('Thread vorgemerkt', wp._pending(11).get('thread_id') == ch.threads[0].id)
+        check('noch nicht als gepostet markiert', 11 not in wp._posted_ids())
+
+        box['fail'] = False
+        run_async(wp.run_weekly_announcements())
+        check('Erfolg im vorgemerkten Thread, kein neuer', len(ch.threads) == 1 and len(ch.threads[0].sent) == 1)
+        check('danach gepostet', 11 in wp._posted_ids())
+        check('Zwischenstand aufgeraeumt', wp._pending(11) == {})
+        check('Embed-Message fuer Updates gemerkt', (wp._thread_for(11) or {}).get('channel_id') == ch.threads[0].id)
+
+        # Vorgemerkter Thread inzwischen geloescht (nicht im Cache, fetch 404) → neuer Thread.
+        box['fail'] = True
+        post2 = {'id': 12, 'title': 'Woche 12', 'scheduledAt': _iso(now - timedelta(minutes=4))}
+        wp.rookhub.get_weekly_posts = lambda timeout=15: [post, post2]
+        run_async(wp.run_weekly_announcements())
+        ch.deleted.add(ch.threads[-1].id)
+        box['fail'] = False
+        run_async(wp.run_weekly_announcements())
+        check('geloeschter Thread → genau ein neuer', len(ch.threads) == 3 and len(ch.threads[-1].sent) == 1)
+
+        # Dauerfehler: nach _MAX_ATTEMPTS aufgeben (als gepostet markieren, nicht weiter versuchen).
+        box['fail'] = True
+        post3 = {'id': 13, 'title': 'Woche 13', 'scheduledAt': _iso(now - timedelta(minutes=3))}
+        wp.rookhub.get_weekly_posts = lambda timeout=15: [post3]
+        for _ in range(wp._MAX_ATTEMPTS):
+            run_async(wp.run_weekly_announcements())
+        check('nach _MAX_ATTEMPTS aufgegeben', 13 in wp._posted_ids() and wp._pending(13) == {})
+        n_threads = len(ch.threads)
+        run_async(wp.run_weekly_announcements())
+        check('nach dem Aufgeben kein weiterer Versuch', len(ch.threads) == n_threads)
+        check('ueber alle Fehlversuche nur 1 Thread fuer #13', sum(1 for t in ch.threads if 'Woche 13' in t.name) == 1)
+    finally:
+        wp.rookhub.get_weekly_posts, wp.rookhub.get_weekly_results = orig_get, orig_results
+        wp._bot, wp._channel_id = old_bot, old_cid
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_weekly_discord_limits():
+    """N10-001: Embed-Titel <= 256 (RookHub erlaubt 300), Fortschrittsfeld <= 1024 Zeichen."""
+    print('[weekly discord limits]')
+    tmpdir = setup_temp_config()
+    orig_results = wp.rookhub.get_weekly_results
+    try:
+        wp.rookhub.get_weekly_results = lambda wid, timeout=15: None
+        ch = FakeChannel(channel_id=88888)
+        long_title = 'Kapitel ' + 'sehr langer Titel ' * 16   # ~300 Zeichen
+        run_async(wp._post_announcement(ch, {'id': 21, 'title': long_title,
+                                             'scheduledAt': '2026-06-19T18:00:00'}))
+        embed = ch.threads[0].sent[0].kwargs.get('embed')
+        check('Testtitel > 256', len(long_title) > 256)
+        check('Titel > 256 gekuerzt', len(embed.title) <= 256 and embed.title.endswith('…'))
+        ch2 = FakeChannel(channel_id=88888)
+        run_async(wp._post_announcement(ch2, {'id': 22, 'title': 'Kurz', 'scheduledAt': '2026-06-19T18:00:00'}))
+        check('kurzer Titel unveraendert', ch2.threads[0].sent[0].kwargs.get('embed').title == 'Kurz')
+
+        players = [{'name': f'{i:02d}' + 'x' * 48, 'solvedCount': 15, 'totalSeconds': 36000,
+                    'completed': True, 'hintsUsed': 1, 'easyCount': 99} for i in range(20)]
+        out = wp.format_weekly_results({'total': 15, 'completedCount': 20, 'players': players})
+        shown = [l for l in out.splitlines() if l.startswith('✅')]
+        more = next((l for l in out.splitlines() if l.startswith('+')), '')
+        check('Feldwert <= 1024', len(out) <= 1024)
+        check('Fusszeile bleibt', out.endswith('\n_(20 erledigt)_'))
+        check('+N weitere zaehlt die weggefallenen mit', more == f'+{20 - len(shown)} weitere' and len(shown) < 15)
+    finally:
+        wp.rookhub.get_weekly_results = orig_results
+        teardown_temp_config(tmpdir)
+    print()

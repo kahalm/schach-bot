@@ -4,6 +4,24 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.24] - 2026-09-30
+### Fixed
+- **Wochenpost-Ankündigung legt bei einem Fehler keinen weiteren Thread mehr an.** Der Bot legte
+  den öffentlichen Thread an, bevor er die Ankündigung hineinschrieb, und merkte sich den Post
+  erst danach. Scheiterte der Versand, blieb ein leerer Thread stehen, und der nächste Lauf
+  30 Minuten später legte den nächsten an – bei einem Dauerfehler bis zu 336 leere Threads in
+  einer Woche. Jetzt merkt sich der Bot den Thread direkt nach dem Anlegen
+  (`config/weekly_posts.json`, neues Feld `pending`, alte Dateien werden weiter gelesen) und
+  schreibt beim nächsten Versuch in denselben Thread; nur wenn der inzwischen gelöscht ist,
+  entsteht ein neuer. Nach 10 Fehlversuchen je Post gibt er auf und warnt einmal im Log.
+- **Discord-Grenzen im Wochenpost und in der Tagespuzzle-Löserzeile.** RookHub erlaubt
+  Wochenpost-Titel bis 300 Zeichen, Discord im Embed-Titel nur 256 – ein längerer Titel ließ
+  Discord jede Ankündigung ablehnen. Der Titel wird jetzt an einer Wortgrenze auf 256 Zeichen
+  gekürzt (`…`). Das Fortschrittsfeld im Wochenpost und die Löserzeile des Tagespuzzles bleiben
+  unter 1024 Zeichen: Bei vielen langen Namen fallen hinten Einträge weg und zählen bei
+  „+N weitere“ mit, die Fußzeile bleibt. Gemeinsamer Helfer: `core/discord_text.py`
+  (`clip`, `fit_list`).
+
 ## [2.83.23] - 2026-09-30
 ### Changed
 - **`bot.py`: Env-Parsing als Funktion, Start nur noch über `main()`.** Der Einstieg brach beim

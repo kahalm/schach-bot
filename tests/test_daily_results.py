@@ -279,6 +279,19 @@ def test_markdown_names_escaped():
           and long_line.count('\\*') == 25 and '…' in long_line)
 
 
+def test_field_value_within_discord_limit():
+    # N10-001: 15 lange Namen mit Zeit, 10 X und Gluehbirne sprengen sonst das 1024er-Feld
+    # (Discord lehnt das Edit mit 400 ab, die Solver-Zeile friert ein).
+    solvers = [{'name': f'{i:02d}' + 'y' * 48, 'timeSeconds': 3599, 'wrongAttempts': 10, 'hintsUsed': 1}
+               for i in range(20)]
+    line = dr.format_solver_line({'solvedCount': 20, 'attemptCount': 40, 'solvers': solvers}, max_names=15)
+    shown = line.count('y' * 48)
+    check('Solver-Zeile <= 1024 Zeichen', len(line) <= 1024)
+    check('weniger als 15 Namen gezeigt', 0 < shown < 15)
+    check('+N weitere zaehlt die weggefallenen mit', f'+{20 - shown} weitere' in line)
+    check('Versuchs-Suffix bleibt', line.endswith('· 🧩 40 dran versucht'))
+
+
 def main():
     for t in (test_no_solvers, test_mentions_and_names, test_truncates_long_list,
               test_anonymous_counted, test_only_anonymous, test_all_solved_hides_try_count,
@@ -286,7 +299,8 @@ def main():
               test_hints_badge, test_hints_badge_without_time,
               test_remember_current_roundtrip, test_remember_midnight_rollover,
               test_catchup_due, test_catchup_no_grace_hole,
-              test_bot_passes_loop_start_to_catchup, test_markdown_names_escaped):
+              test_bot_passes_loop_start_to_catchup, test_markdown_names_escaped,
+              test_field_value_within_discord_limit):
         print(f'== {t.__name__} ==')
         t()
     print()
