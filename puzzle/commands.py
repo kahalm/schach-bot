@@ -8,7 +8,7 @@ from collections import defaultdict
 import discord
 
 from core import stats
-from core.permissions import is_privileged
+from core.permissions import is_privileged, require_privileged
 
 # Funktionen werden ueber das puzzle-Paket referenziert (nicht direkt importiert),
 # damit Test-Monkeypatches auf puzzle.X auch hier wirken.
@@ -488,8 +488,7 @@ async def _cmd_ignore_kapitel(
     kapitel: int = 0,
     aktion: discord.app_commands.Choice[str] = None,
 ):
-    if not is_privileged(interaction):
-        await interaction.response.send_message('⚠️ Nur für Admins.', ephemeral=True)
+    if not await require_privileged(interaction):
         return
     await interaction.response.defer(ephemeral=True)
 

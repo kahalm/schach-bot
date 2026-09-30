@@ -4,6 +4,20 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.21] - 2026-09-30
+### Fixed
+- **`/help` zeigt nur noch Befehle, die der Aufrufer ausführen kann.** Moderatoren (Rolle
+  „moderator“ ohne Administrator-Recht) sahen in `/help` den ganzen Admin-Bereich (`/daily`,
+  `/log`, `/dm-log`, `/test` …), fanden die Befehle aber nicht im Menü: alle 17 Admin-Befehle
+  tragen `default_permissions(administrator=True)`, Discord blendet sie für Nicht-Admins aus.
+  Jetzt prüft die Hilfe je Befehl beides – Discord-Sperre und Laufzeit-Prüfung
+  (`core.permissions.can_run`). **Keine Rechteänderung:** wer einen Befehl bisher ausführen
+  konnte, kann es weiter; der Moderator-Zweig wirkt wie bisher bei `user:`-Parametern von
+  `/puzzle`, `/schachrallye_sub`, `/turnier_sub` und `/motivation`.
+- **Eine Ablehnung für alle Admin-Befehle.** Statt vier Schreibweisen („Nur für Admins.“, „Nur
+  fuer Admins/Moderatoren.“ …) an 13 Stellen antworten alle über `require_privileged()` mit
+  „⚠️ Nur für Admins/Moderatoren.“; nach einem `defer` kommt die Ablehnung als Folgenachricht.
+
 ## [2.83.20] - 2026-09-30
 ### Changed
 - **`/help` wird aus den registrierten Befehlen erzeugt.** Hilfe, Übersicht und Begrüßung waren

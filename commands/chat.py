@@ -13,7 +13,7 @@ from discord.ext import commands
 
 from core.paths import CONFIG_DIR
 from core.json_store import atomic_read, atomic_update
-from core.permissions import is_privileged
+from core.permissions import require_privileged
 from commands.chat_tools import TOOLS, execute_tool
 
 log = logging.getLogger('schach-bot')
@@ -530,9 +530,7 @@ def setup(bot: commands.Bot):
     async def cmd_chat_whitelist(interaction: discord.Interaction,
                                  user: discord.User = None,
                                  aktion: str = 'add'):
-        if not is_privileged(interaction):
-            await interaction.response.send_message(
-                '⚠️ Nur fuer Admins/Moderatoren.', ephemeral=True)
+        if not await require_privileged(interaction):
             return
 
         aktion = aktion.lower().strip()

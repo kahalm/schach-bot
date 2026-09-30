@@ -12,7 +12,7 @@ from datetime import date
 
 from core import stats
 from core.json_store import atomic_write
-from core.permissions import is_privileged
+from core.permissions import require_privileged
 from core.version import EMBED_COLOR
 
 import discord
@@ -1091,8 +1091,7 @@ def setup(bot: discord.ext.commands.Bot):
                   extras={'help': 'admin'})
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_reindex(interaction: discord.Interaction):
-        if not is_privileged(interaction):
-            await interaction.response.send_message('⚠️ Nur fuer Admins.', ephemeral=True)
+        if not await require_privileged(interaction):
             return
         from puzzle import selection as _puzzle_sel  # lazy: zirkulaere Imports vermeiden
         await interaction.response.defer(ephemeral=True)

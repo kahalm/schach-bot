@@ -43,20 +43,21 @@ def test_help():
 
         # 3) Spiegel: Nicht-Admin-Hilfe == alle sichtbaren Nicht-Admin-Befehle, Admin-Hilfe ==
         #    alle Admin-Befehle; kein Eintrag ohne Registrierung.
-        def _names(is_admin, areas):
+        def _names(allowed, areas):
             out = []
             for b in areas:
-                out += [sig.split()[0][1:] for sig, _ in _help_fields_fn(b, is_admin)[1]]
+                out += [sig.split()[0][1:] for sig, _ in _help_fields_fn(b, allowed)[1]]
             return out
+        everything = lambda c: True  # Vollsicht (Admin)
         user_areas = [b for b in help_mod.BEREICHE if b != 'admin']
-        user_help = _names(False, user_areas)
+        user_help = _names(None, user_areas)
         expected_user = sorted(n for n, c in meta.items()
                                if c.extras.get('help') not in (None, 'admin'))
         check('Nicht-Admin-Hilfe = sichtbare Nicht-Admin-Befehle',
               sorted(user_help) == expected_user,
               str(set(user_help) ^ set(expected_user)))
         check('kein Befehl doppelt in der Hilfe', len(user_help) == len(set(user_help)))
-        admin_help = _names(True, ['admin'])
+        admin_help = _names(everything, ['admin'])
         expected_admin = sorted(n for n, c in meta.items() if c.extras.get('help') == 'admin')
         check('Admin-Hilfe = Admin-Befehle', sorted(admin_help) == expected_admin,
               str(set(admin_help) ^ set(expected_admin)))
@@ -67,21 +68,21 @@ def test_help():
         check('/stats nur im Admin-Bereich', 'stats' in admin_help and 'stats' not in user_help)
 
         # Beschreibung + Parameter kommen aus der Registrierung.
-        fields = dict(_help_fields_fn('puzzle', False)[1])
+        fields = dict(_help_fields_fn('puzzle')[1])
         puzzle_field = next((v for k, v in fields.items() if k.startswith('/puzzle ')), '')
         check('/puzzle-Eintrag nennt Beschreibung', meta['puzzle'].description in puzzle_field)
         check('/puzzle-Eintrag nennt Parameter anzahl', '`anzahl` —' in puzzle_field, puzzle_field)
 
         # 4) Bereiche ohne Rechte/unbekannt → leer.
-        check('kein Bereich → leer', _help_fields_fn('', False) == ('', []))
-        check('unbekannter Bereich → leer', _help_fields_fn('nonsense', False) == ('', []))
-        check('admin ohne Admin → leer', _help_fields_fn('admin', False) == ('', []))
-        title, fields = _help_fields_fn('admin', True)
+        check('kein Bereich → leer', _help_fields_fn('') == ('', []))
+        check('unbekannter Bereich → leer', _help_fields_fn('nonsense') == ('', []))
+        check('admin ohne Admin → leer', _help_fields_fn('admin') == ('', []))
+        title, fields = _help_fields_fn('admin', everything)
         check('admin mit Admin → Titel', 'Admin' in title)
 
         # 5) Discord-Limits je Bereich (25 Felder, 6000 Zeichen, 1024 je Feld).
         for b in help_mod.BEREICHE:
-            title, fields = _help_fields_fn(b, True)
+            title, fields = _help_fields_fn(b, everything)
             size = len(title) + sum(len(k) + len(v) for k, v in fields)
             check(f'Bereich {b} innerhalb der Embed-Limits',
                   len(fields) <= 25 and size <= 5800 and all(len(v) <= 1024 for _, v in fields),
@@ -120,6 +121,93 @@ def test_help():
         dead = [n for n in mentioned
                 if n not in meta or meta[n].extras.get('help') in (None, 'admin')]
         check('Begruessung nennt nur sichtbare Nicht-Admin-Befehle', not dead, str(dead))
+    finally:
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_help_permissions():
+    """S4-015: /help zeigt nur, was der Aufrufer ausfuehren kann; eine Ablehnung fuer alle
+    Admin-Befehle (require_privileged), keine Rechteaenderung."""
+    print('[/help Rechte + Ablehnung]')
+    import re
+    from core import permissions
+    from test_helpers import FakeMember, FakeRole
+    tmpdir = setup_temp_config()
+    try:
+        cmd = _captured_commands.get('help')
+        mod = FakeMember(uid=4711, admin=False, roles=[FakeRole('Moderator')])
+        admin = FakeMember(uid=4712, admin=True)
+
+        # Moderator ohne Administrator-Recht: Discord bietet ihm die Admin-Befehle
+        # (default_permissions administrator) nicht an → /help listet sie auch nicht.
+        check('Moderator ist privileged (Laufzeit-Pruefung unveraendert)',
+              permissions.is_privileged(make_interaction(user=mod)))
+        ia = make_interaction(user=mod)
+        run_async(cmd(ia, bereich=''))
+        embed = ia.response.calls[0].get('embed')
+        names = [f['name'] for f in embed.fields] if embed else []
+        check('Moderator: Uebersicht ohne Admin-Bereich', not any('admin' in n for n in names),
+              str(names))
+        ia = make_interaction(user=mod)
+        run_async(cmd(ia, bereich='admin'))
+        content = ia.response.calls[0].get('content') or ''
+        check('Moderator: bereich admin → unbekannt, admin nicht angeboten',
+              'Unbekannter Bereich' in content and 'admin`' not in content.split('Verfügbar:')[-1],
+              content)
+
+        ia = make_interaction(user=admin)
+        run_async(cmd(ia, bereich='admin'))
+        embed = ia.response.calls[0].get('embed')
+        admin_names = [f['name'].split()[0] for f in embed.fields] if embed else []
+        check('Admin: Admin-Bereich mit /stats und /reindex',
+              '/stats' in admin_names and '/reindex' in admin_names, str(admin_names))
+
+        # Eine Ablehnung fuer ALLE Admin-Befehle (vorher vier Schreibweisen).
+        admin_cmds = sorted(n for n, c in h._captured_meta.items()
+                            if c.extras.get('help') == 'admin')
+        check('Admin-Befehle erfasst (>= 15)', len(admin_cmds) >= 15, str(admin_cmds))
+        wrong = []
+        for name in admin_cmds:
+            meta = h._captured_meta[name]
+            kwargs = {p.name: None for p in meta.parameters if p.required}
+            ia = make_interaction(user=FakeMember(uid=4713, admin=False))
+            try:
+                run_async(_captured_commands[name](ia, **kwargs))
+                first = ia.response.calls[0] if ia.response.calls else {}
+                if first.get('content') != permissions.DENIED_TEXT or not first.get('ephemeral'):
+                    wrong.append((name, first.get('content')))
+            except Exception as e:  # noqa: BLE001
+                wrong.append((name, repr(e)))
+        check('jeder Admin-Befehl lehnt Nicht-Admins mit DENIED_TEXT ab', not wrong, str(wrong))
+        missing_perm = [n for n in admin_cmds
+                        if not getattr(h._captured_meta[n].default_permissions, 'administrator', False)]
+        check('jeder Admin-Befehl traegt default_permissions(administrator)', not missing_perm,
+              str(missing_perm))
+
+        # require_privileged nach defer → followup statt zweiter Response.
+        ia = make_interaction(user=FakeMember(uid=4714, admin=False))
+        run_async(ia.response.defer(ephemeral=True))
+        ok = run_async(permissions.require_privileged(ia))
+        check('require_privileged nach defer → followup',
+              ok is False and ia.followup.calls
+              and ia.followup.calls[0].get('content') == permissions.DENIED_TEXT)
+        ia = make_interaction(user=admin)
+        check('require_privileged Admin → True ohne Antwort',
+              run_async(permissions.require_privileged(ia)) is True and not ia.response.calls)
+
+        # Keine eigenen Ablehnungstexte mehr im Code.
+        stray = []
+        for root, dirs, files in os.walk(parent_dir):
+            dirs[:] = [d for d in dirs if d not in ('.venv', 'tests', '.git', '__pycache__')]
+            for fn in files:
+                if fn.endswith('.py'):
+                    path = os.path.join(root, fn)
+                    src = open(path, encoding='utf-8').read()
+                    for m in re.finditer(r"Nur f(?:ü|ue)r Admins", src):
+                        stray.append(os.path.relpath(path, parent_dir))
+        check('Ablehnungstext nur in core/permissions.py',
+              stray == [os.path.join('core', 'permissions.py')], str(stray))
     finally:
         teardown_temp_config(tmpdir)
     print()

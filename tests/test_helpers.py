@@ -348,6 +348,9 @@ class FakeResponse:
     async def send_modal(self, modal):
         self.calls.append({'type': 'send_modal', 'modal': modal})
 
+    def is_done(self):
+        return bool(self.calls)
+
 
 class FakeFollowup:
     def __init__(self):

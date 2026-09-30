@@ -23,7 +23,7 @@ from core import discord_link
 from core import i18n as _i18n
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
-from core.permissions import is_privileged, set_guild_id, display_name_cached
+from core.permissions import require_privileged, set_guild_id, display_name_cached
 from core.secret_env import secret_from_env
 from core.version import VERSION, GIT_SHA, START_TIME, EMBED_COLOR
 
@@ -392,20 +392,6 @@ def _paginate_lines(header: str, lines: list[str],
 
 # --- Slash-Commands ---
 
-def _is_admin(interaction: discord.Interaction) -> bool:
-    """True wenn der User Server-Admin oder Moderator ist."""
-    return is_privileged(interaction)
-
-
-async def _require_admin(interaction: discord.Interaction) -> bool:
-    """Prueft Admin/Mod-Rechte und antwortet bei Fehlen."""
-    if is_privileged(interaction):
-        return True
-    await interaction.response.send_message(
-        '⚠️ Nur für Admins/Moderatoren.', ephemeral=True)
-    return False
-
-
 @tree.command(name='version', description='Aktuelle Bot-Version und Uptime anzeigen',
               extras={'help': 'info'})
 async def cmd_version(interaction: discord.Interaction):
@@ -421,7 +407,7 @@ async def cmd_version(interaction: discord.Interaction):
               extras={'help': 'admin'})
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_greeted(interaction: discord.Interaction):
-    if not await _require_admin(interaction):
+    if not await require_privileged(interaction):
         return
     data = await asyncio.to_thread(atomic_read, DM_STATE_FILE, dict)
     greeted = data.get('greeted', [])
@@ -444,8 +430,7 @@ async def cmd_greeted(interaction: discord.Interaction):
 @discord.app_commands.describe(user='Nur DMs dieses Users anzeigen')
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_dm_log(interaction: discord.Interaction, user: discord.User = None):
-    if not _is_admin(interaction):
-        await interaction.response.send_message('⚠️ Nur für Admins.', ephemeral=True)
+    if not await require_privileged(interaction):
         return
     await interaction.response.defer(ephemeral=True)
     data = await asyncio.to_thread(atomic_read, dm_log.DM_LOG_FILE, dict)
@@ -506,7 +491,7 @@ async def cmd_dm_log(interaction: discord.Interaction, user: discord.User = None
 @discord.app_commands.describe(user='Der User, der die Nachricht erhalten soll')
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_announce(interaction: discord.Interaction, user: discord.User):
-    if not await _require_admin(interaction):
+    if not await require_privileged(interaction):
         return
     try:
         dm = await user.create_dm()
@@ -527,7 +512,7 @@ async def cmd_announce(interaction: discord.Interaction, user: discord.User):
               extras={'help': 'admin'})
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_stats(interaction: discord.Interaction):
-    if not await _require_admin(interaction):
+    if not await require_privileged(interaction):
         return
     all_stats = await asyncio.to_thread(stats.get_all)
     if not all_stats:
@@ -579,7 +564,7 @@ def _read_log_tail(n: int) -> str:
 @discord.app_commands.describe(zeilen='Anzahl Zeilen (Standard: 50, Max: 200)')
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_log(interaction: discord.Interaction, zeilen: int = 50):
-    if not await _require_admin(interaction):
+    if not await require_privileged(interaction):
         return
     await interaction.response.defer(ephemeral=True)
     zeilen = max(1, min(zeilen, 200))
@@ -596,7 +581,7 @@ async def cmd_log(interaction: discord.Interaction, zeilen: int = 50):
               extras={'help': 'admin'})
 @discord.app_commands.default_permissions(administrator=True)
 async def cmd_daily(interaction: discord.Interaction):
-    if not await _require_admin(interaction):
+    if not await require_privileged(interaction):
         return
     if not DAILY_CHANNEL_IDS:
         await interaction.response.send_message('Kein Daily-Channel konfiguriert.', ephemeral=True)

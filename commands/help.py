@@ -7,11 +7,15 @@ händisch gepflegte Liste mehr, die vom Befehlsbestand abdriften kann.
 Den Bereich legt jeder Befehl bei der Registrierung fest: ``extras={'help': '<bereich>'}``
 mit einem Schlüssel aus ``BEREICHE``; ``None`` blendet ihn aus (abgelöste Hinweis-Stubs).
 ``tests/test_cmd_info.py`` prüft, dass jeder registrierte Befehl einen gültigen Bereich trägt.
+
+Gezeigt wird nur, was der Aufrufer wirklich ausführen kann (``core.permissions.can_run``):
+Admin-Befehle tragen ``default_permissions(administrator=True)`` – Discord bietet sie Moderatoren
+ohne Administrator-Recht gar nicht an, also listet sie die Hilfe dort auch nicht.
 """
 
 import discord
 
-from core.permissions import is_privileged
+from core.permissions import can_run
 from core.version import VERSION, EMBED_COLOR
 
 HELP_KEY = 'help'
@@ -74,28 +78,43 @@ def _body(cmd) -> str:
     return '\n'.join(lines)[:_FIELD_MAX]
 
 
-def visible_areas(is_admin: bool = False, commands=None) -> list[str]:
+def everyone_can_run(cmd) -> bool:
+    """Sicht eines Mitglieds ohne besondere Rechte: kein Admin-Bereich, keine Rechte-Sperre."""
+    required = getattr(cmd, 'default_permissions', None)
+    return area_of(cmd) != ADMIN and not getattr(required, 'value', 0)
+
+
+def viewer_filter(interaction):
+    """Filter „darf der Aufrufer diesen Befehl ausführen?“ für /help."""
+    return lambda cmd: can_run(interaction, cmd, privileged_only=area_of(cmd) == ADMIN)
+
+
+def visible_areas(allowed=None, commands=None) -> list[str]:
     """Bereiche, die für den Aufrufer mindestens einen Befehl enthalten."""
-    return [b for b in BEREICHE if help_fields(b, is_admin, commands)[1]]
+    return [b for b in BEREICHE if help_fields(b, allowed, commands)[1]]
 
 
-def help_fields(bereich: str, is_admin: bool = False,
+def help_fields(bereich: str, allowed=None,
                 commands=None) -> tuple[str, list[tuple[str, str]]]:
-    """(Titel, [(Signatur, Beschreibung), ...]) für einen Bereich; unbekannt/leer → ('', [])."""
+    """(Titel, [(Signatur, Beschreibung), ...]) für einen Bereich; unbekannt/leer → ('', []).
+
+    ``allowed(cmd) -> bool`` filtert auf die Befehle, die der Aufrufer ausführen darf
+    (Standard: ``everyone_can_run``)."""
     bereich = (bereich or '').lower().strip()
-    if bereich not in BEREICHE or (bereich == ADMIN and not is_admin):
+    if bereich not in BEREICHE:
         return '', []
+    allowed = allowed or everyone_can_run
     cmds = registered_commands() if commands is None else commands
-    fields = [(_signature(c), _body(c)) for c in cmds if area_of(c) == bereich]
+    fields = [(_signature(c), _body(c)) for c in cmds if area_of(c) == bereich and allowed(c)]
     return (BEREICHE[bereich], fields) if fields else ('', [])
 
 
-def build_help_embed(bereich: str, is_admin: bool, commands=None):
+def build_help_embed(bereich: str, allowed=None, commands=None):
     """Embed für /help (Übersicht ohne Bereich) oder ``None`` bei unbekanntem Bereich."""
     bereich = (bereich or '').lower().strip()
     cmds = registered_commands() if commands is None else commands
     if bereich:
-        title, fields = help_fields(bereich, is_admin, cmds)
+        title, fields = help_fields(bereich, allowed, cmds)
         if not fields:
             return None
         embed = discord.Embed(title=title, color=EMBED_COLOR)
@@ -105,7 +124,7 @@ def build_help_embed(bereich: str, is_admin: bool, commands=None):
         embed = discord.Embed(title='♟️ Schach-Bot — Hilfe', color=EMBED_COLOR,
                               description='Nutze `/help bereich:…` für Details.')
         for b in BEREICHE:
-            _title, fields = help_fields(b, is_admin, cmds)
+            _title, fields = help_fields(b, allowed, cmds)
             if fields:
                 names = ' '.join(f'`{sig.split()[0]}`' for sig, _ in fields)
                 embed.add_field(name=f'{BEREICHE[b].split()[0]} {b}', value=names[:_FIELD_MAX],
@@ -124,10 +143,10 @@ def setup(bot, guild_id: int = 0):
                       extras={HELP_KEY: 'info'})
     @discord.app_commands.describe(bereich='Bereich: puzzle, bibliothek, community, info, admin')
     async def cmd_help(interaction: discord.Interaction, bereich: str = ''):
-        is_admin = is_privileged(interaction)
-        embed = build_help_embed(bereich, is_admin)
+        allowed = viewer_filter(interaction)
+        embed = build_help_embed(bereich, allowed)
         if embed is None:
-            verfuegbar = ' · '.join(f'`{b}`' for b in visible_areas(is_admin))
+            verfuegbar = ' · '.join(f'`{b}`' for b in visible_areas(allowed))
             await interaction.response.send_message(
                 f'Unbekannter Bereich `{bereich.lower().strip()}`. Verfügbar: {verfuegbar}',
                 ephemeral=True)

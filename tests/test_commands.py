@@ -11,7 +11,7 @@ import sys
 import test_helpers as h
 
 from test_cmd_info import (
-    test_help, test_version, test_release_notes,
+    test_help, test_help_permissions, test_version, test_release_notes,
     test_event_log, test_healthcheck,
 )
 from test_cmd_puzzle import (
@@ -90,6 +90,7 @@ def main():
     print(f'Slash-Command-Tests\n')
 
     test_help()
+    test_help_permissions()
     test_version()
     test_elo()
     test_resourcen()

@@ -28,7 +28,7 @@ from discord.ext import tasks
 from core.datetime_utils import parse_utc as _parse_utc, parse_zeit as _parse_zeit
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
-from core.permissions import is_privileged, display_name_cached
+from core.permissions import is_privileged, display_name_cached, require_privileged
 from core.sprueche import random_spruch as _random_spruch  # re-exportiert (Modul-Oberfläche/Test)
 from puzzle import rookhub
 
@@ -630,9 +630,7 @@ def setup(bot):
         zeit='Optional: Uhrzeit MEZ/MESZ — wenn gesetzt, wird der User zusaetzlich taeglich dazu abonniert')
     async def cmd_motivation_send(interaction: discord.Interaction,
                                   user: discord.User, zeit: str = None):
-        if not is_privileged(interaction):
-            await interaction.response.send_message(
-                '⚠️ Nur fuer Admins/Moderatoren.', ephemeral=True)
+        if not await require_privileged(interaction):
             return
 
         # Zeit (falls angegeben) zuerst validieren — vor dem defer, damit der Fehler sauber zurueckkommt.

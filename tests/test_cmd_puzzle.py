@@ -527,7 +527,7 @@ def test_local_book_param():
 
         # 7) /help erklaert die lokale Nummerierung (generiert aus @describe)
         fields = dict(h._help_fields_fn('puzzle', False)[1])
-        fields.update(dict(h._help_fields_fn('admin', True)[1]))
+        fields.update(dict(h._help_fields_fn('admin', lambda c: True)[1]))
         for key in ('/endless [buch]', '/reminder [hours] [puzzle_count] [buch]',
                     '/ignore_kapitel [buch] [kapitel] [aktion]'):
             check(f'/help {key.split()[0]}: buch = lokales Buch',

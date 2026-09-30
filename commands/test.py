@@ -16,7 +16,7 @@ import discord
 from core.datetime_utils import noon_utc_ts as _noon_utc_ts
 from core.json_store import atomic_read
 from core.paths import CONFIG_DIR
-from core.permissions import is_privileged
+from core.permissions import require_privileged
 from core.version import VERSION, START_TIME, EMBED_COLOR
 from puzzle.selection import find_line_by_id
 from puzzle.processing import (
@@ -728,8 +728,7 @@ def setup(bot):
     async def test_cmd(interaction: discord.Interaction,
                        modus: str = 'snapshots',
                        kurs: int = 0, puzzle: int = 0, lichess: int = 0):
-        if not is_privileged(interaction):
-            await interaction.response.send_message('\u26a0\ufe0f Nur fuer Admins.', ephemeral=True)
+        if not await require_privileged(interaction):
             return
         await interaction.response.defer(ephemeral=True)
 

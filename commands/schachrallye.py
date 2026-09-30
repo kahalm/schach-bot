@@ -30,7 +30,7 @@ from urllib.parse import urlparse
 from core.datetime_utils import parse_datum as _parse_datum, noon_utc_ts as _noon_utc_ts
 from core.json_store import atomic_read, atomic_update
 from core.paths import CONFIG_DIR
-from core.permissions import is_privileged
+from core.permissions import is_privileged, require_privileged
 from core.version import EMBED_COLOR
 
 log = logging.getLogger('schach-bot')
@@ -409,8 +409,7 @@ def setup(bot, tournament_channel_id: int = 0):
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_schachrallye_add(interaction: discord.Interaction,
                                    datum: str, ort: str):
-        if not is_privileged(interaction):
-            await interaction.response.send_message('⚠️ Nur für Admins.', ephemeral=True)
+        if not await require_privileged(interaction):
             return
         d = _parse_datum(datum)
         if d is None:
@@ -456,8 +455,7 @@ def setup(bot, tournament_channel_id: int = 0):
     @discord.app_commands.describe(id='ID des Termins (aus /schachrallye)')
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_schachrallye_del(interaction: discord.Interaction, id: int):
-        if not is_privileged(interaction):
-            await interaction.response.send_message('⚠️ Nur für Admins.', ephemeral=True)
+        if not await require_privileged(interaction):
             return
         result = {'found': False}
 
@@ -804,8 +802,7 @@ def setup(bot, tournament_channel_id: int = 0):
                   extras={'help': 'admin'})
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_turnier_parse(interaction: discord.Interaction):
-        if not is_privileged(interaction):
-            await interaction.response.send_message('⚠️ Nur für Admins.', ephemeral=True)
+        if not await require_privileged(interaction):
             return
         await interaction.response.defer(ephemeral=True)
         try:
@@ -884,9 +881,7 @@ def setup(bot, tournament_channel_id: int = 0):
                   extras={'help': 'admin'})
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_turnier_review(interaction: discord.Interaction):
-        if not is_privileged(interaction):
-            await interaction.response.send_message(
-                '\u26a0\ufe0f Nur fuer Admins/Moderatoren.', ephemeral=True)
+        if not await require_privileged(interaction):
             return
 
         uid = interaction.user.id
@@ -924,9 +919,7 @@ def setup(bot, tournament_channel_id: int = 0):
                   extras={'help': 'admin'})
     @discord.app_commands.default_permissions(administrator=True)
     async def cmd_turnier_pending(interaction: discord.Interaction):
-        if not is_privileged(interaction):
-            await interaction.response.send_message(
-                '\u26a0\ufe0f Nur fuer Admins/Moderatoren.', ephemeral=True)
+        if not await require_privileged(interaction):
             return
 
         data = atomic_read(TURNIER_FILE, default=dict)

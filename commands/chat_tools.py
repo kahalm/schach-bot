@@ -694,7 +694,7 @@ async def _tool_get_help(tool_input, ctx) -> str:
     user_bereiche = [b for b in _help.BEREICHE if b != _help.ADMIN]
     bereich = tool_input.get('bereich', '').lower().strip()
     if bereich:
-        title, fields = _help.help_fields(bereich, is_admin=False)
+        title, fields = _help.help_fields(bereich)
         if not fields:
             return json.dumps({
                 'error': f'Unbekannter Bereich: {bereich}',
@@ -708,7 +708,7 @@ async def _tool_get_help(tool_input, ctx) -> str:
     # Uebersicht aller Bereiche
     bereiche = {}
     for b in user_bereiche:
-        title, fields = _help.help_fields(b, is_admin=False)
+        title, fields = _help.help_fields(b)
         bereiche[b] = {
             'titel': title,
             'commands': [name for name, _ in fields],
