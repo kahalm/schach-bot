@@ -1582,6 +1582,36 @@ def test_daily_refresh_no_duplicate_board():
     print()
 
 
+def test_daily_refresh_counts_solvers_before_post():
+    """Wer das Tagespuzzle auf RookHub schon VOR dem Discord-Post geloest hat, muss im Post
+    stehen. refresh() darf deshalb nicht mit ``since`` (= Post-Zeitpunkt) filtern — der
+    RookHub-Webhook schickt ebenfalls den ungefilterten Stand."""
+    print('[daily_results.refresh ohne since-Filter]')
+    from puzzle import daily_results as dr
+    import puzzle.rookhub as rookhub
+
+    seen = {}
+    orig_current, orig_get, orig_apply = dr.current, rookhub.get_daily_results, dr.apply_solver_update
+    dr.current = lambda: {'channel_id': 1, 'message_id': 555, 'puzzle_id': 77,
+                          'since': '2026-10-11T08:00:00+00:00'}
+
+    def _get(pid, since=None):
+        seen['since'] = since
+        return {'solvedCount': 1, 'attemptCount': 1, 'solvers': [{'name': 'Frueh'}]}
+
+    async def _apply(bot, cur, results):
+        seen['applied'] = results
+    rookhub.get_daily_results = _get
+    dr.apply_solver_update = _apply
+    try:
+        run_async(dr.refresh(object()))
+    finally:
+        dr.current, rookhub.get_daily_results, dr.apply_solver_update = orig_current, orig_get, orig_apply
+    check('refresh: Ergebnisse ohne since-Filter geholt', seen.get('since') is None)
+    check('refresh: Ergebnis angewendet', 'applied' in seen)
+    print()
+
+
 def test_build_daily_embed():
     """Minimaler Tagespuzzle-Embed: Am Zug, Tagespuzzle-Slot, Lösungs-Spoiler — sonst nichts."""
     print('[build_daily_embed]')

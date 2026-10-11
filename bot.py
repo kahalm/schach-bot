@@ -648,6 +648,15 @@ async def _post_daily_to_all() -> list[tuple[int, bool]]:
     # Monat erst als abgerechnet markieren, wenn der Endstand mindestens einmal gepostet wurde.
     if endstand_month and endstand_posted:
         _lb.mark_monthly_posted(endstand_month)
+    # Loeser, die das Puzzle auf RookHub schon VOR dem Post geloest haben, sofort eintragen
+    # (der Webhook kaeme erst beim naechsten Versuch).
+    if any(ok for _, ok in results):
+        try:
+            from puzzle import daily_results
+            await daily_results.refresh(bot)
+        except Exception:
+            log.warning('Loeser-Stand nach dem Daily-Post nicht geholt',
+                        extra={'es_fields': {'tags': ['daily', 'puzzle']}})
     return results
 
 

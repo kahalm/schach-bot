@@ -249,6 +249,26 @@ def test_bot_passes_loop_start_to_catchup():
     check('catchup_due bekommt loop_started', 'loop_started=puzzle_loop_started' in call)
 
 
+def test_new_daily_post_shows_existing_solvers():
+    """Nach dem Posten des Tagespuzzles wird der Loeser-Stand sofort geholt — sonst steht
+    „Noch niemand" im Post, obwohl es auf RookHub schon Loeser gibt (Webhook kommt erst
+    beim naechsten Versuch). Gilt fuer den Tages-Loop/Catch-up/`/daily` (bot.py) und den
+    Regenerate-Webhook. Quelltext-Check, da bot.py/webhook_server discord brauchen."""
+    with open(os.path.join(_REPO, 'bot.py'), encoding='utf-8') as f:
+        src = f.read()
+    body = src[src.index('async def _post_daily_to_all('):]
+    body = body[:body.index('\n@tasks.loop')]
+    post_idx = body.index('post_rookhub_puzzle(')
+    check('bot._post_daily_to_all: refresh nach dem Posten',
+          'daily_results.refresh(bot)' in body[post_idx:])
+    with open(os.path.join(_REPO, 'core', 'webhook_server.py'), encoding='utf-8') as f:
+        src = f.read()
+    body = src[src.index('def _make_daily_regenerate_handler('):]
+    post_idx = body.index('posting.post_rookhub_puzzle(')
+    check('Regenerate-Webhook: refresh nach dem Posten',
+          'daily_results.refresh(bot)' in body[post_idx:body.index('\ndef ', post_idx)])
+
+
 def test_markdown_names_escaped():
     # S4-003: RookHub-Anzeigenamen sind frei waehlbar und landen in oeffentlichen Embeds.
     # Markdown/Masked Links/Erwaehnungen/Zeilenumbrueche duerfen dort nicht wirken.
@@ -299,7 +319,8 @@ def main():
               test_hints_badge, test_hints_badge_without_time,
               test_remember_current_roundtrip, test_remember_midnight_rollover,
               test_catchup_due, test_catchup_no_grace_hole,
-              test_bot_passes_loop_start_to_catchup, test_markdown_names_escaped,
+              test_bot_passes_loop_start_to_catchup, test_new_daily_post_shows_existing_solvers,
+              test_markdown_names_escaped,
               test_field_value_within_discord_limit):
         print(f'== {t.__name__} ==')
         t()

@@ -234,6 +234,11 @@ def _make_daily_regenerate_handler(bot, secret: str, daily_channels):
                     log.exception('DailyRegenerate: Neues Daily (Channel %s) fehlgeschlagen: %s', cid, e)
             log.info('DailyRegenerate: Neues Daily in %d Channel(s) gepostet (date=%s)',
                      len(norm_channels), date_str)
+            # Schon vorhandene Loeser des neuen Puzzles sofort eintragen.
+            try:
+                await daily_results.refresh(bot)
+            except Exception as e:
+                log.warning('DailyRegenerate: Loeser-Stand nicht geholt: %s', e)
         else:
             log.info('DailyRegenerate: date=%s ist nicht das aktive heutige Daily '
                      '(current=%s, today=%s) – kein Discord-Update.',

@@ -4,6 +4,15 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.33] - 2026-10-11
+### Fixed
+- **Tagespuzzle zeigt Löser, die schon vor dem Post gelöst haben.** Das Puzzle ist auf RookHub
+  ab Mitternacht lösbar, der Discord-Post kommt später. Bisher stand im frischen Post
+  „Noch niemand“, bis der nächste Versuch den Webhook auslöste. Außerdem holte der Catch-up
+  nach einem Bot-Neustart die Ergebnisse nur ab dem Post-Zeitpunkt (`since`) und strich so die
+  frühen Löser wieder. Jetzt wird der Löser-Stand direkt nach dem Posten geholt (Tages-Loop,
+  Nachholen, `/daily`, Regenerate-Webhook), und zwar ohne `since`, wie es auch der Webhook liefert.
+
 ## [2.83.32] - 2026-10-01
 ### Fixed
 - **`/reminder`: gesperrte DMs zählen jetzt auch beim regulären Termin.** Seit 2.83.25 lief der

@@ -289,8 +289,9 @@ async def refresh(bot) -> None:
     """Holt die aktuellen Ergebnisse von RookHub und aktualisiert den Daily-Post.
 
     Polling-Pfad — wird nicht mehr periodisch aus dem 5-Min-Loop aufgerufen
-    (Webhook ersetzt das); bleibt als Fallback fuer manuelle Catch-up-Aufrufe
-    (z. B. nach Bot-Restart).
+    (Webhook ersetzt das); bleibt als Catch-up nach Bot-Restart und direkt nach dem
+    Posten eines Tagespuzzles (sonst stuende „Noch niemand" im Post, bis der naechste
+    Versuch den Webhook ausloest).
     """
     import asyncio
     import puzzle.rookhub as rookhub
@@ -298,7 +299,10 @@ async def refresh(bot) -> None:
     cur = current()
     if not cur:
         return
-    results = await asyncio.to_thread(rookhub.get_daily_results, cur['puzzle_id'], cur.get('since'))
+    # Bewusst OHNE ``since``: wer das Tagespuzzle auf RookHub schon vor dem Discord-Post
+    # geloest hat, gehoert in den Post. Der RookHub-Webhook schickt ebenfalls den
+    # ungefilterten Stand — mit Filter wuerde ein Refresh die Liste wieder kuerzen.
+    results = await asyncio.to_thread(rookhub.get_daily_results, cur['puzzle_id'])
     if results is None:
         return
     await apply_solver_update(bot, cur, results)
