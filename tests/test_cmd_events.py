@@ -14,7 +14,7 @@ from test_helpers import (
     make_interaction, _captured_commands, _discord,
     FakeMember, FakeChannel, FakeMessage, FakeView,
     atomic_read, atomic_write,
-    schachrallye_mod, turnier_buttons_mod,
+    schachrallye_mod, turnier_buttons_mod, termine_mod, turnier_store_mod, turnier_loops_mod,
 )
 
 
@@ -54,7 +54,7 @@ def test_schachrallye():
               '#1' in content and 'Berlin' in content)
 
         # Test: Termin in JSON gespeichert (mit schachrallye-Tag)
-        tdata = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+        tdata = atomic_read(turnier_store_mod.TURNIER_FILE, default=dict)
         check('Termin in JSON', len(tdata.get('events', [])) == 1)
         check('Termin hat schachrallye-Tag',
               'schachrallye' in tdata['events'][0].get('tags', []))
@@ -65,7 +65,7 @@ def test_schachrallye():
         content = ia.response.calls[0].get('content') or ''
         check('Zweiter Termin selbes Datum → Bestaetigung',
               '#2' in content and 'Wien' in content)
-        tdata = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+        tdata = atomic_read(turnier_store_mod.TURNIER_FILE, default=dict)
         check('Zwei Termine am selben Datum', len(tdata.get('events', [])) == 2)
 
         # Test: Termine anzeigen → Embed mit Termin
@@ -203,8 +203,8 @@ def test_schachrallye():
             fake_resp = MagicMock()
             fake_resp.text = fake_html
             fake_resp.raise_for_status = MagicMock()
-            old_fetch = schachrallye_mod.requests.get
-            schachrallye_mod.requests.get = MagicMock(return_value=fake_resp)
+            old_fetch = turnier_loops_mod.requests.get
+            turnier_loops_mod.requests.get = MagicMock(return_value=fake_resp)
             try:
                 # Parse: importiert Rallye + Turniere, filtert Training
                 ia = make_interaction(admin=True)
@@ -222,7 +222,7 @@ def test_schachrallye():
                 check('parse → OeM gefiltert', 'Meisterschaften U08' not in fu_desc)
 
                 # Alles in einer turnier.json?
-                tdata = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+                tdata = atomic_read(turnier_store_mod.TURNIER_FILE, default=dict)
                 all_events = tdata.get('events', [])
                 # Rallye (1) + manueller Termin von oben (1, bereits geloescht) + 2 Turniere = 3
                 # Aber der manuell angelegte wurde geloescht → Rallye(1) + Turniere(2) = 3
@@ -261,11 +261,11 @@ def test_schachrallye():
                       len(open_evts) >= 1 and all('klassisch' in e.get('tags', []) for e in open_evts))
                 # URL-Validierung: ungueltige URLs nicht als Embed-URL
                 check('_is_valid_url gueltig',
-                      schachrallye_mod._is_valid_url('https://example.com/foo.pdf'))
+                      termine_mod._is_valid_url('https://example.com/foo.pdf'))
                 check('_is_valid_url ungueltig (Leerzeichen)',
-                      not schachrallye_mod._is_valid_url('http://Rallye Jenbach: https://foo.com'))
+                      not termine_mod._is_valid_url('http://Rallye Jenbach: https://foo.com'))
                 check('_is_valid_url ungueltig (leer)',
-                      not schachrallye_mod._is_valid_url(''))
+                      not termine_mod._is_valid_url(''))
 
                 # Link korrekt erfasst?
                 staats = [e for e in all_events if 'Staatsmeisterschaft' in e.get('name', '')]
@@ -287,7 +287,7 @@ def test_schachrallye():
 
                 # Neues Event am selben Datum wie bestehendes → muss trotzdem importiert werden
                 future3_iso = (date.today() + timedelta(days=90)).strftime('%Y-%m-%d')
-                events_before = len(atomic_read(schachrallye_mod.TURNIER_FILE, default=dict).get('events', []))
+                events_before = len(atomic_read(turnier_store_mod.TURNIER_FILE, default=dict).get('events', []))
                 new_html = (
                     '<table>'
                     '<tr><th>Datum</th><th>Veranstaltung</th><th>Ort</th></tr>'
@@ -298,10 +298,10 @@ def test_schachrallye():
                 fake_resp2 = MagicMock()
                 fake_resp2.text = new_html
                 fake_resp2.raise_for_status = MagicMock()
-                schachrallye_mod.requests.get = MagicMock(return_value=fake_resp2)
+                turnier_loops_mod.requests.get = MagicMock(return_value=fake_resp2)
                 ia = make_interaction(admin=True)
                 run_async(cmd_parse(ia))
-                events_after = len(atomic_read(schachrallye_mod.TURNIER_FILE, default=dict).get('events', []))
+                events_after = len(atomic_read(turnier_store_mod.TURNIER_FILE, default=dict).get('events', []))
                 check('neues Event selbes Datum → importiert', events_after == events_before + 1)
 
                 # Events freigeben fuer /turnier-Anzeige
@@ -310,7 +310,7 @@ def test_schachrallye():
                     for e in data.get('events', []):
                         e['approved'] = True
                     return data
-                _au(schachrallye_mod.TURNIER_FILE, _approve_imported)
+                _au(turnier_store_mod.TURNIER_FILE, _approve_imported)
 
                 # /turnier zeigt Turniere mit Link
                 ia = make_interaction()
@@ -325,13 +325,13 @@ def test_schachrallye():
                 check('/turnier → keine OeM', 'Meisterschaften U08' not in desc)
 
                 # /turnier leer
-                atomic_write(schachrallye_mod.TURNIER_FILE, {"events": [], "subscribers": {}, "next_id": 1})
+                atomic_write(turnier_store_mod.TURNIER_FILE, {"events": [], "subscribers": {}, "next_id": 1})
                 ia = make_interaction()
                 run_async(cmd_turnier(ia))
                 content = (ia.response.calls[0].get('content') or '').lower()
                 check('/turnier leer → Hinweis', 'keine' in content)
             finally:
-                schachrallye_mod.requests.get = old_fetch
+                turnier_loops_mod.requests.get = old_fetch
     finally:
         teardown_temp_config(tmpdir)
     print()
@@ -364,7 +364,7 @@ def test_turnier_sub():
         check('turnier_sub → DM enthaelt unsub-Hinweis', '/turnier_unsub' in dm_text)
 
         # In JSON gespeichert?
-        tdata = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+        tdata = atomic_read(turnier_store_mod.TURNIER_FILE, default=dict)
         blitz_subs = tdata.get('subscribers', {}).get('blitz', [])
         check('turnier_sub → in JSON unter subscribers.blitz', 77777 in blitz_subs)
 
@@ -380,7 +380,7 @@ def test_turnier_sub():
         content = (ia.response.calls[0].get('content') or '').lower()
         check('turnier_unsub → Bestaetigung', 'abbestellt' in content)
 
-        tdata = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+        tdata = atomic_read(turnier_store_mod.TURNIER_FILE, default=dict)
         blitz_subs = tdata.get('subscribers', {}).get('blitz', [])
         check('turnier_unsub → aus JSON entfernt', 77777 not in blitz_subs)
 
@@ -456,8 +456,8 @@ def test_turnier_prune():
     print('[turnier_prune]')
     tmpdir = setup_temp_config()
     try:
-        from commands.schachrallye import _prune_old_events, TURNIER_FILE, _PRUNE_DAYS
-        import commands.schachrallye as rallye_mod
+        from commands.turnier_store import _prune_old_events, TURNIER_FILE, _PRUNE_DAYS
+        import commands.turnier_store as rallye_mod
         old_file = rallye_mod.TURNIER_FILE
         rallye_mod.TURNIER_FILE = os.path.join(tmpdir, 'turnier.json')
 
@@ -511,7 +511,7 @@ def test_turnier_review():
         check('review sub → Bestaetigung', 'reviewer' in content.lower())
 
         # In JSON?
-        tdata = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+        tdata = atomic_read(turnier_store_mod.TURNIER_FILE, default=dict)
         check('reviewer in JSON', 11111 in tdata.get('reviewers', []))
 
         # Unsub (nochmal aufrufen → Toggle)
@@ -520,7 +520,7 @@ def test_turnier_review():
         content = ia.response.calls[0].get('content') or ''
         check('review unsub → Bestaetigung', 'abbestellt' in content.lower())
 
-        tdata = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+        tdata = atomic_read(turnier_store_mod.TURNIER_FILE, default=dict)
         check('reviewer aus JSON entfernt', 11111 not in tdata.get('reviewers', []))
 
         # Nicht-Admin → Fehler
@@ -547,14 +547,14 @@ def test_turnier_review():
         fake_resp = MagicMock()
         fake_resp.text = fake_html
         fake_resp.raise_for_status = MagicMock()
-        old_fetch = schachrallye_mod.requests.get
-        schachrallye_mod.requests.get = MagicMock(return_value=fake_resp)
+        old_fetch = turnier_loops_mod.requests.get
+        turnier_loops_mod.requests.get = MagicMock(return_value=fake_resp)
         try:
             ia = make_interaction(admin=True)
             run_async(cmd_parse(ia))
 
             # Event in JSON mit approved=false?
-            tdata = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+            tdata = atomic_read(turnier_store_mod.TURNIER_FILE, default=dict)
             review_events = [e for e in tdata.get('events', [])
                              if e.get('name') == 'Testturnier Review']
             check('neues Event hat approved=false',
@@ -597,7 +597,7 @@ def test_turnier_review():
             run_async(cmd_parse(ia2))
 
         finally:
-            schachrallye_mod.requests.get = old_fetch
+            turnier_loops_mod.requests.get = old_fetch
 
         # --- Kein Reviewer → auto-approve ---
         # Reviewer entfernen
@@ -616,18 +616,18 @@ def test_turnier_review():
         fake_resp2 = MagicMock()
         fake_resp2.text = fake_html2
         fake_resp2.raise_for_status = MagicMock()
-        schachrallye_mod.requests.get = MagicMock(return_value=fake_resp2)
+        turnier_loops_mod.requests.get = MagicMock(return_value=fake_resp2)
         try:
             ia = make_interaction(admin=True)
             run_async(cmd_parse(ia))
 
-            tdata = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+            tdata = atomic_read(turnier_store_mod.TURNIER_FILE, default=dict)
             auto_events = [e for e in tdata.get('events', [])
                            if e.get('name') == 'Auto-Approve Turnier']
             check('kein Reviewer → approved=false (Review noetig)',
                   len(auto_events) == 1 and auto_events[0].get('approved') is False)
         finally:
-            schachrallye_mod.requests.get = old_fetch
+            turnier_loops_mod.requests.get = old_fetch
 
         # --- /turnier_pending leer → Hinweis ---
         # Erst alle pending Events entfernen (approved setzen)
@@ -636,7 +636,7 @@ def test_turnier_review():
                 e['approved'] = True
             return data
         from core.json_store import atomic_update
-        atomic_update(schachrallye_mod.TURNIER_FILE, _approve_all)
+        atomic_update(turnier_store_mod.TURNIER_FILE, _approve_all)
 
         ia = make_interaction(admin=True)
         run_async(cmd_pending(ia))
@@ -653,7 +653,7 @@ def test_turnier_review():
             "reviewers": [],
             "next_id": 100,
         }
-        atomic_write(schachrallye_mod.TURNIER_FILE, data_compat)
+        atomic_write(turnier_store_mod.TURNIER_FILE, data_compat)
         if cmd_turnier:
             ia = make_interaction()
             run_async(cmd_turnier(ia))
@@ -698,10 +698,10 @@ def test_turnier_approve_modal():
         _configure_buttons(fake_bot, 55555)
 
         # Auch schachrallye Modul konfigurieren
-        old_bot = schachrallye_mod._bot
-        old_cid = schachrallye_mod._tournament_channel_id
-        schachrallye_mod._bot = fake_bot
-        schachrallye_mod._tournament_channel_id = 55555
+        old_bot = turnier_loops_mod._bot
+        old_cid = turnier_loops_mod._tournament_channel_id
+        turnier_loops_mod._bot = fake_bot
+        turnier_loops_mod._tournament_channel_id = 55555
 
         # Event anlegen (pending)
         event_data = {
@@ -714,7 +714,7 @@ def test_turnier_approve_modal():
             "reviewers": [11111],
             "next_id": 43,
         }
-        atomic_write(schachrallye_mod.TURNIER_FILE, event_data)
+        atomic_write(turnier_store_mod.TURNIER_FILE, event_data)
 
         # --- Test 1: Approve-Button oeffnet Modal (statt direktem Approve) ---
         fake_embed = h.FakeEmbed(title='Testturnier Modal')
@@ -749,7 +749,7 @@ def test_turnier_approve_modal():
 
         # --- Test 3: Leeres Spieler-Feld → normales Approve ohne extra Mentions ---
         # Reset event to pending
-        atomic_write(schachrallye_mod.TURNIER_FILE, event_data)
+        atomic_write(turnier_store_mod.TURNIER_FILE, event_data)
         fake_channel.sent.clear()
 
         fake_embed2 = h.FakeEmbed(title='Testturnier Modal')
@@ -783,7 +783,7 @@ def test_turnier_approve_modal():
                 if e['id'] == 42:
                     e['approved'] = False
             return data
-        atomic_update(schachrallye_mod.TURNIER_FILE, _reset)
+        atomic_update(turnier_store_mod.TURNIER_FILE, _reset)
         fake_channel.sent.clear()
 
         fake_embed3 = h.FakeEmbed(title='Testturnier Modal')
@@ -811,7 +811,7 @@ def test_turnier_approve_modal():
                 if e['id'] == 42:
                     e['approved'] = False
             return data
-        atomic_update(schachrallye_mod.TURNIER_FILE, _reset2)
+        atomic_update(turnier_store_mod.TURNIER_FILE, _reset2)
         fake_channel.sent.clear()
 
         fake_embed4 = h.FakeEmbed(title='Testturnier Modal')
@@ -846,8 +846,8 @@ def test_turnier_approve_modal():
               'bereits bearbeitet' in (fake_embed5.title or ''))
 
         # Aufraumen
-        schachrallye_mod._bot = old_bot
-        schachrallye_mod._tournament_channel_id = old_cid
+        turnier_loops_mod._bot = old_bot
+        turnier_loops_mod._tournament_channel_id = old_cid
 
     finally:
         teardown_temp_config(tmpdir)
@@ -979,7 +979,7 @@ def test_fetch_termine_golden():
     fake_resp.raise_for_status = MagicMock()
     fake_get = MagicMock(return_value=fake_resp)
     with _mock.patch.object(_sys.modules['requests'], 'get', fake_get):
-        events = schachrallye_mod._fetch_termine()
+        events = turnier_loops_mod._fetch_termine()
     check('golden: Event-Liste unveraendert', events == _GOLDEN_TERMINE,
           detail=json.dumps(events, ensure_ascii=False))
     args, kwargs = fake_get.call_args
@@ -1010,8 +1010,8 @@ def test_rallye_loops():
     import sys as _sys
     from core.datetime_utils import noon_utc_ts
     tmpdir = setup_temp_config()
-    old_bot = schachrallye_mod._bot
-    old_cid = schachrallye_mod._tournament_channel_id
+    old_bot = turnier_loops_mod._bot
+    old_cid = turnier_loops_mod._tournament_channel_id
     old_btn = (turnier_buttons_mod._bot, turnier_buttons_mod._tournament_channel_id)
     old_cmds = dict(_captured_commands)
     try:
@@ -1056,28 +1056,28 @@ def test_rallye_loops():
             _ev(8, 'kaputt'),
             _ev(9, _in(8)),
         ]
-        atomic_write(schachrallye_mod.TURNIER_FILE, {
+        atomic_write(turnier_store_mod.TURNIER_FILE, {
             'events': events,
             'subscribers': {'schachrallye': [111, 222], 'blitz': [333]},
             'reviewers': [], 'next_id': 10,
         })
 
         def _reminded():
-            data = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+            data = atomic_read(turnier_store_mod.TURNIER_FILE, default=dict)
             return {e['id']: e.get('reminded') for e in data.get('events', [])}
 
         # --- due_reminders (rein): dieselbe Auswahl, die der Loop gleich postet (W4s S4-020) ---
-        stored = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
-        due, subs = schachrallye_mod.due_reminders(stored, today)
+        stored = atomic_read(turnier_store_mod.TURNIER_FILE, default=dict)
+        due, subs = termine_mod.due_reminders(stored, today)
         check('due_reminders: #1 und #7 faellig, Rallye-Subscriber',
               [e['id'] for e in due] == [1, 7] and subs == [111, 222],
               detail=f'{[e["id"] for e in due]} {subs}')
         check('due_reminders: ohne Rallye-Subscriber nichts faellig',
-              schachrallye_mod.due_reminders(
+              termine_mod.due_reminders(
                   {**stored, 'subscribers': {'blitz': [333]}}, today)[0] == [])
-        check('due_reminders: kaputte Datei → nichts', schachrallye_mod.due_reminders([], today) == ([], []))
+        check('due_reminders: kaputte Datei → nichts', termine_mod.due_reminders([], today) == ([], []))
         check('due_reminders: morgen rueckt #9 (dann 7 Tage) nach, #4 (9 Tage) nicht',
-              [e['id'] for e in schachrallye_mod.due_reminders(stored, today + timedelta(days=1))[0]]
+              [e['id'] for e in termine_mod.due_reminders(stored, today + timedelta(days=1))[0]]
               == [1, 7, 9])
 
         # --- Lauf 1: nur #1 (3 Tage) und #7 (genau 7 Tage) werden erinnert ---
@@ -1116,7 +1116,7 @@ def test_rallye_loops():
             data['events'].append(_ev(10, _in(2)))
             return data
 
-        atomic_update(schachrallye_mod.TURNIER_FILE, _add10)
+        atomic_update(turnier_store_mod.TURNIER_FILE, _add10)
         channel.fail = True
         run_async(reminder())
         check('Sendefehler: #10 bleibt unerinnert', _reminded()[10] is False)
@@ -1131,7 +1131,7 @@ def test_rallye_loops():
             data['subscribers'] = {'blitz': [333]}
             return data
 
-        atomic_update(schachrallye_mod.TURNIER_FILE, _add11_nosubs)
+        atomic_update(turnier_store_mod.TURNIER_FILE, _add11_nosubs)
         run_async(reminder())
         check('ohne Subscriber: kein Post, #11 unerinnert',
               len(channel.sent) == 3 and _reminded()[11] is False)
@@ -1140,15 +1140,15 @@ def test_rallye_loops():
             data['subscribers'] = {'schachrallye': [111]}
             return data
 
-        atomic_update(schachrallye_mod.TURNIER_FILE, _subs_back)
-        schachrallye_mod._tournament_channel_id = 0
+        atomic_update(turnier_store_mod.TURNIER_FILE, _subs_back)
+        turnier_loops_mod._tournament_channel_id = 0
         run_async(reminder())
         check('ohne Channel-ID: kein Post', len(channel.sent) == 3)
-        schachrallye_mod._tournament_channel_id = 55555
+        turnier_loops_mod._tournament_channel_id = 55555
 
         # --- Auto-Parse: importiert als pending + pruned Altes ---
-        old = (today - timedelta(days=schachrallye_mod._PRUNE_DAYS + 10)).isoformat()
-        atomic_write(schachrallye_mod.TURNIER_FILE, {
+        old = (today - timedelta(days=turnier_store_mod._PRUNE_DAYS + 10)).isoformat()
+        atomic_write(turnier_store_mod.TURNIER_FILE, {
             'events': [_ev(20, old)],
             'subscribers': {}, 'reviewers': [], 'next_id': 21,
         })
@@ -1157,7 +1157,7 @@ def test_rallye_loops():
         fake_resp.raise_for_status = MagicMock()
         with _mock.patch.object(_sys.modules['requests'], 'get', MagicMock(return_value=fake_resp)):
             run_async(auto_parse())
-        data = atomic_read(schachrallye_mod.TURNIER_FILE, default=dict)
+        data = atomic_read(turnier_store_mod.TURNIER_FILE, default=dict)
         evs = data.get('events', [])
         check('Auto-Parse: altes Event entfernt', all(e['id'] != 20 for e in evs))
         check('Auto-Parse: 5 Termine importiert (IDs 21-25)',
@@ -1168,8 +1168,8 @@ def test_rallye_loops():
               [('reminded' in e) for e in evs] == [True, False, False, False, True])
         check('Auto-Parse: kein Channel-Post vor Freigabe', len(channel.sent) == 3)
     finally:
-        schachrallye_mod._bot = old_bot
-        schachrallye_mod._tournament_channel_id = old_cid
+        turnier_loops_mod._bot = old_bot
+        turnier_loops_mod._tournament_channel_id = old_cid
         turnier_buttons_mod.configure(*old_btn)
         _captured_commands.clear()
         _captured_commands.update(old_cmds)
@@ -1180,7 +1180,7 @@ def test_rallye_loops():
 def test_termine_table():
     """Charakterisierung (Zerlegung Z40): Datumsparsen, Ort-Kuerzen, Zeilenformat als Tabelle."""
     print('[termine_table]')
-    m = schachrallye_mod
+    m = termine_mod
     flex = [
         ('14.05.2026', (date(2026, 5, 14), '14.05.2026')),
         ('  14.05.2026 ', (date(2026, 5, 14), '14.05.2026')),

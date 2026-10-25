@@ -200,7 +200,12 @@ schach-bot/
 │   ├── chat.py                # KI-Chat (/chat_whitelist, DM-Listener)
 │   ├── elo.py                 # /elo
 │   ├── reminder.py            # /reminder + Loop
-│   ├── schachrallye.py        # /schachrallye*, /turnier*, Turnier-Import
+│   ├── schachrallye.py        # Registrierung /schachrallye*, /turnier*
+│   ├── rallye.py              # /schachrallye* (Befehle)
+│   ├── turnier.py             # /turnier* (Befehle)
+│   ├── termine.py             # Terminlogik (Datum, HTML-Parser, Erinnerungsfaelligkeit)
+│   ├── turnier_store.py       # turnier.json (einziger Besitzer)
+│   ├── turnier_loops.py       # Termin-Import, Freigabe-Post, Rallye-Reminder + Loops
 │   ├── weeklypost.py          # Wochenpost-Ankündigung (RookHub = Quelle) + Loop
 │   ├── turnier_buttons.py     # TurnierReviewView
 │   ├── wanted.py              # /wanted*

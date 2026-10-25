@@ -310,7 +310,8 @@ def test_test_cmd():
 
         # --- Test-Reminder (Motivation + Turnier) ---
         import commands.motivation as mot_mod
-        import commands.schachrallye as sr_mod
+        import commands.turnier_store as sr_store
+        import commands.turnier_loops as sr_mod
         from datetime import timedelta
 
         # Motivation: User subscribed + verknuepft (get_player_progress liefert Stats)
@@ -335,7 +336,7 @@ def test_test_cmd():
         # bei neuen Turnieren), /test simuliert daher auch keine (Review W4s S4-020)
         from datetime import date
         future = (date.today() + timedelta(days=5)).strftime('%Y-%m-%d')
-        atomic_write(sr_mod.TURNIER_FILE, {
+        atomic_write(sr_store.TURNIER_FILE, {
             'events': [
                 {'id': 1, 'name': 'Test-Blitz', 'datum': future,
                  'ort': 'Innsbruck', 'tags': ['blitz']},
@@ -377,7 +378,7 @@ def test_test_cmd():
                 'subscribers': {'schachrallye': [12345, 777], 'blitz': [12345]},
                 'next_id': 6,
             }
-            atomic_write(sr_mod.TURNIER_FILE, rallye)
+            atomic_write(sr_store.TURNIER_FILE, rallye)
             old_sr = (sr_mod._bot, sr_mod._tournament_channel_id)
             try:
                 sr_mod._tournament_channel_id = 0
@@ -395,7 +396,7 @@ def test_test_cmd():
                     check('dry-run: ohne Turnier-Channel → Warnung',
                           'TOURNAMENT_CHANNEL_ID' in runs[0]['content'], detail=runs[0]['content'])
                 check('dry-run: markiert nichts als erinnert',
-                      atomic_read(sr_mod.TURNIER_FILE, default=dict) == rallye)
+                      atomic_read(sr_store.TURNIER_FILE, default=dict) == rallye)
 
                 # Mit Turnier-Channel: Channel + Abonnenten genannt, im Channel nichts gepostet
                 channel = h.FakeChannel(channel_id=55555)
@@ -415,7 +416,7 @@ def test_test_cmd():
 
             # Ohne Subscriptions → kein Reminder-Followup
             atomic_write(mot_mod.MOTIVATION_SUB_FILE, {'subscribers': {}})
-            atomic_write(sr_mod.TURNIER_FILE, {
+            atomic_write(sr_store.TURNIER_FILE, {
                 'events': [], 'subscribers': {}, 'next_id': 1})
             ia = make_interaction(admin=True)
             run_async(cmd(ia, modus='status', kurs=0, puzzle=0, lichess=0))

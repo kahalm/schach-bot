@@ -10,7 +10,7 @@ import logging
 import discord
 from discord import ui
 
-from core.json_store import atomic_read, atomic_update
+from commands import turnier_store
 from core.permissions import iter_guilds_home_first
 
 log = logging.getLogger('schach-bot')
@@ -121,8 +121,7 @@ def _disabled_view() -> TurnierReviewView:
 async def _handle_review(interaction: discord.Interaction, action: str):
     """Callback fuer Approve/Reject-Buttons."""
     # Permission-Check: nur konfigurierte Reviewer duerfen handeln
-    from commands.schachrallye import TURNIER_FILE, _fresh_default
-    data = atomic_read(TURNIER_FILE, default=dict)
+    data = turnier_store.read()
     reviewers = data.get('reviewers', [])
     if reviewers and interaction.user.id not in reviewers:
         await interaction.response.send_message(
@@ -162,13 +161,13 @@ async def _handle_review(interaction: discord.Interaction, action: str):
 
     def _reject(data):
         if not isinstance(data, dict) or 'events' not in data:
-            return _fresh_default()
+            return turnier_store._fresh_default()
         before = len(data['events'])
         data['events'] = [e for e in data['events'] if e['id'] != event_id]
         found[0] = len(data['events']) < before
         return data
 
-    atomic_update(TURNIER_FILE, _reject)
+    turnier_store.update(_reject)
 
     if not found[0]:
         embed = msg.embeds[0]
@@ -188,7 +187,6 @@ async def _handle_review(interaction: discord.Interaction, action: str):
 async def _execute_approve(interaction: discord.Interaction, msg,
                            event_id: int, players_text: str):
     """Fuehrt die Approve-Logik nach Modal-Submit aus."""
-    from commands.schachrallye import TURNIER_FILE, _fresh_default
 
     await interaction.response.defer()
 
@@ -196,7 +194,7 @@ async def _execute_approve(interaction: discord.Interaction, msg,
 
     def _approve(data):
         if not isinstance(data, dict) or 'events' not in data:
-            data = _fresh_default()
+            data = turnier_store._fresh_default()
         for e in data['events']:
             if e['id'] == event_id:
                 if e.get('approved') is True:
@@ -207,7 +205,7 @@ async def _execute_approve(interaction: discord.Interaction, msg,
                 return data
         return data
 
-    atomic_update(TURNIER_FILE, _approve)
+    turnier_store.update(_approve)
 
     if event_data[0] is None or event_data[0] == 'already':
         embed = msg.embeds[0]
@@ -228,7 +226,7 @@ async def _execute_approve(interaction: discord.Interaction, msg,
 
     # Channel-Post
     try:
-        from commands.schachrallye import _post_approved_event
+        from commands.turnier_loops import _post_approved_event
         await _post_approved_event(event_data[0],
                                    extra_mention_ids=extra_ids or None)
     except Exception:

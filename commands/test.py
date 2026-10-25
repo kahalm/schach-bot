@@ -667,17 +667,17 @@ async def _trigger_test_reminders(interaction, bot):
         log.debug('Test-Reminder motivation: %s', e)
 
     # --- Rallye-Erinnerung als Dry-Run: dieselben Regeln und dasselbe Embed wie der echte
-    # Reminder-Loop (schachrallye.due_reminders/_reminder_embed); nichts wird gepostet/markiert ---
+    # Reminder-Loop (termine.due_reminders, turnier_loops._reminder_embed); nichts wird gepostet/markiert ---
     try:
-        import commands.schachrallye as sr
-        turnier_data = atomic_read(sr.TURNIER_FILE, default=dict)
-        due, subs = sr.due_reminders(turnier_data, date.today())
+        from commands import termine, turnier_loops, turnier_store
+        turnier_data = turnier_store.read()
+        due, subs = termine.due_reminders(turnier_data, date.today())
         if uid_int in subs:
             kwargs = {'ephemeral': True}
             if due:
-                kwargs['embeds'] = [sr._reminder_embed(e) for e in due[:_DRY_RUN_EMBEDS]]
+                kwargs['embeds'] = [turnier_loops._reminder_embed(e) for e in due[:_DRY_RUN_EMBEDS]]
             await interaction.followup.send(
-                _reminder_dry_run_text(due, len(subs), sr._reminder_channel()), **kwargs)
+                _reminder_dry_run_text(due, len(subs), turnier_loops._reminder_channel()), **kwargs)
     except Exception as e:
         log.debug('Test-Reminder turnier: %s', e)
 

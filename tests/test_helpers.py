@@ -476,7 +476,7 @@ def setup_temp_config():
     _patch_file_constant('commands.wanted', 'WANTED_FILE', tmpdir)
     _patch_file_constant('puzzle.state', 'PUZZLE_CONTEXT_FILE', tmpdir)
     _patch_file_constant('commands.reminder', 'REMINDER_FILE', tmpdir)
-    _patch_file_constant('commands.schachrallye', 'TURNIER_FILE', tmpdir)
+    _patch_file_constant('commands.turnier_store', 'TURNIER_FILE', tmpdir)
     _patch_file_constant('commands.weeklypost', 'WEEKLY_STATE_FILE', tmpdir)
     _patch_file_constant('commands.leaderboard', 'STATE_FILE', tmpdir)
     _patch_file_constant('commands.motivation', 'MOTIVATION_SUB_FILE', tmpdir)
@@ -559,6 +559,9 @@ import commands.wanted as wanted_mod
 import commands.release_notes as release_notes_mod
 import commands.reminder as reminder_mod
 import commands.schachrallye as schachrallye_mod
+import commands.termine as termine_mod
+import commands.turnier_store as turnier_store_mod
+import commands.turnier_loops as turnier_loops_mod
 import commands.weeklypost as weeklypost_mod
 import commands.turnier_buttons as turnier_buttons_mod
 import commands.chat as chat_mod
