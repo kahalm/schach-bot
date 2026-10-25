@@ -1200,3 +1200,53 @@ def test_es_tags():
     admin_ia = make_interaction(user=admin_user)
     check('Admin → is_privileged', is_privileged(admin_ia))
     print()
+
+
+def test_bot_helpers_characterization():
+    """Charakterisierung (Zerlegung Z42): Embed-Aufteilung der Admin-Listen und Begruessungstext
+    mit Registrier-Link, bevor beides aus bot.py umzieht."""
+    print('[bot helpers characterization]')
+    from core import discord_link as _dlink
+    pag = bot_mod._paginate_lines
+    one = pag('H\n', ['a', 'b'])
+    check('_paginate_lines: kurz → ein Embed', len(one) == 1 and one[0].description == 'H\na\nb',
+          repr([e.description for e in one]))
+    empty = pag('Kopf\n', [])
+    check('_paginate_lines: ohne Zeilen → nur Kopf', len(empty) == 1 and empty[0].description == 'Kopf',
+          repr(empty[0].description))
+    nothing = pag('', [])
+    check('_paginate_lines: leer → ein leeres Embed', len(nothing) == 1 and nothing[0].description == '')
+    lines = [f'{i:03d}' + 'x' * 96 for i in range(100)]   # je 100 Zeichen + \n
+    split = pag('K\n', lines, max_len=1000)
+    check('_paginate_lines: Aufteilung an max_len', len(split) == 10 and all(
+        len(e.description) <= 1000 for e in split[:-1]), str([len(e.description) for e in split]))
+    # Heutiges Verhalten (gemeldet, nicht geaendert): der Kuerzungs-Hinweis kommt UEBER max_len.
+    check('_paginate_lines: gekuerztes Embed = max_len-Puffer + Hinweis (14 Zeichen)',
+          len(split[-1].description) == 999 + 14, str(len(split[-1].description)))
+    check('_paginate_lines: 10 Embeds voll → letztes gekuerzt',
+          split[-1].description.endswith('\n\n_(gekuerzt)_'), split[-1].description[-30:])
+    check('_paginate_lines: erstes Embed beginnt mit Kopf', split[0].description.startswith('K\n000'))
+    few = pag('K\n', lines[:15], max_len=1000)
+    check('_paginate_lines: 15 Zeilen → 2 Embeds, ohne Kuerzung',
+          len(few) == 2 and 'gekuerzt' not in few[-1].description
+          and few[1].description.startswith('009'), str([e.description[:4] for e in few]))
+
+    user = FakeMember(uid=4711, name='Anna')
+    old = (bot_mod.ROOKHUB_WEB_URL, _dlink.LINK_SECRET)
+    try:
+        bot_mod.ROOKHUB_WEB_URL = ''
+        check('welcome_message_for: ohne Web-URL = WELCOME_MESSAGE',
+              bot_mod.welcome_message_for(user) == bot_mod.WELCOME_MESSAGE)
+        bot_mod.ROOKHUB_WEB_URL = 'https://rh.example'
+        _dlink.LINK_SECRET = ''
+        msg = bot_mod.welcome_message_for(user)
+        check('welcome_message_for: ohne Secret → Link ohne Token',
+              msg.startswith(bot_mod.WELCOME_MESSAGE + '\n\n— — —\n')
+              and '👉 Registriere dich für alle Features: https://rh.example/register\n' in msg
+              and msg.endswith('automatisch verknüpft._'), msg[-200:])
+        _dlink.LINK_SECRET = 'geheim'
+        msg = bot_mod.welcome_message_for(user)
+        check('welcome_message_for: mit Secret → ?dl=-Token', 'https://rh.example/register?dl=' in msg)
+    finally:
+        bot_mod.ROOKHUB_WEB_URL, _dlink.LINK_SECRET = old
+    print()

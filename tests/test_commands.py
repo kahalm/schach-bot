@@ -66,7 +66,7 @@ from test_cmd_admin import (
     test_greeted, test_stats, test_dm_log, test_log,
     test_dm_log_internals, test_dm_log_incoming, test_dm_permissions, test_intents_minimal,
     test_greeting_home_guild_only,
-    test_suppress_empty_fen, test_es_tags,
+    test_suppress_empty_fen, test_es_tags, test_bot_helpers_characterization,
 )
 from test_cmd_commandlog import test_command_log
 from test_cmd_chat import (
@@ -200,6 +200,7 @@ def main():
     test_intents_minimal()
     test_greeting_home_guild_only()
     test_suppress_empty_fen()
+    test_bot_helpers_characterization()
     test_es_tags()
     test_command_log()
     test_chat_whitelist()
