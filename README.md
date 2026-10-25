@@ -110,7 +110,7 @@ services:
       - PUZZLE_MINUTE=${PUZZLE_MINUTE:-0}
       - TOURNAMENT_CHANNEL_ID=${TOURNAMENT_CHANNEL_ID:-0}
       - WOCHENPOST_CHANNEL_ID=${WOCHENPOST_CHANNEL_ID:-0}
-      - LIBRARY_INDEX=/app/library/index.txt
+      - LIBRARY_INDEX=/data/library/index.txt
       - CLAUDE_API_KEY=${CLAUDE_API_KEY}
       - SFTPGO_BASE_URL=${SFTPGO_BASE_URL}
       - SFTPGO_SHARE_ID=${SFTPGO_SHARE_ID}
@@ -118,7 +118,7 @@ services:
     volumes:
       - ./config:/app/config
       - ./books:/app/books
-      - ./library:/app/library
+      - ./library:/data/library   # nicht /app/library: verdeckt sonst das Paket library/
     mem_limit: 512m
     cpus: 0.5
 ```

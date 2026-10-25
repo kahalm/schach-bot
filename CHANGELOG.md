@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.35] - 2026-10-25
+### Fixed
+- **Bot startete nicht mehr (Absturzschleife seit 2.83.34):** Seit der Bibliothek-Zerlegung ist `library` ein Paket unter
+  `/app/library/` — der Bibliotheksordner war aber genau dorthin eingehängt und verdeckte das Paket
+  (`module 'library' has no attribute 'setup'`). Einhängepunkt jetzt `/data/library`, `LIBRARY_INDEX=/data/library/index.txt`
+  (docker-compose.yml, README; die Stacks auf dem Server sind bereits umgestellt).
+
 ## [2.83.34] - 2026-10-25
 ### Changed
 - **Technischer Umbau ohne Funktionsänderung (Codereview 2026-09-29, Zerlegung Z40–Z42):** Schachrallye/Turniere
