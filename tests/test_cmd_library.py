@@ -761,6 +761,77 @@ def test_library_cache_threadsafe():
     print()
 
 
+def test_library_link_check_off_loop():
+    """Review W4s S4-025 (Rest der Event-Loop-Blockade, Zerlegung Z41): die Freigabe-Pruefung
+    fuer den SFTPGo-Link (_sftpgo_link_allowed) laedt bei aktiver Gemeinfreiheits-Sperre den
+    Katalog (library.json + ignore.json-Walk auf dem Mount). _FormatView rief sie im
+    Konstruktor, _send_book direkt im Event-Loop; beides laeuft jetzt im Thread."""
+    print('[library link check off loop]')
+    import threading
+    import library as lib_mod
+
+    tmpdir = tempfile.mkdtemp(prefix='lib_linkchk_')
+    cfg, search, views = lib_mod.config, lib_mod.search, lib_mod.views
+    orig = (cfg.LIBRARY_FILE, cfg.LIBRARY_ENFORCE_PD, cfg._SFTPGO_BASE_URL, cfg._SFTPGO_SHARE_ID,
+            cfg._LOCAL_BASE)
+    orig_load, orig_inc = lib_mod.catalog._load_library, views.stats.inc
+    loop_loads = []
+
+    def _load():
+        if threading.current_thread() is threading.main_thread():
+            loop_loads.append(1)
+        return orig_load()
+
+    try:
+        pdf = os.path.join(tmpdir, 'frei.pdf')
+        epub = os.path.join(tmpdir, 'frei.epub')
+        for f in (pdf, epub):
+            with open(f, 'wb') as fh:
+                fh.truncate(9 * 1024 * 1024)
+        entry = {'id': 'a--frei', 'title': 'Frei', 'author': 'A', 'tags': [],
+                 'file_type': 'pdf', 'files': [pdf]}
+        cfg.LIBRARY_FILE = os.path.join(tmpdir, 'library.json')
+        with open(cfg.LIBRARY_FILE, 'w', encoding='utf-8') as fh:
+            json.dump([entry], fh)
+        cfg.LIBRARY_ENFORCE_PD = True
+        cfg._SFTPGO_BASE_URL, cfg._SFTPGO_SHARE_ID = 'https://sftp.example', 's1'
+        cfg._LOCAL_BASE = tmpdir
+        lib_mod.catalog._load_library = _load
+        views.stats.inc = lambda *a, **k: None
+
+        # Auswahl mit zwei Formaten → _FormatView (Konstruktor im Loop)
+        search._reload_library()
+        sel = views._BookSelect([entry], [9 * 1024 * 1024])
+        sel.values = ['0']
+        ia = make_interaction()
+        run_async(sel.callback(ia))
+        sent = ia.response.calls[0] if ia.response.calls else {}
+        fv = sent.get('view')
+        check('Auswahl: Katalog fuer die Link-Pruefung nicht im Event-Loop geladen',
+              not loop_loads, str(len(loop_loads)))
+        labels = [getattr(b, 'label', '') for b in getattr(fv, 'children', [])]
+        check('Auswahl: Format-Buttons mit Link-Kennzeichen wie bisher',
+              len(labels) == 2 and all('\U0001f517' in lbl for lbl in labels), str(labels))
+
+        # Direkter Versand einer grossen Datei → Link-Pruefung
+        search._reload_library()
+        loop_loads.clear()
+        ia2 = make_interaction()
+        run_async(views._send_book(ia2, entry, pdf, 'pdf'))
+        msgs = [str(c.get('content')) for c in ia2.followup.calls]
+        check('_send_book: Katalog fuer die Link-Pruefung nicht im Event-Loop geladen',
+              not loop_loads, str(len(loop_loads)))
+        check('_send_book: SFTPGo-Link wie bisher', any('pubshares' in m for m in msgs), str(msgs))
+    finally:
+        (cfg.LIBRARY_FILE, cfg.LIBRARY_ENFORCE_PD, cfg._SFTPGO_BASE_URL, cfg._SFTPGO_SHARE_ID,
+         cfg._LOCAL_BASE) = orig
+        lib_mod.catalog._load_library = orig_load
+        views.stats.inc = orig_inc
+        search._reload_library()
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    print()
+
+
 def test_format_view_missing_file():
     """_FormatView darf nicht crashen (und nicht den Event-Loop blockieren),
     wenn eine Buchdatei zwischen _collect_formats und View-Bau verschwindet —

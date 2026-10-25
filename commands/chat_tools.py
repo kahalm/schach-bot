@@ -810,7 +810,7 @@ async def _tool_send_library_book(tool_input, ctx) -> str:
             await channel.send(
                 content=f'📖 **{title}** — {author} `[{fmt.upper()}]`',
                 file=book_file)
-        elif _lib_sharing._sftpgo_link_allowed():
+        elif await asyncio.to_thread(_lib_sharing._sftpgo_link_allowed):
             await channel.send(
                 await asyncio.to_thread(_lib_sharing._sftpgo_message, entry, path, fmt, size))
             pw_msg = _lib_sharing._sftpgo_password_message()

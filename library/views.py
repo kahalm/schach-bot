@@ -80,7 +80,8 @@ async def _send_book(interaction: discord.Interaction,
         # ein hakendes Laufwerk würde sonst den ganzen Bot einfrieren.
         size = await asyncio.to_thread(os.path.getsize, path)
         if size > config._MAX_UPLOAD:
-            if sharing._sftpgo_link_allowed():
+            # Link-Freigabe laedt bei aktiver Sperre ggf. den Katalog (Mount) → Thread
+            if await asyncio.to_thread(sharing._sftpgo_link_allowed):
                 msg = await asyncio.to_thread(sharing._sftpgo_message, entry, path, fmt, size)
                 await interaction.followup.send(msg, ephemeral=True)
                 pw_msg = sharing._sftpgo_password_message()
@@ -115,13 +116,15 @@ class _FormatView(discord.ui.View):
     """Ein Button pro verfügbarem Format; User wählt welches er herunterladen will."""
 
     def __init__(self, entry: dict, formats: dict[str, str],
-                 sizes: dict[str, int] | None = None):
-        """``sizes`` (fmt → Bytes) idealerweise vorab in einem Thread ermitteln
+                 sizes: dict[str, int] | None = None, link_ok: bool | None = None):
+        """``sizes`` (fmt → Bytes) und ``link_ok`` (_sftpgo_link_allowed, laedt bei
+        aktiver Sperre ggf. den Katalog) idealerweise vorab in einem Thread ermitteln
         (siehe _BookSelect.callback) — der Konstruktor laeuft im Event-Loop und
         Buecher liegen auf Syncthing-/Netzpfaden."""
         super().__init__(timeout=60)
         self.entry = entry
-        link_ok = sharing._sftpgo_link_allowed()
+        if link_ok is None:
+            link_ok = sharing._sftpgo_link_allowed()
         for fmt, path in formats.items():
             if sizes is not None and fmt in sizes:
                 size = sizes[fmt]
@@ -271,8 +274,9 @@ class _BookSelect(discord.ui.Select):
             await interaction.response.defer(ephemeral=True)
             await _send_book(interaction, entry, path, fmt)
         else:
-            # Mehrere Formate → User wählen lassen. Groessen vorab im Thread
-            # ermitteln (getsize auf Netzpfaden darf den Loop nicht blockieren).
+            # Mehrere Formate → User wählen lassen. Groessen und Link-Freigabe vorab
+            # im Thread ermitteln (getsize auf Netzpfaden und das Katalog-Laden der
+            # Freigabe-Pruefung duerfen den Loop nicht blockieren).
             def _sizes():
                 out = {}
                 for f, p in formats.items():
@@ -280,14 +284,14 @@ class _BookSelect(discord.ui.Select):
                         out[f] = os.path.getsize(p)
                     except OSError:
                         out[f] = 0
-                return out
-            sizes = await asyncio.to_thread(_sizes)
+                return out, sharing._sftpgo_link_allowed()
+            sizes, link_ok = await asyncio.to_thread(_sizes)
             fmts = '  '.join(
                 f'{_FORMAT_EMOJI.get(f, "📄")} **{_FORMAT_LABEL.get(f, f.upper())}**'
                 for f in formats)
             await interaction.response.send_message(
                 f'**{entry["title"]}**\nVerfügbare Formate: {fmts}',
-                view=_FormatView(entry, formats, sizes),
+                view=_FormatView(entry, formats, sizes, link_ok),
                 ephemeral=True)
 
 

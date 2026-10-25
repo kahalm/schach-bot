@@ -936,18 +936,30 @@ def test_tool_send_library_book():
             json.dump([fake_entry, {'id': 'x--gesperrt', 'title': 'Gesperrt', 'author': 'X',
                                     'files': [], 'publicDomainFrom': '2999-01-01'}], f)
         channel10 = FakeChannel()
+        import threading as _thr
+        from library import catalog as _lib_catalog
+        _real_load = _lib_catalog._load_library
+        loop_loads = []
+
+        def _rec_load():
+            if _thr.current_thread() is _thr.main_thread():
+                loop_loads.append(1)
+            return _real_load()
         ctx10 = {'user_id': 42, 'channel': channel10}
         with patch('library.config.LIBRARY_FILE', lib_json), \
              patch('library.config.LIBRARY_ENFORCE_PD', True), \
              patch('library.search._search_library', return_value=[fake_entry]), \
              patch('library.sharing._collect_formats', return_value={'pdf': big_file}), \
              patch('library.sharing._sftpgo_configured', return_value=True), \
-             patch('library.sharing._sftpgo_message', return_value='🔗 Download-Link'):
+             patch('library.sharing._sftpgo_message', return_value='🔗 Download-Link'), \
+             patch('library.catalog._load_library', side_effect=_rec_load):
             _library.search._reload_library()
             result_str = run_async(_tool_send_library_book(
                 {'query': 'Test'}, ctx10))
             result = json.loads(result_str)
         _library.search._reload_library()
+        check('Link-Freigabe laedt den Katalog nicht im Event-Loop (Zerlegung Z41, S4-025)',
+              loop_loads == [], str(loop_loads))
         check('Sperre an + gesperrtes Buch → kein Share-Link gesendet',
               len(channel10.sent) == 0, [m.content for m in channel10.sent])
         check('Sperre an + gesperrtes Buch → error „zu gross“', 'error' in result)

@@ -59,7 +59,7 @@ from test_cmd_library import (
     test_sftpgo_password_separated, test_public_domain_from, test_pd_lock_share_link,
     test_library_view_no_loop_io, test_library_view_page_race,
     test_library_cache_threadsafe, test_format_view_missing_file,
-    test_library_catalog_golden,
+    test_library_catalog_golden, test_library_link_check_off_loop,
 )
 from test_cmd_admin import (
     test_daily, test_ignore_kapitel, test_test_cmd, test_announce,
@@ -137,6 +137,7 @@ def main():
     test_pd_lock_share_link()
     test_library_view_no_loop_io()
     test_library_view_page_race()
+    test_library_link_check_off_loop()
     test_dm_log()
     test_log()
     test_schachrallye()
