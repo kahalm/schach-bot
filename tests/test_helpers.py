@@ -570,6 +570,9 @@ import commands.leaderboard as leaderboard_mod
 
 # bot.py importieren (ruft am Ende bot.run() auf, was jetzt ein no-op ist)
 import bot as bot_mod
+import commands.admin as admin_mod
+import commands.welcome as welcome_mod
+import puzzle.daily_task as daily_task_mod
 
 # setup() fuer alle Command-Module nochmal ausfuehren, damit die Commands
 # im _captured_commands Dict landen (bot.py hat sie schon mit dem

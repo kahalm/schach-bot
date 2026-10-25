@@ -9,7 +9,7 @@ from test_helpers import (
     check, run_async, setup_temp_config, teardown_temp_config,
     make_interaction, _captured_commands, _CapturingBot, _discord,
     FakeUser, FakeMember, FakeChannel, FakeRole,
-    bot_mod, atomic_write, atomic_read,
+    bot_mod, admin_mod, welcome_mod, daily_task_mod, atomic_write, atomic_read,
 )
 
 
@@ -26,8 +26,8 @@ def test_daily():
         import bot as bot_mod
         import puzzle as puzzle_mod
 
-        old_bot = bot_mod.bot
-        old_channel_ids = bot_mod.DAILY_CHANNEL_IDS
+        old_bot = daily_task_mod._bot
+        old_channel_ids = daily_task_mod.DAILY_CHANNEL_IDS
         orig_post = puzzle_mod.post_rookhub_puzzle
 
         call_log = []
@@ -39,8 +39,8 @@ def test_daily():
 
         try:
             # Test: kein Daily-Channel konfiguriert → Fehler (ohne Posten)
-            bot_mod.DAILY_CHANNEL_IDS = []
-            bot_mod.bot = _CapturingBot()
+            daily_task_mod.DAILY_CHANNEL_IDS = []
+            daily_task_mod._bot = _CapturingBot()
             ia = make_interaction(admin=True)
             run_async(cmd(ia))
             content = (ia.response.calls[0].get('content') or '').lower()
@@ -48,7 +48,7 @@ def test_daily():
             check('kein Channel konfiguriert → kein Post', len(call_log) == 0)
 
             # Test: konfigurierter Channel nicht auffindbar → Fehlschlag-Meldung
-            bot_mod.DAILY_CHANNEL_IDS = [123]
+            daily_task_mod.DAILY_CHANNEL_IDS = [123]
 
             class NullBot:
                 def get_channel(self, cid):
@@ -56,7 +56,7 @@ def test_daily():
                 async def fetch_channel(self, cid):
                     raise RuntimeError('not found')
 
-            bot_mod.bot = NullBot()
+            daily_task_mod._bot = NullBot()
             ia = make_interaction(admin=True)
             run_async(cmd(ia))
             followup = (ia.followup.calls[-1].get('content') or '').lower()
@@ -64,16 +64,16 @@ def test_daily():
 
             # Test: Erfolg (zwei Channels) → in beide gepostet
             call_log.clear()
-            bot_mod.DAILY_CHANNEL_IDS = [99999, 88888]
-            bot_mod.bot = _CapturingBot()
+            daily_task_mod.DAILY_CHANNEL_IDS = [99999, 88888]
+            daily_task_mod._bot = _CapturingBot()
             ia = make_interaction(admin=True)
             run_async(cmd(ia))
             check('defer aufgerufen', ia.response.calls[0].get('type') == 'defer')
             check('post_rookhub_puzzle pro Channel aufgerufen', len(call_log) == 2)
             check('followup gesendet', len(ia.followup.calls) > 0)
         finally:
-            bot_mod.bot = old_bot
-            bot_mod.DAILY_CHANNEL_IDS = old_channel_ids
+            daily_task_mod._bot = old_bot
+            daily_task_mod.DAILY_CHANNEL_IDS = old_channel_ids
             puzzle_mod.post_rookhub_puzzle = orig_post
     finally:
         teardown_temp_config(tmpdir)
@@ -480,12 +480,12 @@ def test_greeted():
 
         # DM_STATE_FILE patchen
         import bot as bot_mod
-        old_dm_state = bot_mod.DM_STATE_FILE
-        bot_mod.DM_STATE_FILE = os.path.join(tmpdir, 'dm_state.json')
+        old_dm_state = welcome_mod.DM_STATE_FILE
+        welcome_mod.DM_STATE_FILE = os.path.join(tmpdir, 'dm_state.json')
 
         # bot-Variable in bot_mod patchen (greeted nutzt bot.fetch_user)
-        old_bot = bot_mod.bot
-        bot_mod.bot = _CapturingBot()
+        old_bot = admin_mod._bot
+        admin_mod._bot = _CapturingBot()
 
         try:
             # Test: leer
@@ -495,7 +495,7 @@ def test_greeted():
             check('leer → Hinweis', 'niemand' in content)
 
             # Test: mit Eintraegen
-            atomic_write(bot_mod.DM_STATE_FILE,
+            atomic_write(welcome_mod.DM_STATE_FILE,
                          {'greeted': [12345, 67890]})
             ia = make_interaction(admin=True)
             run_async(cmd(ia))
@@ -509,8 +509,8 @@ def test_greeted():
                 check('mit Eintraegen → Embed',
                       embed is not None and '2' in (embed.description or ''))
         finally:
-            bot_mod.DM_STATE_FILE = old_dm_state
-            bot_mod.bot = old_bot
+            welcome_mod.DM_STATE_FILE = old_dm_state
+            admin_mod._bot = old_bot
     finally:
         teardown_temp_config(tmpdir)
     print()
@@ -528,8 +528,8 @@ def test_stats():
 
         # bot-Variable patchen (stats nutzt bot.fetch_user)
         import bot as bot_mod
-        old_bot = bot_mod.bot
-        bot_mod.bot = _CapturingBot()
+        old_bot = admin_mod._bot
+        admin_mod._bot = _CapturingBot()
 
         try:
             # Test: leer
@@ -556,7 +556,7 @@ def test_stats():
                       embed is not None and embed.description is not None
                       and '10' in embed.description)
         finally:
-            bot_mod.bot = old_bot
+            admin_mod._bot = old_bot
     finally:
         teardown_temp_config(tmpdir)
     print()
@@ -577,8 +577,8 @@ def test_dm_log():
         import bot as bot_mod
         old_dm_log_file = dm_log_mod.DM_LOG_FILE
         dm_log_mod.DM_LOG_FILE = os.path.join(tmpdir, 'dm_log.json')
-        old_bot = bot_mod.bot
-        bot_mod.bot = _CapturingBot()
+        old_bot = admin_mod._bot
+        admin_mod._bot = _CapturingBot()
 
         try:
             # Test: leer
@@ -614,7 +614,7 @@ def test_dm_log():
                 check('Uebersicht enthaelt KEINEN Inhalt', 'Hallo' not in desc)
         finally:
             dm_log_mod.DM_LOG_FILE = old_dm_log_file
-            bot_mod.bot = old_bot
+            admin_mod._bot = old_bot
     finally:
         teardown_temp_config(tmpdir)
     print()
@@ -639,8 +639,8 @@ def test_log():
         check('Nicht-Admin → Fehler', 'admin' in content)
 
         # Test: Default → Code-Block (wir patchen _read_log_tail)
-        orig_read = bot_mod._read_log_tail
-        bot_mod._read_log_tail = lambda n: f'Zeile 1\nZeile 2\n(n={n})'
+        orig_read = admin_mod._read_log_tail
+        admin_mod._read_log_tail = lambda n: f'Zeile 1\nZeile 2\n(n={n})'
         try:
             ia = make_interaction(admin=True)
             run_async(cmd(ia, zeilen=50))
@@ -649,29 +649,29 @@ def test_log():
             check('Default → Code-Block', '```' in content and 'Zeile 1' in content)
             check('Default → n=50', 'n=50' in content)
         finally:
-            bot_mod._read_log_tail = orig_read
+            admin_mod._read_log_tail = orig_read
 
         # Test: Fehlende Log-Datei → (leer)
-        orig_read = bot_mod._read_log_tail
-        bot_mod._read_log_tail = lambda n: '(leer)'
+        orig_read = admin_mod._read_log_tail
+        admin_mod._read_log_tail = lambda n: '(leer)'
         try:
             ia = make_interaction(admin=True)
             run_async(cmd(ia, zeilen=50))
             content = ia.followup.calls[0].get('content') or ''
             check('Fehlende Log → (leer)', '(leer)' in content)
         finally:
-            bot_mod._read_log_tail = orig_read
+            admin_mod._read_log_tail = orig_read
 
         # Test: Lange Ausgabe → File-Attachment
-        orig_read = bot_mod._read_log_tail
-        bot_mod._read_log_tail = lambda n: 'X' * 2000
+        orig_read = admin_mod._read_log_tail
+        admin_mod._read_log_tail = lambda n: 'X' * 2000
         try:
             ia = make_interaction(admin=True)
             run_async(cmd(ia, zeilen=200))
             call = ia.followup.calls[0]
             check('Lange Ausgabe → File', call.get('file') is not None)
         finally:
-            bot_mod._read_log_tail = orig_read
+            admin_mod._read_log_tail = orig_read
     finally:
         teardown_temp_config(tmpdir)
     print()
@@ -859,8 +859,8 @@ def test_intents_minimal():
     # on_message: erste DM → Begruessung, laeuft ohne process_commands durch.
     tmpdir = setup_temp_config()
     import core.dm_log as dm_log_mod
-    old_dm_state, old_dm_log = bot_mod.DM_STATE_FILE, dm_log_mod.DM_LOG_FILE
-    bot_mod.DM_STATE_FILE = os.path.join(tmpdir, 'dm_state.json')
+    old_dm_state, old_dm_log = welcome_mod.DM_STATE_FILE, dm_log_mod.DM_LOG_FILE
+    welcome_mod.DM_STATE_FILE = os.path.join(tmpdir, 'dm_state.json')
     dm_log_mod.DM_LOG_FILE = os.path.join(tmpdir, 'dm_log.json')
     try:
         class _DM(FakeChannel, _discord.DMChannel):
@@ -875,13 +875,13 @@ def test_intents_minimal():
         msg.content = 'Hallo Bot'
         err = None
         try:
-            run_async(bot_mod.on_message(msg))
+            run_async(welcome_mod.on_message(msg))
         except Exception as e:  # z. B. AttributeError process_commands
             err = e
         check('on_message (DM) wirft nicht', err is None, repr(err))
         check('on_message (DM) → Begruessung gesendet', len(msg.channel.sent) == 1)
     finally:
-        bot_mod.DM_STATE_FILE, dm_log_mod.DM_LOG_FILE = old_dm_state, old_dm_log
+        welcome_mod.DM_STATE_FILE, dm_log_mod.DM_LOG_FILE = old_dm_state, old_dm_log
         teardown_temp_config(tmpdir)
     print()
 
@@ -892,8 +892,8 @@ def test_greeting_home_guild_only():
     print('[Begruessung nur Heim-Guild]')
     import core.dm_log as dm_log_mod
     tmpdir = setup_temp_config()
-    old = (bot_mod.GUILD_ID, bot_mod.bot, bot_mod.DM_STATE_FILE, dm_log_mod.DM_LOG_FILE)
-    bot_mod.DM_STATE_FILE = os.path.join(tmpdir, 'dm_state.json')
+    old = (welcome_mod.GUILD_ID, welcome_mod._bot, welcome_mod.DM_STATE_FILE, dm_log_mod.DM_LOG_FILE)
+    welcome_mod.DM_STATE_FILE = os.path.join(tmpdir, 'dm_state.json')
     dm_log_mod.DM_LOG_FILE = os.path.join(tmpdir, 'dm_log.json')
     HOME, EXTRA = 5000, 6000
     try:
@@ -910,8 +910,8 @@ def test_greeting_home_guild_only():
                 return home if gid == HOME else None
 
         home = _Guild(HOME, members=[801])
-        bot_mod.bot = _Bot()
-        bot_mod.GUILD_ID = HOME
+        welcome_mod._bot = _Bot()
+        welcome_mod.GUILD_ID = HOME
 
         class _Member(FakeMember):
             def __init__(self, uid, guild):
@@ -923,15 +923,15 @@ def test_greeting_home_guild_only():
                 return self.dm
 
         def _greeted():
-            return atomic_read(bot_mod.DM_STATE_FILE, dict).get('greeted', [])
+            return atomic_read(welcome_mod.DM_STATE_FILE, dict).get('greeted', [])
 
         m = _Member(802, _Guild(EXTRA))
-        run_async(bot_mod.on_member_join(m))
+        run_async(welcome_mod.on_member_join(m))
         check('Beitritt Zusatz-Guild → keine DM', m.dm.sent == [])
         check('Beitritt Zusatz-Guild → nicht als begruesst markiert', 802 not in _greeted())
 
         m = _Member(801, home)
-        run_async(bot_mod.on_member_join(m))
+        run_async(welcome_mod.on_member_join(m))
         check('Beitritt Heim-Guild → Begruessungs-DM', len(m.dm.sent) == 1)
         check('Beitritt Heim-Guild → begruesst markiert', 801 in _greeted())
 
@@ -944,20 +944,20 @@ def test_greeting_home_guild_only():
             return msg
 
         msg = _msg(803)  # nur in einer Zusatz-Guild
-        run_async(bot_mod.on_message(msg))
+        run_async(welcome_mod.on_message(msg))
         check('erste DM von Nicht-Mitglied → keine Begruessung', msg.channel.sent == [])
         check('erste DM von Nicht-Mitglied → nicht markiert', 803 not in _greeted())
         home.members[803] = FakeMember(uid=803)  # tritt spaeter der Heim-Guild bei
         msg = _msg(803)
-        run_async(bot_mod.on_message(msg))
+        run_async(welcome_mod.on_message(msg))
         check('erste DM als Heim-Mitglied → Begruessung', len(msg.channel.sent) == 1)
 
-        bot_mod.GUILD_ID = 0  # ohne GUILD_ID wie bisher: alle
+        welcome_mod.GUILD_ID = 0  # ohne GUILD_ID wie bisher: alle
         m = _Member(804, _Guild(EXTRA))
-        run_async(bot_mod.on_member_join(m))
+        run_async(welcome_mod.on_member_join(m))
         check('ohne GUILD_ID → Begruessung wie bisher', len(m.dm.sent) == 1)
     finally:
-        (bot_mod.GUILD_ID, bot_mod.bot, bot_mod.DM_STATE_FILE, dm_log_mod.DM_LOG_FILE) = old
+        (welcome_mod.GUILD_ID, welcome_mod._bot, welcome_mod.DM_STATE_FILE, dm_log_mod.DM_LOG_FILE) = old
         teardown_temp_config(tmpdir)
     print()
 
@@ -1207,7 +1207,7 @@ def test_bot_helpers_characterization():
     mit Registrier-Link, bevor beides aus bot.py umzieht."""
     print('[bot helpers characterization]')
     from core import discord_link as _dlink
-    pag = bot_mod._paginate_lines
+    pag = admin_mod._paginate_lines
     one = pag('H\n', ['a', 'b'])
     check('_paginate_lines: kurz → ein Embed', len(one) == 1 and one[0].description == 'H\na\nb',
           repr([e.description for e in one]))
@@ -1232,21 +1232,21 @@ def test_bot_helpers_characterization():
           and few[1].description.startswith('009'), str([e.description[:4] for e in few]))
 
     user = FakeMember(uid=4711, name='Anna')
-    old = (bot_mod.ROOKHUB_WEB_URL, _dlink.LINK_SECRET)
+    old = (welcome_mod.ROOKHUB_WEB_URL, _dlink.LINK_SECRET)
     try:
-        bot_mod.ROOKHUB_WEB_URL = ''
+        welcome_mod.ROOKHUB_WEB_URL = ''
         check('welcome_message_for: ohne Web-URL = WELCOME_MESSAGE',
-              bot_mod.welcome_message_for(user) == bot_mod.WELCOME_MESSAGE)
-        bot_mod.ROOKHUB_WEB_URL = 'https://rh.example'
+              welcome_mod.welcome_message_for(user) == welcome_mod.WELCOME_MESSAGE)
+        welcome_mod.ROOKHUB_WEB_URL = 'https://rh.example'
         _dlink.LINK_SECRET = ''
-        msg = bot_mod.welcome_message_for(user)
+        msg = welcome_mod.welcome_message_for(user)
         check('welcome_message_for: ohne Secret → Link ohne Token',
-              msg.startswith(bot_mod.WELCOME_MESSAGE + '\n\n— — —\n')
+              msg.startswith(welcome_mod.WELCOME_MESSAGE + '\n\n— — —\n')
               and '👉 Registriere dich für alle Features: https://rh.example/register\n' in msg
               and msg.endswith('automatisch verknüpft._'), msg[-200:])
         _dlink.LINK_SECRET = 'geheim'
-        msg = bot_mod.welcome_message_for(user)
+        msg = welcome_mod.welcome_message_for(user)
         check('welcome_message_for: mit Secret → ?dl=-Token', 'https://rh.example/register?dl=' in msg)
     finally:
-        bot_mod.ROOKHUB_WEB_URL, _dlink.LINK_SECRET = old
+        welcome_mod.ROOKHUB_WEB_URL, _dlink.LINK_SECRET = old
     print()

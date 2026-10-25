@@ -252,15 +252,15 @@ def test_bot_passes_loop_start_to_catchup():
 def test_new_daily_post_shows_existing_solvers():
     """Nach dem Posten des Tagespuzzles wird der Loeser-Stand sofort geholt — sonst steht
     „Noch niemand" im Post, obwohl es auf RookHub schon Loeser gibt (Webhook kommt erst
-    beim naechsten Versuch). Gilt fuer den Tages-Loop/Catch-up/`/daily` (bot.py) und den
-    Regenerate-Webhook. Quelltext-Check, da bot.py/webhook_server discord brauchen."""
-    with open(os.path.join(_REPO, 'bot.py'), encoding='utf-8') as f:
+    beim naechsten Versuch). Gilt fuer den Tages-Loop/Catch-up/`/daily` (puzzle/daily_task.py)
+    und den Regenerate-Webhook. Quelltext-Check, da daily_task/webhook_server discord brauchen."""
+    with open(os.path.join(_REPO, 'puzzle', 'daily_task.py'), encoding='utf-8') as f:
         src = f.read()
     body = src[src.index('async def _post_daily_to_all('):]
-    body = body[:body.index('\n@tasks.loop')]
+    body = body[:body.index('\nasync def run_daily_task')]
     post_idx = body.index('post_rookhub_puzzle(')
-    check('bot._post_daily_to_all: refresh nach dem Posten',
-          'daily_results.refresh(bot)' in body[post_idx:])
+    check('daily_task._post_daily_to_all: refresh nach dem Posten',
+          'daily_results.refresh(_bot)' in body[post_idx:])
     with open(os.path.join(_REPO, 'core', 'webhook_server.py'), encoding='utf-8') as f:
         src = f.read()
     body = src[src.index('def _make_daily_regenerate_handler('):]

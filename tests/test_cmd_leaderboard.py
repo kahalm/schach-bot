@@ -154,12 +154,12 @@ def test_leaderboard_docs_describe_catchup():
           and 'nicht' in (lb.run_monthly_post.__doc__ or '').lower())
 
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    with open(os.path.join(repo, 'bot.py'), encoding='utf-8') as f:
+    with open(os.path.join(repo, 'puzzle', 'daily_task.py'), encoding='utf-8') as f:
         bot_src = f.read()
     idx = bot_src.index('endstand_month = _lb.monthly_due()')
     comment = bot_src[bot_src.index('# ', idx - 600):idx]
-    check('bot.py-Kommentar ohne „Am 1. eines Monats"', 'Am 1. eines Monats' not in comment)
-    check('bot.py-Kommentar nennt Monatsanfang/Nachhol-Fenster',
+    check('daily_task.py-Kommentar ohne „Am 1. eines Monats"', 'Am 1. eines Monats' not in comment)
+    check('daily_task.py-Kommentar nennt Monatsanfang/Nachhol-Fenster',
           'Monatsanfang' in comment and 'Nachhol-Fenster' in comment)
     print()
 

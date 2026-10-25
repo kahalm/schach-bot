@@ -184,7 +184,7 @@ Auszug; die vollständige Modulliste mit Rollen steht in `CLAUDE.md` (Abschnitt 
 
 ```
 schach-bot/
-├── bot.py                      # Main Entry, Events, Admin-Commands, Daily-Task
+├── bot.py                      # Main Entry: Verdrahtung, on_ready, Health-Loop, SIGTERM
 ├── puzzle/
 │   ├── commands.py            # /puzzle, /kurs, /endless, /randompuzzle, /blindpuzzle (+ Stubs /train, /next)
 │   ├── selection.py           # Laden, Caching, Auswahl
@@ -193,6 +193,7 @@ schach-bot/
 │   ├── embed.py               # Discord-Embed-Aufbau
 │   ├── posting.py             # Senden + Lichess-Upload
 │   ├── buttons.py             # PuzzleView (Reaktions-Buttons)
+│   ├── daily_task.py          # Tagespuzzle-Post + Tages-Loop
 │   ├── lichess.py             # Lichess-API + Rate-Limiting
 │   └── state.py               # Persistenter Zustand (Ignore, Training)
 ├── commands/
@@ -200,6 +201,8 @@ schach-bot/
 │   ├── chat.py                # KI-Chat (/chat_whitelist, DM-Listener)
 │   ├── elo.py                 # /elo
 │   ├── reminder.py            # /reminder + Loop
+│   ├── admin.py               # /version, /greeted, /dm-log, /announce, /stats, /log, /daily
+│   ├── welcome.py             # Begruessungs-DM (on_message/on_member_join)
 │   ├── schachrallye.py        # Registrierung /schachrallye*, /turnier*
 │   ├── rallye.py              # /schachrallye* (Befehle)
 │   ├── turnier.py             # /turnier* (Befehle)
@@ -228,6 +231,7 @@ schach-bot/
 │   ├── version.py             # VERSION, GIT_SHA, START_TIME
 │   ├── stats.py               # User-Statistiken
 │   ├── permissions.py         # Admin/Moderator-Check
+│   ├── command_sync.py        # Slash-Command-Sync (Haupt-Guild/global)
 │   ├── log_setup.py           # Rotating Log + EmptyFen-Filter
 │   ├── dm_log.py              # DM-Protokollierung
 │   ├── event_log.py           # Reaktions-JSONL-Log

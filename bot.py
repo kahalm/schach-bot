@@ -10,22 +10,24 @@ from core import log_setup
 log = log_setup.setup()
 
 import asyncio
-import io
 import math
 import discord
 from discord.ext import tasks, commands
 import json
 import os
 import signal
-from datetime import datetime, time, timezone
+from datetime import datetime, timezone
 
-from core import stats, dm_log, command_log, es_client
-from core import discord_link
+# stats/discord_link/json_store nutzt bot.py selbst nicht mehr (Admin-Befehle, Begruessung);
+# der Import bleibt hier, damit Reihenfolge und Zeitpunkt (vor load_dotenv) gleich bleiben.
+from core import stats, dm_log, command_log, es_client  # noqa: F401
+from core import discord_link  # noqa: F401
+from core import command_sync
 from core import config as _config
-from core.json_store import atomic_read, atomic_update
+from core.json_store import atomic_read, atomic_update  # noqa: F401
 from core.paths import CONFIG_DIR
-from core.permissions import require_privileged, set_guild_id, display_name_cached
-from core.version import VERSION, GIT_SHA, START_TIME, EMBED_COLOR
+from core.permissions import set_guild_id
+from core.version import VERSION
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -44,60 +46,6 @@ WOCHENPOST_CHANNEL_ID = CFG.wochenpost_channel_id
 PUZZLE_HOUR, PUZZLE_MINUTE = CFG.puzzle_hour, CFG.puzzle_minute
 WEBHOOK_BIND_HOST, WEBHOOK_PORT, WEBHOOK_SECRET = (
     CFG.webhook_bind_host, CFG.webhook_port, CFG.webhook_secret)
-
-
-def _daily_lang(cid: int) -> str:
-    return DAILY_CHANNEL_LANG.get(cid, DAILY_DEFAULT_LANG)
-
-
-DM_STATE_FILE   = os.path.join(CONFIG_DIR, 'dm_state.json')
-
-WELCOME_MESSAGE = (
-    'Hallo! Ich bin der Schach-Bot eurer Servergruppe. ♟️\n\n'
-    '**Was ich kann:**\n'
-    '🧩 `/puzzle` — Zufällige Taktikrätsel per DM\n'
-    '🙈 `/blindpuzzle` — Blind-Puzzle von RookHub (im Kopf rechnen)\n'
-    '♾️ `/endless` — Endlos-Modus: nach jeder Antwort kommt das nächste Puzzle\n'
-    '📚 `/kurs` — Alle Puzzle-Bücher mit Fortschritt\n'
-    '📖 `/bibliothek` — Schachbuch-Bibliothek durchsuchen & downloaden\n'
-    '🔗 `/resourcen` — Online-Lernressourcen anzeigen oder hinzufügen\n'
-    '▶️ `/youtube` — YouTube-Kanäle/Videos anzeigen oder hinzufügen\n'
-    '⏰ `/reminder` — Wiederkehrende Puzzle-DMs einstellen\n'
-    '🏅 `/elo` — Eigene Schach-Elo angeben\n'
-    '🔗 `/link` — RookHub-Konto mit Discord verknüpfen\n'
-    '🏆 `/turnier` — Turniere in Tirol anzeigen\n'
-    '🔔 `/turnier_sub` — Bei neuen Turnieren gepingt werden\n'
-    '🏇 `/schachrallye` — Schachrallye-Termine anzeigen\n'
-    '💡 `/wanted` — Feature-Wünsche einreichen\n'
-    '🏆 `/bestenliste` — Tagespuzzle: Monats-Wertung + Hall of Fame\n\n'
-    'Mit `/help` siehst du alle Befehle im Detail.'
-)
-
-ROOKHUB_WEB_URL = CFG.rookhub_web_url
-
-
-def welcome_message_for(user) -> str:
-    """WELCOME_MESSAGE + personalisierter RookHub-Registrierungs-CTA.
-
-    Hängt (falls ``ROOKHUB_WEB_URL`` gesetzt) einen Link auf ``…/register`` an. Ist zusätzlich
-    ``ROOKHUB_LINK_SECRET`` gesetzt, trägt der Link ein signiertes ``?dl=``-Token mit der
-    Discord-ID des Users. Da die Begrüßung IMMER per DM (privat) geht, ist das Token sicher:
-    klickt der User und registriert sich, wird sein Discord-Konto automatisch verknüpft.
-    """
-    if not ROOKHUB_WEB_URL:
-        return WELCOME_MESSAGE
-    username = getattr(user, 'name', None) or getattr(user, 'display_name', None)
-    url = discord_link.append_dl(f'{ROOKHUB_WEB_URL}/register', user.id, username) \
-        or f'{ROOKHUB_WEB_URL}/register'
-    return (
-        WELCOME_MESSAGE
-        + '\n\n— — —\n'
-        + '🌐 **RookHub** ist das Portal zum Bot: Puzzle-Statistiken & Elo-Verlauf, Kurse, '
-          'Turnierdaten u. v. m.\n'
-        + f'👉 Registriere dich für alle Features: {url}\n'
-        + '_Über diesen persönlichen Link wird dein Discord-Konto nach der Registrierung '
-          'automatisch verknüpft._'
-    )
 
 # ---------------------------------------------------------------------------
 # Bot
@@ -124,6 +72,8 @@ import puzzle
 import library
 from commands import reminder, resourcen, youtube, elo, release_notes, blind, test, wanted, schachrallye, weeklypost, chat, link, motivation, leaderboard
 from commands import help as help_cmd
+from commands import admin, welcome
+from puzzle import daily_task
 
 puzzle.setup(bot, channel_langs=DAILY_CHANNEL_LANG, home_guild_id=GUILD_ID)
 library.setup(bot)
@@ -142,6 +92,12 @@ link.setup(bot)
 motivation.setup(bot)
 leaderboard.setup(bot, channel_id=CHANNEL_ID)
 help_cmd.setup(bot, guild_id=GUILD_ID)
+# Tagespuzzle-Loop (Post-Zeit aus der Config), Begruessung (on_message/on_member_join),
+# Admin-/Info-Befehle (/version … /daily) – Reihenfolge wie frueher in bot.py.
+puzzle_task = daily_task.configure(bot, DAILY_CHANNEL_IDS, DAILY_CHANNEL_LANG, DAILY_DEFAULT_LANG,
+                                   PUZZLE_HOUR, PUZZLE_MINUTE)
+welcome.setup(bot, guild_id=GUILD_ID, rookhub_web_url=CFG.rookhub_web_url)
+admin.setup(bot)
 
 
 _ready_done = False
@@ -165,34 +121,9 @@ def _write_health():
     os.replace(tmp, HEALTH_FILE)
 
 
-# Commands, die in JEDER Guild verfuegbar sein sollen (global registriert). Alle uebrigen
-# Commands werden nur in der Haupt-Guild (GUILD_ID) registriert — so bietet der Bot in
-# zusaetzlichen Guilds (2. Server fuer gespiegelte Daily-Posts) nur das Tagespuzzle (Auto-Post)
-# und `/puzzle` an, sonst nichts.
-PUBLIC_COMMANDS = {'puzzle'}
-
-
 async def _sync_commands():
-    """Synchronisiert die Slash-Commands gemaess PUBLIC_COMMANDS.
-
-    Ist GUILD_ID gesetzt: Haupt-Guild bekommt ALLE Commands (guild-scoped, sofort sichtbar),
-    global bleiben nur die PUBLIC_COMMANDS → in allen anderen Guilds ist nur `/puzzle` da
-    (plus die Daily-Auto-Posts). `/puzzle` wird aus der Guild-Kopie entfernt, damit es in der
-    Haupt-Guild nicht doppelt (global + guild) erscheint.
-    Ohne GUILD_ID: globaler Sync aller Commands (wie bisher)."""
-    if not GUILD_ID:
-        await tree.sync()
-        return
-    guild = discord.Object(id=GUILD_ID)
-    tree.copy_global_to(guild=guild)
-    for name in PUBLIC_COMMANDS:
-        tree.remove_command(name, guild=guild)  # bleibt global → kein Duplikat in der Haupt-Guild
-    await tree.sync(guild=guild)
-    # Global nur die PUBLIC_COMMANDS behalten und pushen (entfernt die uebrigen aus Zusatz-Guilds).
-    for cmd in list(tree.get_commands()):
-        if cmd.name not in PUBLIC_COMMANDS:
-            tree.remove_command(cmd.name)
-    await tree.sync()
+    """Slash-Commands syncen (Haupt-Guild alle, global nur /puzzle): core/command_sync.py."""
+    await command_sync.sync_commands(tree, GUILD_ID)
 
 
 @bot.event
@@ -233,7 +164,7 @@ async def on_ready():
         from core import webhook_server
         bot._webhook_runner = await webhook_server.start(
             bot, WEBHOOK_BIND_HOST, WEBHOOK_PORT, WEBHOOK_SECRET,
-            daily_channels=[(c, _daily_lang(c)) for c in DAILY_CHANNEL_IDS])
+            daily_channels=[(c, daily_task._daily_lang(c)) for c in DAILY_CHANNEL_IDS])
     except Exception as e:
         log.exception('Webhook-Server konnte nicht starten: %s', e)
     # Verpasste Solver-Updates direkt nach Start einmal nachholen (Bot war evtl.
@@ -254,7 +185,7 @@ async def on_ready():
                 loop_started=puzzle_loop_started):
             log.warning('Tagespuzzle von heute fehlt (Bot war zur Post-Zeit offline?) — wird nachgeholt.',
                         extra={'es_fields': {'tags': ['daily', 'puzzle']}})
-            await _post_daily_to_all()
+            await daily_task._post_daily_to_all()
     except Exception:
         log.exception('Daily-Catch-up beim Start fehlgeschlagen',
                       extra={'es_fields': {'tags': ['daily', 'puzzle']}})
@@ -266,319 +197,7 @@ async def on_ready():
         log.warning('Linien-Cache-Vorwaermen fehlgeschlagen')
 
 
-@bot.event
-async def on_message(message: discord.Message):
-    if message.author.bot:
-        return
-    if not isinstance(message.channel, discord.DMChannel):
-        return
-
-    # Eingehende DM loggen
-    await asyncio.to_thread(dm_log.log_incoming, message.author.id, message.content or '[kein Text]')
-
-    # Erste DM → Bot stellt sich vor (nur Mitgliedern der Heim-Guild; nicht als begrüßt
-    # markieren, sonst fehlte die Begrüßung, wenn sie später beitreten)
-    if not _is_home_member(message.author):
-        return
-    user_id = message.author.id
-    should_greet = False
-
-    def _check_and_greet(data):
-        nonlocal should_greet
-        greeted = data.get('greeted', [])
-        if user_id in set(greeted):
-            return data  # bereits begrüßt
-        should_greet = True
-        greeted.append(user_id)
-        # Deduplizieren (bereinigt historisch gewachsene Listen)
-        data['greeted'] = list(dict.fromkeys(greeted))
-        return data
-
-    await asyncio.to_thread(atomic_update, DM_STATE_FILE, _check_and_greet, dict)
-    if should_greet:
-        await message.channel.send(welcome_message_for(message.author))
-
-
-def _is_home_member(user) -> bool:
-    """Begrüßungs-DMs nur für die Heim-Guild (GUILD_ID): Die Willkommens-DM ist deutsch und
-    bewirbt Befehle, die es in Zusatz-Guilds (nur /puzzle) nicht gibt. Ohne GUILD_ID: alle."""
-    if not GUILD_ID:
-        return True
-    guild = bot.get_guild(GUILD_ID)
-    return guild is not None and guild.get_member(user.id) is not None
-
-
-@bot.event
-async def on_member_join(member: discord.Member):
-    if member.bot:
-        return
-    if GUILD_ID and getattr(member.guild, 'id', None) != GUILD_ID:
-        return  # Zusatz-Guild (gespiegeltes Daily): keine unaufgeforderte DM
-    try:
-        dm = await member.create_dm()
-        await dm.send(welcome_message_for(member))
-        # In greeted-Liste eintragen, damit on_message kein Doppel-Willkommen schickt
-        def _mark_greeted(data):
-            greeted = data.get('greeted', [])
-            if member.id not in set(greeted):
-                greeted.append(member.id)
-                data['greeted'] = greeted
-            return data
-        await asyncio.to_thread(atomic_update, DM_STATE_FILE, _mark_greeted, dict)
-    except discord.Forbidden:
-        log.warning('Kann DM an %s nicht senden (DMs deaktiviert).', member)
-    except Exception as e:
-        log.warning('Willkommens-DM fehlgeschlagen für %s: %s', member, e)
-
-
-# --- Helpers ---
-
-def _display_name_cached(uid, guild=None):
-    return display_name_cached(bot, uid, guild)
-
-
-_MAX_EMBEDS = 10  # Discord-Limit pro Nachricht
-
-
-def _paginate_lines(header: str, lines: list[str],
-                    max_len: int = 4096) -> list[discord.Embed]:
-    """Teilt Zeilen auf mehrere Embeds auf, wenn >max_len Zeichen."""
-    embeds: list[discord.Embed] = []
-    buf = header
-    for line in lines:
-        candidate = buf + line + '\n'
-        if len(candidate) > max_len:
-            embeds.append(discord.Embed(description=buf.rstrip(), color=EMBED_COLOR))
-            if len(embeds) >= _MAX_EMBEDS:
-                embeds[-1] = discord.Embed(
-                    description=buf.rstrip() + '\n\n_(gekuerzt)_', color=EMBED_COLOR)
-                return embeds
-            buf = line + '\n'
-        else:
-            buf = candidate
-    if buf.strip():
-        if len(embeds) < _MAX_EMBEDS:
-            embeds.append(discord.Embed(description=buf.rstrip(), color=EMBED_COLOR))
-    return embeds or [discord.Embed(description=header.rstrip(), color=EMBED_COLOR)]
-
-
-# --- Slash-Commands ---
-
-@tree.command(name='version', description='Aktuelle Bot-Version und Uptime anzeigen',
-              extras={'help': 'info'})
-async def cmd_version(interaction: discord.Interaction):
-    ts = int(START_TIME.timestamp())
-    sha_short = GIT_SHA[:7] if GIT_SHA != 'dev' else 'dev'
-    await interaction.response.send_message(
-        f'♟️ **Schach-Bot** v{VERSION} ({sha_short})\n'
-        f'🔄 Letzter Restart: <t:{ts}:f> (<t:{ts}:R>)',
-        ephemeral=True)
-
-
-@tree.command(name='greeted', description='Zeigt alle User, die die Begrüßungs-DM erhalten haben (Admin)',
-              extras={'help': 'admin'})
-@discord.app_commands.default_permissions(administrator=True)
-async def cmd_greeted(interaction: discord.Interaction):
-    if not await require_privileged(interaction):
-        return
-    data = await asyncio.to_thread(atomic_read, DM_STATE_FILE, dict)
-    greeted = data.get('greeted', [])
-    if not greeted:
-        await interaction.response.send_message('Noch niemand begrüßt.', ephemeral=True)
-        return
-
-    await interaction.response.defer(ephemeral=True)
-
-    lines = []
-    for uid in greeted:
-        name = _display_name_cached(uid, interaction.guild)
-        lines.append(f'• **{name}** (`{uid}`)')
-    header = f'**Begrüßte User ({len(greeted)}):**\n'
-    embeds = _paginate_lines(header, lines)
-    await interaction.followup.send(embeds=embeds, ephemeral=True)
-
-
-@tree.command(name='dm-log', description='DM-Log anzeigen (Admin)', extras={'help': 'admin'})
-@discord.app_commands.describe(user='Nur DMs dieses Users anzeigen')
-@discord.app_commands.default_permissions(administrator=True)
-async def cmd_dm_log(interaction: discord.Interaction, user: discord.User = None):
-    if not await require_privileged(interaction):
-        return
-    await interaction.response.defer(ephemeral=True)
-    data = await asyncio.to_thread(atomic_read, dm_log.DM_LOG_FILE, dict)
-
-    if user:
-        subset = {str(user.id): data.get(str(user.id), [])}
-        subset = {k: v for k, v in subset.items() if v}
-    else:
-        subset = {k: v for k, v in data.items() if v}
-
-    if not subset:
-        await interaction.followup.send('Noch keine DMs protokolliert.', ephemeral=True)
-        return
-
-    names = {uid: _display_name_cached(uid, interaction.guild)
-             for uid in subset}
-
-    def _last_ts(entries):
-        try:
-            return entries[-1].get('ts', '') if entries else ''
-        except Exception:
-            return ''
-
-    sorted_items = sorted(subset.items(), key=lambda kv: _last_ts(kv[1]), reverse=True)
-
-    lines = []
-    for uid, entries in sorted_items:
-        name = names.get(uid, f'User {uid}')
-        if user:
-            # Detailansicht: letzte 10 DMs mit Inhalt
-            lines.append(f'**{name}** ({len(entries)} DMs):')
-            for entry in entries[-10:]:
-                ts = entry.get('ts', '')
-                text = entry.get('text', '')
-                try:
-                    dt = datetime.fromisoformat(ts)
-                    unix = int(dt.timestamp())
-                    lines.append(f'  <t:{unix}:f> {text}')
-                except (ValueError, TypeError):
-                    lines.append(f'  {ts} {text}')
-        else:
-            # Uebersicht: eine Zeile pro User
-            last = entries[-1]
-            try:
-                dt = datetime.fromisoformat(last.get('ts', ''))
-                unix = int(dt.timestamp())
-                ts_fmt = f'<t:{unix}:f>'
-            except (ValueError, TypeError):
-                ts_fmt = last.get('ts', '?')
-            lines.append(f'**{name}** — {len(entries)} DMs · Letzte: {ts_fmt}')
-
-    embeds = _paginate_lines('', lines)
-    await interaction.followup.send(embeds=embeds, ephemeral=True)
-
-
-@tree.command(name='announce', description='Begrüßungsnachricht an einen User senden (Admin)',
-              extras={'help': 'admin'})
-@discord.app_commands.describe(user='Der User, der die Nachricht erhalten soll')
-@discord.app_commands.default_permissions(administrator=True)
-async def cmd_announce(interaction: discord.Interaction, user: discord.User):
-    if not await require_privileged(interaction):
-        return
-    try:
-        dm = await user.create_dm()
-        await dm.send(welcome_message_for(user))
-        await interaction.response.send_message(
-            f'✅ Begrüßungsnachricht an **{user.display_name}** gesendet.',
-            ephemeral=True)
-    except discord.Forbidden:
-        await interaction.response.send_message(
-            f'❌ Kann keine DM an **{user.display_name}** senden (DMs deaktiviert).',
-            ephemeral=True)
-    except Exception as e:
-        log.exception('cmd_announce fehlgeschlagen für %s', user)
-        await interaction.response.send_message('❌ Ein Fehler ist aufgetreten.', ephemeral=True)
-
-
-@tree.command(name='stats', description='Nutzungsstatistiken aller User anzeigen (Admin)',
-              extras={'help': 'admin'})
-@discord.app_commands.default_permissions(administrator=True)
-async def cmd_stats(interaction: discord.Interaction):
-    if not await require_privileged(interaction):
-        return
-    all_stats = await asyncio.to_thread(stats.get_all)
-    if not all_stats:
-        await interaction.response.send_message('Noch keine Statistiken vorhanden.', ephemeral=True)
-        return
-
-    await interaction.response.defer(ephemeral=True)
-
-    names = {uid: _display_name_cached(uid, interaction.guild)
-             for uid in all_stats}
-
-    lines = []
-    for uid, data in all_stats.items():
-        puzzles = data.get('puzzles', 0)
-        downloads = data.get('downloads', 0)
-        solved = data.get('reaction_✅', 0)
-        failed = data.get('reaction_❌', 0)
-        liked = data.get('reaction_👍', 0)
-        disliked = data.get('reaction_👎', 0)
-        trashed = data.get('reaction_🚮', 0)
-        name = names.get(uid, f'User {uid}')
-        line = f'**{name}** — 🧩 {puzzles} · 📥 {downloads}'
-        if solved or failed:
-            line += f' · ✅ {solved} · ❌ {failed}'
-        if liked or disliked:
-            line += f' · 👍 {liked} · 👎 {disliked}'
-        if trashed:
-            line += f' · 🚮 {trashed}'
-        lines.append(line)
-
-    embeds = _paginate_lines('📊 **Statistiken**\n', lines)
-    await interaction.followup.send(embeds=embeds, ephemeral=True)
-
-
-# --- Admin-Befehle ---
-
-def _read_log_tail(n: int) -> str:
-    """Liest die letzten n Zeilen aus bot.log (speicherschonend via deque)."""
-    from collections import deque
-    try:
-        with open('bot.log', encoding='utf-8', errors='replace') as f:
-            tail = deque(f, maxlen=n)
-        return ''.join(tail).rstrip() or '(leer)'
-    except FileNotFoundError:
-        return '(leer)'
-
-
-@tree.command(name='log', description='Letzte Log-Zeilen anzeigen (Admin)', extras={'help': 'admin'})
-@discord.app_commands.describe(zeilen='Anzahl Zeilen (Standard: 50, Max: 200)')
-@discord.app_commands.default_permissions(administrator=True)
-async def cmd_log(interaction: discord.Interaction, zeilen: int = 50):
-    if not await require_privileged(interaction):
-        return
-    await interaction.response.defer(ephemeral=True)
-    zeilen = max(1, min(zeilen, 200))
-    text = await asyncio.to_thread(_read_log_tail, zeilen)
-    if len(text) <= 1900:
-        await interaction.followup.send(f'```\n{text}\n```', ephemeral=True)
-    else:
-        buf = io.BytesIO(text.encode('utf-8'))
-        await interaction.followup.send(
-            file=discord.File(buf, filename='bot.log'), ephemeral=True)
-
-
-@tree.command(name='daily', description='Tägliches Puzzle manuell auslösen (Admin)',
-              extras={'help': 'admin'})
-@discord.app_commands.default_permissions(administrator=True)
-async def cmd_daily(interaction: discord.Interaction):
-    if not await require_privileged(interaction):
-        return
-    if not DAILY_CHANNEL_IDS:
-        await interaction.response.send_message('Kein Daily-Channel konfiguriert.', ephemeral=True)
-        return
-    await interaction.response.defer(ephemeral=True)
-    try:
-        results = await _post_daily_to_all()
-        ok = [f'<#{c}>' for c, good in results if good]
-        bad = [f'<#{c}>' for c, good in results if not good]
-        msg = f'Daily Puzzle gepostet in: {", ".join(ok)}.' if ok else 'Daily Puzzle konnte nirgends gepostet werden.'
-        if bad:
-            msg += f'\n⚠️ Fehlgeschlagen: {", ".join(bad)}.'
-        await interaction.followup.send(msg, ephemeral=True)
-    except Exception as e:
-        log.exception('Fehler bei /daily')
-        await interaction.followup.send('Fehler beim Posten des Daily Puzzles.', ephemeral=True)
-
-
-# --- Tägliche Tasks ---
-# Hinweis: Der 5-Min-Polling-Loop fuer Daily-Solver wurde entfernt — RookHub
-# feuert seit v0.75.0 einen Webhook nach jedem Buch-Puzzle-Attempt (siehe
-# core/webhook_server.py + puzzle/daily_results.apply_solver_update). Beim
-# Bot-Start wird einmalig refresh() als Catch-up fuer verpasste Events
-# aufgerufen (siehe on_ready).
-
+# --- Health + Heartbeat ---
 
 @tasks.loop(seconds=60)
 async def _health_loop():
@@ -594,88 +213,6 @@ async def _health_loop():
             await asyncio.to_thread(rookhub.send_heartbeat)
         except Exception as e:
             log.debug('RookHub-Heartbeat fehlgeschlagen: %s', e)
-
-
-async def _post_daily_to_all() -> list[tuple[int, bool]]:
-    """Postet das Tagespuzzle in alle konfigurierten Daily-Channels (auch in anderen
-    Guilds) und gibt ``(channel_id, erfolg)`` je Channel zurueck.
-
-    Dasselbe Puzzle ueberall: RookHubs ``daily``-Pool ist pro Tag deterministisch, also
-    liefert jeder Aufruf dieselbe Puzzle-ID. Das Solver-Tracking sammelt die Posts via
-    ``daily_results.remember()`` (Upsert pro Channel unter einem Puzzle)."""
-    # Am Monatsanfang: Vormonats-Endstand vorbereiten, um ihn in JEDEN Tagespuzzle-Thread
-    # nachzulegen (statt eines eigenstaendigen Posts). Faellig in den ersten Tagen des Monats
-    # (leaderboard.monthly_due → Nachhol-Fenster, falls der 1. ausfiel), aber genau einmal je
-    # Monat: Dedupe via leaderboard-State, markiert erst nach erfolgreichem Post.
-    from commands import leaderboard as _lb
-    endstand_month = _lb.monthly_due()
-    endstand_embed = None
-    if endstand_month:
-        try:
-            endstand_embed = await _lb.build_endstand_embed(endstand_month)
-        except Exception:
-            log.exception('Monats-Endstand-Embed konnte nicht gebaut werden (%s)', endstand_month)
-    endstand_posted = False
-
-    results: list[tuple[int, bool]] = []
-    for cid in DAILY_CHANNEL_IDS:
-        channel = bot.get_channel(cid)
-        if channel is None:
-            try:
-                channel = await bot.fetch_channel(cid)
-            except Exception:
-                channel = None
-        if channel is None:
-            log.warning('Daily-Channel %s nicht gefunden.', cid)
-            results.append((cid, False))
-            continue
-        try:
-            pid, target = await puzzle.post_rookhub_puzzle(
-                channel, 'daily', with_board=True, lang=_daily_lang(cid), return_target=True)
-            results.append((cid, pid is not None))
-            # Endstand in DENSELBEN Thread wie das Tagespuzzle nachlegen.
-            if endstand_embed is not None and target is not None:
-                try:
-                    await target.send(embed=endstand_embed)
-                    endstand_posted = True
-                except Exception:
-                    log.exception('Monats-Endstand-Post in Channel %s fehlgeschlagen', cid)
-        except Exception:
-            log.exception('Daily-Post in Channel %s fehlgeschlagen', cid,
-                          extra={'es_fields': {'tags': ['daily', 'puzzle']}})
-            results.append((cid, False))
-
-    # Monat erst als abgerechnet markieren, wenn der Endstand mindestens einmal gepostet wurde.
-    if endstand_month and endstand_posted:
-        _lb.mark_monthly_posted(endstand_month)
-    # Loeser, die das Puzzle auf RookHub schon VOR dem Post geloest haben, sofort eintragen
-    # (der Webhook kaeme erst beim naechsten Versuch).
-    if any(ok for _, ok in results):
-        try:
-            from puzzle import daily_results
-            await daily_results.refresh(bot)
-        except Exception:
-            log.warning('Loeser-Stand nach dem Daily-Post nicht geholt',
-                        extra={'es_fields': {'tags': ['daily', 'puzzle']}})
-    return results
-
-
-@tasks.loop(time=time(hour=PUZZLE_HOUR, minute=PUZZLE_MINUTE))
-async def puzzle_task():
-    if not DAILY_CHANNEL_IDS:
-        log.warning('Kein Daily-Channel konfiguriert (CHANNEL_ID/DAILY_EXTRA_CHANNEL_IDS).')
-        return
-    try:
-        await _post_daily_to_all()
-    except Exception:
-        log.exception('puzzle_task fehlgeschlagen',
-                      extra={'es_fields': {'tags': ['daily', 'puzzle']}})
-    # Reaction-Log rotieren
-    try:
-        from core.event_log import rotate_log
-        await asyncio.to_thread(rotate_log)
-    except Exception as e:
-        log.warning('Reaction-Log Rotation fehlgeschlagen: %s', e)
 
 # --- Befehls-Protokoll: jeder Slash-Befehl landet in ES (Tag "command") ---
 

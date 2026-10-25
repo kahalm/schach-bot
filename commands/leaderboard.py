@@ -2,8 +2,8 @@
 
 `/bestenliste [monat]` zeigt die aktuelle (oder gewählte) Monats-Wertung + Hall of Fame.
 Zusätzlich wird die Endabrechnung des Vormonats automatisch gepostet — nicht von einem
-eigenen Loop, sondern vom Tagespuzzle-Flow (`bot._post_daily_to_all`), der den Endstand in
-DEN Thread des Tagespuzzles nachlegt. Fällig ist sie im Nachhol-Fenster der ersten
+eigenen Loop, sondern vom Tagespuzzle-Flow (`puzzle.daily_task._post_daily_to_all`), der den
+Endstand in DEN Thread des Tagespuzzles nachlegt. Fällig ist sie im Nachhol-Fenster der ersten
 `daily_leaderboard.MONTHLY_CATCHUP_DAYS` Tage eines Monats (der 1. ist der Normalfall; fiel
 er aus, wird nachgeholt), aber genau einmal pro Monat — dedupliziert via
 `config/leaderboard_state.json`.
@@ -167,5 +167,5 @@ def setup(bot, channel_id: int = 0):
     # HINWEIS: Der frühere eigenständige 08:00-Loop (run_monthly_post → dedizierter Channel) ist
     # abgeschaltet. Die Vormonats-Abrechnung wird stattdessen ZUSAMMEN mit dem Tagespuzzle in DESSEN
     # Thread gepostet — beim ersten Tagespuzzle im Nachhol-Fenster am Monatsanfang (siehe
-    # bot._post_daily_to_all → leaderboard.monthly_due/build_endstand_embed/mark_monthly_posted).
+    # daily_task._post_daily_to_all → leaderboard.monthly_due/build_endstand_embed/mark_monthly_posted).
     # `run_monthly_post` bleibt für Tests/Ad-hoc erhalten, wird aber nicht mehr geplant.

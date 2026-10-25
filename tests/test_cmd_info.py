@@ -10,7 +10,7 @@ import test_helpers as h
 from test_helpers import (
     check, run_async, setup_temp_config, teardown_temp_config,
     make_interaction, _captured_commands, _help_fields_fn,
-    bot_mod, parent_dir,
+    bot_mod, welcome_mod, parent_dir,
 )
 import core.version
 
@@ -113,7 +113,7 @@ def test_help():
               content)
 
         # 7) Begruessung: keine abgeloesten/Admin-Befehle, nur registrierte.
-        welcome = bot_mod.WELCOME_MESSAGE
+        welcome = welcome_mod.WELCOME_MESSAGE
         mentioned = re.findall(r'`/([\w-]+)`', welcome)
         check('Begruessung nennt Befehle', len(mentioned) >= 10, str(mentioned))
         for n in ('blind', 'train', 'next', 'stats'):
