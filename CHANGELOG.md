@@ -4,6 +4,17 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.34] - 2026-10-25
+### Changed
+- **Technischer Umbau ohne Funktionsänderung (Codereview 2026-09-29, Zerlegung Z40–Z42):** Schachrallye/Turniere
+  (`commands/schachrallye.py` → `rallye`, `turnier`, `termine`, `turnier_store`, `turnier_loops`), Bibliothek
+  (`library.py` → Paket `library/` mit `config`, `tags`, `catalog`, `search`, `sharing`, `views`, `commands`) und
+  Bot-Einstieg (`bot.py` → `commands/admin`, `commands/welcome`, `puzzle/daily_task`, `core/command_sync`) in kleinere
+  Module zerlegt. Befehle, Optionen, Hilfe, Loops und Texte sind unverändert (Befehls-Diff leer, Tabellentests vorher).
+### Fixed
+- **Bibliothek:** Die Prüfung, ob ein SFTPGo-Link für große Bücher erlaubt ist, lädt bei aktiver
+  Gemeinfreiheits-Sperre den Katalog nicht mehr im Event-Loop (Buchauswahl, Versand, KI-Chat) — Rest von S4-025.
+
 ## [2.83.33] - 2026-10-11
 ### Fixed
 - **Tagespuzzle zeigt Löser, die schon vor dem Post gelöst haben.** Das Puzzle ist auf RookHub
