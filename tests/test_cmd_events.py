@@ -1175,3 +1175,52 @@ def test_rallye_loops():
         _captured_commands.update(old_cmds)
         teardown_temp_config(tmpdir)
     print()
+
+
+def test_termine_table():
+    """Charakterisierung (Zerlegung Z40): Datumsparsen, Ort-Kuerzen, Zeilenformat als Tabelle."""
+    print('[termine_table]')
+    m = schachrallye_mod
+    flex = [
+        ('14.05.2026', (date(2026, 5, 14), '14.05.2026')),
+        ('  14.05.2026 ', (date(2026, 5, 14), '14.05.2026')),
+        ('20.-24.05.2026', (date(2026, 5, 20), '20.-24.05.2026')),
+        ('20. + 21.06.2026', (date(2026, 6, 20), '20. + 21.06.2026')),
+        ('22.05.-25.05.2026', (date(2026, 5, 22), '22.05.-25.05.2026')),
+        ('31.07.-02.08.2026', (date(2026, 7, 31), '31.07.-02.08.2026')),
+        ('demnaechst', (None, 'demnaechst')),
+        ('', (None, '')),
+        ('32.13.2026', (None, '32.13.2026')),
+    ]
+    for text, want in flex:
+        got = m._parse_datum_flex(text)
+        check(f'_parse_datum_flex({text!r})', got == want, detail=str(got))
+    stored = [('2026-05-14', date(2026, 5, 14)), ('kaputt', None), ('', None), (None, None)]
+    for text, want in stored:
+        check(f'_parse_stored({text!r})', m._parse_stored(text) == want)
+    orte = [
+        ('', ''),
+        ('Innsbruck', 'Innsbruck'),
+        ('SK Jenbach, Turnsaal', 'SK Jenbach'),
+        ('Woergl; Halle', 'Woergl'),
+        ('Hall (Tirol)', 'Hall'),
+        ('Kufstein Info unter 0664', 'Kufstein'),
+        ('Lienz Anmeldung bis Mai', 'Lienz'),
+        (',fuehrendes Komma', ',fuehrendes Komma'),
+        ('x' * 70, 'x' * 59 + '…'),
+    ]
+    for ort, want in orte:
+        got = m._shorten_ort(ort)
+        check(f'_shorten_ort({ort[:20]!r})', got == want, detail=repr(got))
+    lines = [
+        ({'datum': '2026-05-14', 'name': 'A'}, '`14.05.2026` **A**'),
+        ({'datum': 'kaputt', 'name': 'A'}, '`kaputt` **A**'),
+        ({'datum': '2026-05-14', 'datum_text': '14.-15.05.2026', 'name': 'B',
+          'link': 'https://x.at/a', 'ort': 'Hall, Halle'},
+         '`14.-15.05.2026` [**B**](https://x.at/a) · Hall'),
+        ({'datum': '2026-05-14', 'name': 'C', 'link': 'kein link'}, '`14.05.2026` **C**'),
+    ]
+    for e, want in lines:
+        got = m._format_turnier_line(e)
+        check(f'_format_turnier_line({e["name"]})', got == want, detail=repr(got))
+    print()
