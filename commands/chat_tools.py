@@ -290,8 +290,8 @@ async def _tool_suggest_book(tool_input, ctx) -> str:
     library_results = []
     if query:
         try:
-            from library import _search_library
-            lib_hits = _search_library(query, limit=5)
+            from library import search as _lib_search
+            lib_hits = _lib_search._search_library(query, limit=5)
             for e in lib_hits:
                 author = e.get('author', '')
                 if isinstance(author, list):
@@ -743,11 +743,10 @@ async def _tool_send_library_book(tool_input, ctx) -> str:
     import os
     import discord
     from core import stats
-    import library as _lib
-    from library import (
-        _search_library, _collect_formats, _author_str,
-        _sftpgo_link_allowed, _sftpgo_message, _sftpgo_password_message, _MAX_UPLOAD,
-    )
+    from library import catalog as _lib_catalog
+    from library import config as _lib_config
+    from library import search as _lib_search
+    from library import sharing as _lib_sharing
 
     channel = ctx.get('channel')
     if not channel:
@@ -760,8 +759,8 @@ async def _tool_send_library_book(tool_input, ctx) -> str:
     preferred = tool_input.get('format', 'pdf')
 
     # Suche (lädt ggf. den Katalog), Formatprüfung (isfile) und Link-Bau (Path.resolve)
-    # lesen den Bibliotheks-Mount → Thread, wie in library.py (Review W4s S4-025).
-    hits = await asyncio.to_thread(_search_library, query, limit=5)
+    # lesen den Bibliotheks-Mount → Thread, wie im Paket library (Review W4s S4-025).
+    hits = await asyncio.to_thread(_lib_search._search_library, query, limit=5)
     if not hits:
         return json.dumps(
             {'error': f'Kein Buch gefunden fuer: {query}'},
@@ -769,19 +768,19 @@ async def _tool_send_library_book(tool_input, ctx) -> str:
 
     entry = hits[0]
     title = entry.get('title', '')
-    author = _author_str(entry.get('author', ''))
+    author = _lib_catalog._author_str(entry.get('author', ''))
 
     # Gemeinfreiheits-Sperre: gleiche Regel wie /bibliothek (_send_book) —
     # noch nicht freie Bücher werden auch via Chat-Tool nicht ausgeliefert.
-    if _lib._is_locked(entry):
-        rel = _lib._pd_release(entry)
+    if _lib_sharing._is_locked(entry):
+        rel = _lib_sharing._pd_release(entry)
         return json.dumps(
             {'error': f'Buch ist noch urheberrechtlich geschützt und erst ab '
                       f'{rel.strftime("%d.%m.%Y")} gemeinfrei — nicht teilbar.',
              'title': title},
             ensure_ascii=False)
 
-    formats = await asyncio.to_thread(_collect_formats, entry)
+    formats = await asyncio.to_thread(_lib_sharing._collect_formats, entry)
     if not formats:
         return json.dumps(
             {'error': 'Buch gefunden aber keine Datei verfuegbar', 'title': title},
@@ -800,21 +799,21 @@ async def _tool_send_library_book(tool_input, ctx) -> str:
 
     path = formats[fmt]
     # Disk-/Netz-I/O (Bücher liegen auf Syncthing-/Netzpfaden) NICHT im Event-Loop
-    # (wie library._send_book); OSError = Datei zwischenzeitlich verschoben/gelöscht.
+    # (wie library.views._send_book); OSError = Datei zwischenzeitlich verschoben/gelöscht.
     try:
         size = await asyncio.to_thread(os.path.getsize, path)
         size_mb = round(size / (1024 * 1024), 1)
 
-        if size <= _MAX_UPLOAD:
+        if size <= _lib_config._MAX_UPLOAD:
             book_file = await asyncio.to_thread(
                 lambda: discord.File(path, filename=os.path.basename(path)))
             await channel.send(
                 content=f'📖 **{title}** — {author} `[{fmt.upper()}]`',
                 file=book_file)
-        elif _sftpgo_link_allowed():
+        elif _lib_sharing._sftpgo_link_allowed():
             await channel.send(
-                await asyncio.to_thread(_sftpgo_message, entry, path, fmt, size))
-            pw_msg = _sftpgo_password_message()
+                await asyncio.to_thread(_lib_sharing._sftpgo_message, entry, path, fmt, size))
+            pw_msg = _lib_sharing._sftpgo_password_message()
             if pw_msg:
                 await channel.send(pw_msg)
         else:

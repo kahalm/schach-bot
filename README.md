@@ -214,7 +214,14 @@ schach-bot/
 │   ├── release_notes.py       # /release-notes
 │   ├── test.py                # /test (Diagnose)
 │   └── _collection.py         # URL-Collection-Helfer
-├── library.py                 # /bibliothek, /tag, /autor, /reindex
+├── library/                   # /bibliothek, /tag, /autor, /reindex
+│   ├── config.py              # Umgebung + Pfad-Uebersetzung
+│   ├── tags.py                # Auto-Tags
+│   ├── catalog.py             # index.txt → library.json
+│   ├── search.py              # Katalog-Cache + Suche
+│   ├── sharing.py             # Gemeinfreiheit, Formate, SFTPGo-Link
+│   ├── views.py               # Embed, Auswahl, Buttons, Blaettern
+│   └── commands.py            # Slash-Commands (setup)
 ├── core/
 │   ├── json_store.py          # Atomare JSON-Persistenz (Thread-safe)
 │   ├── paths.py               # CONFIG_DIR

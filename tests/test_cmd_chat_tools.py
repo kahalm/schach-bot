@@ -822,8 +822,8 @@ def test_tool_send_library_book():
         ctx = {'user_id': 42, 'channel': channel}
 
         # 1. Treffer + kleine Datei → send aufgerufen
-        with patch('library._search_library', return_value=[fake_entry]), \
-             patch('library._collect_formats', return_value={'pdf': small_file}), \
+        with patch('library.search._search_library', return_value=[fake_entry]), \
+             patch('library.sharing._collect_formats', return_value={'pdf': small_file}), \
              patch('core.stats.inc') as mock_inc:
             result_str = run_async(_tool_send_library_book(
                 {'query': 'Test'}, ctx))
@@ -839,10 +839,10 @@ def test_tool_send_library_book():
         # 2. Treffer + grosse Datei + SFTPGo → Link gesendet
         channel2 = FakeChannel()
         ctx2 = {'user_id': 42, 'channel': channel2}
-        with patch('library._search_library', return_value=[fake_entry]), \
-             patch('library._collect_formats', return_value={'pdf': big_file}), \
-             patch('library._sftpgo_configured', return_value=True), \
-             patch('library._sftpgo_message', return_value='🔗 Download-Link'), \
+        with patch('library.search._search_library', return_value=[fake_entry]), \
+             patch('library.sharing._collect_formats', return_value={'pdf': big_file}), \
+             patch('library.sharing._sftpgo_configured', return_value=True), \
+             patch('library.sharing._sftpgo_message', return_value='🔗 Download-Link'), \
              patch('core.stats.inc') as mock_inc2:
             result_str = run_async(_tool_send_library_book(
                 {'query': 'Test'}, ctx2))
@@ -854,9 +854,9 @@ def test_tool_send_library_book():
         # 3. Treffer + grosse Datei ohne SFTPGo → Fehler
         channel3 = FakeChannel()
         ctx3 = {'user_id': 42, 'channel': channel3}
-        with patch('library._search_library', return_value=[fake_entry]), \
-             patch('library._collect_formats', return_value={'pdf': big_file}), \
-             patch('library._sftpgo_configured', return_value=False):
+        with patch('library.search._search_library', return_value=[fake_entry]), \
+             patch('library.sharing._collect_formats', return_value={'pdf': big_file}), \
+             patch('library.sharing._sftpgo_configured', return_value=False):
             result_str = run_async(_tool_send_library_book(
                 {'query': 'Test'}, ctx3))
             result = json.loads(result_str)
@@ -864,7 +864,7 @@ def test_tool_send_library_book():
         check('grosse Datei ohne SFTPGo → title', result.get('title') == 'Test Book')
 
         # 4. Kein Treffer → error
-        with patch('library._search_library', return_value=[]):
+        with patch('library.search._search_library', return_value=[]):
             result_str = run_async(_tool_send_library_book(
                 {'query': 'Gibtsnicht'}, ctx))
             result = json.loads(result_str)
@@ -872,8 +872,8 @@ def test_tool_send_library_book():
         check('kein Treffer → query in error', 'Gibtsnicht' in result.get('error', ''))
 
         # 5. Treffer aber keine Datei → error mit Titel
-        with patch('library._search_library', return_value=[fake_entry]), \
-             patch('library._collect_formats', return_value={}):
+        with patch('library.search._search_library', return_value=[fake_entry]), \
+             patch('library.sharing._collect_formats', return_value={}):
             result_str = run_async(_tool_send_library_book(
                 {'query': 'Test'}, ctx))
             result = json.loads(result_str)
@@ -883,8 +883,8 @@ def test_tool_send_library_book():
         # 6. Format-Fallback: gewuenschtes Format nicht da → naechstbestes
         channel6 = FakeChannel()
         ctx6 = {'user_id': 42, 'channel': channel6}
-        with patch('library._search_library', return_value=[fake_entry]), \
-             patch('library._collect_formats',
+        with patch('library.search._search_library', return_value=[fake_entry]), \
+             patch('library.sharing._collect_formats',
                    return_value={'epub': small_file, 'djvu': small_file}), \
              patch('core.stats.inc'):
             result_str = run_async(_tool_send_library_book(
@@ -905,10 +905,10 @@ def test_tool_send_library_book():
         from datetime import date as _date
         channel8 = FakeChannel()
         ctx8 = {'user_id': 42, 'channel': channel8}
-        with patch('library._search_library', return_value=[fake_entry]), \
-             patch('library._collect_formats', return_value={'pdf': small_file}), \
-             patch('library._is_locked', return_value=True), \
-             patch('library._pd_release', return_value=_date(2077, 1, 1)):
+        with patch('library.search._search_library', return_value=[fake_entry]), \
+             patch('library.sharing._collect_formats', return_value={'pdf': small_file}), \
+             patch('library.sharing._is_locked', return_value=True), \
+             patch('library.sharing._pd_release', return_value=_date(2077, 1, 1)):
             result_str = run_async(_tool_send_library_book(
                 {'query': 'Test'}, ctx8))
             result = json.loads(result_str)
@@ -920,8 +920,8 @@ def test_tool_send_library_book():
         channel9 = FakeChannel()
         ctx9 = {'user_id': 42, 'channel': channel9}
         gone = os.path.join(tmpdir, 'gone.pdf')
-        with patch('library._search_library', return_value=[fake_entry]), \
-             patch('library._collect_formats', return_value={'pdf': gone}):
+        with patch('library.search._search_library', return_value=[fake_entry]), \
+             patch('library.sharing._collect_formats', return_value={'pdf': gone}):
             result_str = run_async(_tool_send_library_book(
                 {'query': 'Test'}, ctx9))
             result = json.loads(result_str)
@@ -937,17 +937,17 @@ def test_tool_send_library_book():
                                     'files': [], 'publicDomainFrom': '2999-01-01'}], f)
         channel10 = FakeChannel()
         ctx10 = {'user_id': 42, 'channel': channel10}
-        with patch('library.LIBRARY_FILE', lib_json), \
-             patch('library.LIBRARY_ENFORCE_PD', True), \
-             patch('library._search_library', return_value=[fake_entry]), \
-             patch('library._collect_formats', return_value={'pdf': big_file}), \
-             patch('library._sftpgo_configured', return_value=True), \
-             patch('library._sftpgo_message', return_value='🔗 Download-Link'):
-            _library._reload_library()
+        with patch('library.config.LIBRARY_FILE', lib_json), \
+             patch('library.config.LIBRARY_ENFORCE_PD', True), \
+             patch('library.search._search_library', return_value=[fake_entry]), \
+             patch('library.sharing._collect_formats', return_value={'pdf': big_file}), \
+             patch('library.sharing._sftpgo_configured', return_value=True), \
+             patch('library.sharing._sftpgo_message', return_value='🔗 Download-Link'):
+            _library.search._reload_library()
             result_str = run_async(_tool_send_library_book(
                 {'query': 'Test'}, ctx10))
             result = json.loads(result_str)
-        _library._reload_library()
+        _library.search._reload_library()
         check('Sperre an + gesperrtes Buch → kein Share-Link gesendet',
               len(channel10.sent) == 0, [m.content for m in channel10.sent])
         check('Sperre an + gesperrtes Buch → error „zu gross“', 'error' in result)
@@ -964,10 +964,10 @@ def test_tool_send_library_book():
                 return ret
             return _f
         channel11 = FakeChannel()
-        with patch('library._search_library', side_effect=_rec('search', [fake_entry])), \
-             patch('library._collect_formats', side_effect=_rec('formats', {'pdf': big_file})), \
-             patch('library._sftpgo_configured', return_value=True), \
-             patch('library._sftpgo_message', side_effect=_rec('link', '🔗 Download-Link')), \
+        with patch('library.search._search_library', side_effect=_rec('search', [fake_entry])), \
+             patch('library.sharing._collect_formats', side_effect=_rec('formats', {'pdf': big_file})), \
+             patch('library.sharing._sftpgo_configured', return_value=True), \
+             patch('library.sharing._sftpgo_message', side_effect=_rec('link', '🔗 Download-Link')), \
              patch('core.stats.inc'):
             result = json.loads(run_async(_tool_send_library_book(
                 {'query': 'Test'}, {'user_id': 42, 'channel': channel11})))

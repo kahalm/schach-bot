@@ -387,7 +387,7 @@ def test_docs_architecture():
     darunter webhook_server/discord_link/es_client, und ``wochenpost.py`` gab es nicht."""
     rows = _architecture_rows()
     check('CLAUDE.md: Architektur-Tabelle gefunden', bool(rows))
-    for pkg in ('commands', 'core', 'puzzle'):
+    for pkg in ('commands', 'core', 'library', 'puzzle'):
         on_disk = sorted(f for f in os.listdir(os.path.join(_REPO, pkg))
                          if f.endswith('.py') and f != '__init__.py')
         named = set(re.findall(r'`([A-Za-z0-9_]+\.py)`', rows.get(f'{pkg}/', '')))

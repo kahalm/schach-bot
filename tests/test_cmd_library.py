@@ -26,11 +26,11 @@ def test_bibliothek():
 
         import library as lib_mod
 
-        orig_pag = lib_mod.LibraryPaginationView
-        lib_mod.LibraryPaginationView = lambda pages, query, sizes=None: FakeView()
+        orig_pag = lib_mod.views.LibraryPaginationView
+        lib_mod.views.LibraryPaginationView = lambda pages, query, sizes=None: FakeView()
 
-        orig_search = lib_mod._search_library
-        lib_mod._search_library = lambda q, limit=25: [
+        orig_search = lib_mod.search._search_library
+        lib_mod.search._search_library = lambda q, limit=25: [
             {
                 'id': 'test--testbook',
                 'title': 'Testbook',
@@ -51,8 +51,8 @@ def test_bibliothek():
             check('Ergebnis → Embed mit Feld',
                   embed is not None and len(embed.fields) > 0)
         finally:
-            lib_mod._search_library = orig_search
-            lib_mod.LibraryPaginationView = orig_pag
+            lib_mod.search._search_library = orig_search
+            lib_mod.views.LibraryPaginationView = orig_pag
     finally:
         teardown_temp_config(tmpdir)
     print()
@@ -71,11 +71,11 @@ def test_tag():
         import library as lib_mod
 
         # LibraryPaginationView ist ein MagicMock → ersetzen
-        orig_pag = lib_mod.LibraryPaginationView
-        lib_mod.LibraryPaginationView = lambda pages, query, sizes=None: FakeView()
+        orig_pag = lib_mod.views.LibraryPaginationView
+        lib_mod.views.LibraryPaginationView = lambda pages, query, sizes=None: FakeView()
 
-        orig_ensure = lib_mod._ensure_library
-        lib_mod._ensure_library = lambda: [
+        orig_ensure = lib_mod.search._ensure_library
+        lib_mod.search._ensure_library = lambda: [
             {
                 'id': 'test--taktikbook',
                 'title': 'Taktik Buch',
@@ -102,8 +102,8 @@ def test_tag():
             content = (ia.followup.calls[0].get('content') or '').lower()
             check('Tag nicht gefunden', 'keine bücher' in content or 'keine b' in content)
         finally:
-            lib_mod._ensure_library = orig_ensure
-            lib_mod.LibraryPaginationView = orig_pag
+            lib_mod.search._ensure_library = orig_ensure
+            lib_mod.views.LibraryPaginationView = orig_pag
     finally:
         teardown_temp_config(tmpdir)
     print()
@@ -121,11 +121,11 @@ def test_autor():
 
         import library as lib_mod
 
-        orig_pag = lib_mod.LibraryPaginationView
-        lib_mod.LibraryPaginationView = lambda pages, query, sizes=None: FakeView()
+        orig_pag = lib_mod.views.LibraryPaginationView
+        lib_mod.views.LibraryPaginationView = lambda pages, query, sizes=None: FakeView()
 
-        orig_ensure = lib_mod._ensure_library
-        lib_mod._ensure_library = lambda: [
+        orig_ensure = lib_mod.search._ensure_library
+        lib_mod.search._ensure_library = lambda: [
             {
                 'id': 'kasparov--mygreat',
                 'title': 'My Great Predecessors',
@@ -153,8 +153,8 @@ def test_autor():
             check('Autor nicht gefunden',
                   'keine bücher' in content or 'keine b' in content)
         finally:
-            lib_mod._ensure_library = orig_ensure
-            lib_mod.LibraryPaginationView = orig_pag
+            lib_mod.search._ensure_library = orig_ensure
+            lib_mod.views.LibraryPaginationView = orig_pag
     finally:
         teardown_temp_config(tmpdir)
     print()
@@ -173,19 +173,19 @@ def test_reindex():
         import library as lib_mod
         import puzzle.selection as sel_mod
 
-        orig_build = lib_mod.build_library_catalog
-        orig_reload = lib_mod._reload_library
+        orig_build = lib_mod.catalog.build_library_catalog
+        orig_reload = lib_mod.search._reload_library
         orig_clear = sel_mod.clear_lines_cache
         orig_load = sel_mod.load_all_lines
 
-        lib_mod.build_library_catalog = lambda: (100, 50, 5, 3, 2)
-        lib_mod._reload_library = lambda: None
+        lib_mod.catalog.build_library_catalog = lambda: (100, 50, 5, 3, 2)
+        lib_mod.search._reload_library = lambda: None
         sel_mod.clear_lines_cache = lambda: None
         sel_mod.load_all_lines = lambda: [('a.pgn:1', None)] * 42
 
         # LIBRARY_INDEX muss gesetzt sein damit der Bibliotheks-Teil laeuft
-        orig_index = lib_mod.LIBRARY_INDEX
-        lib_mod.LIBRARY_INDEX = '/fake/index.txt'
+        orig_index = lib_mod.config.LIBRARY_INDEX
+        lib_mod.config.LIBRARY_INDEX = '/fake/index.txt'
 
         try:
             ia = make_interaction(admin=True)
@@ -196,11 +196,11 @@ def test_reindex():
             check('Reindex-Ergebnis enthaelt Zahlen',
                   '50' in content and '42' in content)
         finally:
-            lib_mod.build_library_catalog = orig_build
-            lib_mod._reload_library = orig_reload
+            lib_mod.catalog.build_library_catalog = orig_build
+            lib_mod.search._reload_library = orig_reload
             sel_mod.clear_lines_cache = orig_clear
             sel_mod.load_all_lines = orig_load
-            lib_mod.LIBRARY_INDEX = orig_index
+            lib_mod.config.LIBRARY_INDEX = orig_index
     finally:
         teardown_temp_config(tmpdir)
     print()
@@ -223,8 +223,8 @@ def test_reindex_requires_admin():
             called['build'] = True
             return (0, 0, 0, 0, 0)
 
-        orig_build = lib_mod.build_library_catalog
-        lib_mod.build_library_catalog = fake_build
+        orig_build = lib_mod.catalog.build_library_catalog
+        lib_mod.catalog.build_library_catalog = fake_build
         try:
             ia = make_interaction(admin=False)
             run_async(cmd(ia))
@@ -232,7 +232,7 @@ def test_reindex_requires_admin():
             check('non-admin /reindex abgelehnt', 'admin' in content)
             check('non-admin /reindex baut Katalog NICHT', not called['build'])
         finally:
-            lib_mod.build_library_catalog = orig_build
+            lib_mod.catalog.build_library_catalog = orig_build
     finally:
         teardown_temp_config(tmpdir)
     print()
@@ -241,7 +241,7 @@ def test_reindex_requires_admin():
 def test_parse_index_entry():
     """Tests fuer _parse_index_entry (library.py)."""
     print('[_parse_index_entry]')
-    from library import _parse_index_entry
+    from library.catalog import _parse_index_entry
 
     # Normaler Eintrag
     result = _parse_index_entry('/data/schach/Kasparov/My Great Predecessors (2003).pdf')
@@ -271,7 +271,7 @@ def test_parse_index_entry():
 def test_auto_tag():
     """Tests fuer _auto_tag (library.py)."""
     print('[_auto_tag]')
-    from library import _auto_tag
+    from library.tags import _auto_tag
 
     # Taktik-Buch
     tags = _auto_tag('1001 Tactical Puzzles', 'Author', 'pdf')
@@ -308,36 +308,36 @@ def test_build_library_catalog():
         lib_file = os.path.join(tmpdir, 'library.json')
 
         # Speichere original-Werte
-        orig_index = library.LIBRARY_INDEX
-        orig_file = library.LIBRARY_FILE
+        orig_index = library.config.LIBRARY_INDEX
+        orig_file = library.config.LIBRARY_FILE
 
-        library.LIBRARY_INDEX = index_file
-        library.LIBRARY_FILE = lib_file
+        library.config.LIBRARY_INDEX = index_file
+        library.config.LIBRARY_FILE = lib_file
 
         # Ohne index.txt → (0,0,0,0,0)
-        library.LIBRARY_INDEX = ''
-        result = library.build_library_catalog()
+        library.config.LIBRARY_INDEX = ''
+        result = library.catalog.build_library_catalog()
         check('ohne Index → alles 0', result == (0, 0, 0, 0, 0))
 
         # Mit index.txt
-        library.LIBRARY_INDEX = index_file
+        library.config.LIBRARY_INDEX = index_file
         with open(index_file, 'w', encoding='utf-8') as f:
             f.write('/data/schach/Kasparov/My Great Predecessors (2003).pdf\n')
             f.write('/data/schach/Mueller/Basic Endgames.epub\n')
 
-        result = library.build_library_catalog()
+        result = library.catalog.build_library_catalog()
         check('Dateien gezaehlt', result[0] == 2)
         check('Buecher erstellt', result[1] == 2)
         check('Neue Eintraege', result[2] == 2)
 
         # Nochmal aufrufen → updates statt neu
-        result2 = library.build_library_catalog()
+        result2 = library.catalog.build_library_catalog()
         check('Wiederholung → 0 neue', result2[2] == 0)
         check('Wiederholung → 2 aktualisiert', result2[3] == 2)
 
     finally:
-        library.LIBRARY_INDEX = orig_index
-        library.LIBRARY_FILE = orig_file
+        library.config.LIBRARY_INDEX = orig_index
+        library.config.LIBRARY_FILE = orig_file
         shutil.rmtree(tmpdir, ignore_errors=True)
     print()
 
@@ -347,29 +347,29 @@ def test_public_domain_from():
     print('[public_domain_from]')
     import library
 
-    orig_enforce = library.LIBRARY_ENFORCE_PD
+    orig_enforce = library.config.LIBRARY_ENFORCE_PD
 
     # --- Default AUS: nichts gesperrt, auch bei Zukunftsdatum ---
-    library.LIBRARY_ENFORCE_PD = False
-    check('Enforcement aus → nichts gesperrt', not library._is_locked({'publicDomainFrom': '2999-01-01'}))
+    library.config.LIBRARY_ENFORCE_PD = False
+    check('Enforcement aus → nichts gesperrt', not library.sharing._is_locked({'publicDomainFrom': '2999-01-01'}))
 
     # --- Mit Enforcement: reine Helfer ---
-    library.LIBRARY_ENFORCE_PD = True
-    check('Zukunftsdatum → gesperrt', library._is_locked({'publicDomainFrom': '2999-01-01'}))
-    check('Vergangenheit → frei', not library._is_locked({'publicDomainFrom': '1900-01-01'}))
-    check('ohne Feld → frei', not library._is_locked({}))
-    check('unparsebar → frei (mit Warnung)', not library._is_locked({'publicDomainFrom': 'kaputt'}))
-    check('lock_note enthält Datum', '01.01.2999' in library._lock_note({'publicDomainFrom': '2999-01-01'}))
-    check('lock_note leer wenn frei', library._lock_note({'publicDomainFrom': '1900-01-01'}) == '')
+    library.config.LIBRARY_ENFORCE_PD = True
+    check('Zukunftsdatum → gesperrt', library.sharing._is_locked({'publicDomainFrom': '2999-01-01'}))
+    check('Vergangenheit → frei', not library.sharing._is_locked({'publicDomainFrom': '1900-01-01'}))
+    check('ohne Feld → frei', not library.sharing._is_locked({}))
+    check('unparsebar → frei (mit Warnung)', not library.sharing._is_locked({'publicDomainFrom': 'kaputt'}))
+    check('lock_note enthält Datum', '01.01.2999' in library.sharing._lock_note({'publicDomainFrom': '2999-01-01'}))
+    check('lock_note leer wenn frei', library.sharing._lock_note({'publicDomainFrom': '1900-01-01'}) == '')
 
     # --- Sidecar-Feld landet im Katalog (unabhängig vom Schalter) ---
     tmpdir = tempfile.mkdtemp(prefix='pd_test_')
-    orig_index, orig_file, orig_base = library.LIBRARY_INDEX, library.LIBRARY_FILE, library._LOCAL_BASE
+    orig_index, orig_file, orig_base = library.config.LIBRARY_INDEX, library.config.LIBRARY_FILE, library.config._LOCAL_BASE
     try:
         index_file = os.path.join(tmpdir, 'index.txt')
-        library.LIBRARY_INDEX = index_file
-        library.LIBRARY_FILE = os.path.join(tmpdir, 'library.json')
-        library._LOCAL_BASE = tmpdir
+        library.config.LIBRARY_INDEX = index_file
+        library.config.LIBRARY_FILE = os.path.join(tmpdir, 'library.json')
+        library.config._LOCAL_BASE = tmpdir
         bookdir = os.path.join(tmpdir, 'Tartakower')
         os.makedirs(bookdir, exist_ok=True)
         with open(os.path.join(bookdir, 'Some Book.json'), 'w', encoding='utf-8') as f:
@@ -378,19 +378,19 @@ def test_public_domain_from():
         with open(index_file, 'w', encoding='utf-8') as f:
             f.write('/data/schach/Tartakower/Some Book.pdf\n')
 
-        library.build_library_catalog()
-        entry = next((e for e in library._load_library() if 'Some Book' in e['title']), None)
+        library.catalog.build_library_catalog()
+        entry = next((e for e in library.catalog._load_library() if 'Some Book' in e['title']), None)
         check('Katalog-Eintrag vorhanden', entry is not None)
         check('publicDomainFrom durchgereicht', entry and entry.get('publicDomainFrom') == '2999-01-01')
-        check('Katalog-Eintrag gesperrt', entry and library._is_locked(entry))
+        check('Katalog-Eintrag gesperrt', entry and library.sharing._is_locked(entry))
 
         # --- Embed markiert gesperrte Bücher mit 🔒 + "frei ab" ---
-        emb = library._build_library_embed([entry], 1, 1, 'q')
+        emb = library.views._build_library_embed([entry], 1, 1, 'q')
         check('Embed-Name mit 🔒', '🔒' in emb.fields[0]['name'])
         check('Embed-Wert „frei ab"', 'frei ab' in emb.fields[0]['value'])
     finally:
-        library.LIBRARY_INDEX, library.LIBRARY_FILE, library._LOCAL_BASE = orig_index, orig_file, orig_base
-        library.LIBRARY_ENFORCE_PD = orig_enforce
+        library.config.LIBRARY_INDEX, library.config.LIBRARY_FILE, library.config._LOCAL_BASE = orig_index, orig_file, orig_base
+        library.config.LIBRARY_ENFORCE_PD = orig_enforce
         shutil.rmtree(tmpdir, ignore_errors=True)
     print()
 
@@ -401,35 +401,35 @@ def test_sftpgo_password_separated():
     import library
 
     tmpdir = tempfile.mkdtemp(prefix='sftp_test_')
-    orig_base = library._SFTPGO_BASE_URL
-    orig_share = library._SFTPGO_SHARE_ID
-    orig_pw = library._SFTPGO_SHARE_PASSWORD
+    orig_base = library.config._SFTPGO_BASE_URL
+    orig_share = library.config._SFTPGO_SHARE_ID
+    orig_pw = library.config._SFTPGO_SHARE_PASSWORD
     try:
         f = os.path.join(tmpdir, 'book.pdf')
         with open(f, 'wb') as fh:
             fh.write(b'x' * 1024)
         entry = {'title': 'Mega Buch', 'author': 'Autor'}
 
-        library._SFTPGO_BASE_URL = 'https://sftp.example'
-        library._SFTPGO_SHARE_ID = 'abc'
-        library._SFTPGO_SHARE_PASSWORD = 'geheim123'
+        library.config._SFTPGO_BASE_URL = 'https://sftp.example'
+        library.config._SFTPGO_SHARE_ID = 'abc'
+        library.config._SFTPGO_SHARE_PASSWORD = 'geheim123'
 
-        link_msg = library._sftpgo_message(entry, f, 'pdf')
-        pw_msg = library._sftpgo_password_message()
+        link_msg = library.sharing._sftpgo_message(entry, f, 'pdf')
+        pw_msg = library.sharing._sftpgo_password_message()
         check('Link-Nachricht enthaelt KEIN Passwort', 'geheim123' not in link_msg)
         check('Link-Nachricht verweist auf separate PW-Nachricht', 'separat' in link_msg)
         check('PW-Nachricht enthaelt das Passwort', pw_msg and 'geheim123' in pw_msg)
         check('PW-Nachricht maskiert per Spoiler', pw_msg and '||' in pw_msg)
 
         # Ohne gesetztes Passwort → keine PW-Nachricht, kein Hinweis
-        library._SFTPGO_SHARE_PASSWORD = ''
-        link_msg2 = library._sftpgo_message(entry, f, 'pdf')
-        check('ohne PW → keine PW-Nachricht', library._sftpgo_password_message() is None)
+        library.config._SFTPGO_SHARE_PASSWORD = ''
+        link_msg2 = library.sharing._sftpgo_message(entry, f, 'pdf')
+        check('ohne PW → keine PW-Nachricht', library.sharing._sftpgo_password_message() is None)
         check('ohne PW → kein Hinweis im Link', 'separat' not in link_msg2)
     finally:
-        library._SFTPGO_BASE_URL = orig_base
-        library._SFTPGO_SHARE_ID = orig_share
-        library._SFTPGO_SHARE_PASSWORD = orig_pw
+        library.config._SFTPGO_BASE_URL = orig_base
+        library.config._SFTPGO_SHARE_ID = orig_share
+        library.config._SFTPGO_SHARE_PASSWORD = orig_pw
         shutil.rmtree(tmpdir, ignore_errors=True)
     print()
 
@@ -445,9 +445,9 @@ def test_pd_lock_share_link():
     import library
 
     tmpdir = tempfile.mkdtemp(prefix='pd_share_')
-    orig = (library.LIBRARY_ENFORCE_PD, library.LIBRARY_FILE, library._SFTPGO_BASE_URL,
-            library._SFTPGO_SHARE_ID, library._SFTPGO_SHARE_PASSWORD)
-    orig_inc = library.stats.inc
+    orig = (library.config.LIBRARY_ENFORCE_PD, library.config.LIBRARY_FILE, library.config._SFTPGO_BASE_URL,
+            library.config._SFTPGO_SHARE_ID, library.config._SFTPGO_SHARE_PASSWORD)
+    orig_inc = library.views.stats.inc
     try:
         big = os.path.join(tmpdir, 'frei.pdf')
         with open(big, 'wb') as f:
@@ -459,35 +459,35 @@ def test_pd_lock_share_link():
                   'publicDomainFrom': '2999-01-01'}
 
         def _catalog(entries):
-            library.LIBRARY_FILE = os.path.join(tmpdir, 'library.json')
-            with open(library.LIBRARY_FILE, 'w', encoding='utf-8') as f:
+            library.config.LIBRARY_FILE = os.path.join(tmpdir, 'library.json')
+            with open(library.config.LIBRARY_FILE, 'w', encoding='utf-8') as f:
                 json.dump(entries, f)
-            library._reload_library()
+            library.search._reload_library()
 
         def _send(entry):
             ia = make_interaction()
-            run_async(library._send_book(ia, entry, big, 'pdf'))
+            run_async(library.views._send_book(ia, entry, big, 'pdf'))
             return ' '.join(str(c.get('content') or '') for c in ia.followup.calls)
 
-        library._SFTPGO_BASE_URL = 'https://sftp.example'
-        library._SFTPGO_SHARE_ID = 'share1'
-        library._SFTPGO_SHARE_PASSWORD = 'geheim123'
-        library.stats.inc = lambda *a, **k: None
+        library.config._SFTPGO_BASE_URL = 'https://sftp.example'
+        library.config._SFTPGO_SHARE_ID = 'share1'
+        library.config._SFTPGO_SHARE_PASSWORD = 'geheim123'
+        library.views.stats.inc = lambda *a, **k: None
         _catalog([free, locked])
 
         # --- Sperre an + gesperrtes Buch im Katalog: kein Link, kein Passwort ---
-        library.LIBRARY_ENFORCE_PD = True
+        library.config.LIBRARY_ENFORCE_PD = True
         out = _send(free)
         check('Sperre an: freies grosses Buch bekommt KEINEN Share-Link',
               'pubshares' not in out, out[:200])
         check('Sperre an: kein Share-Passwort', 'geheim123' not in out, out[:200])
         check('Sperre an: Meldung „zu groß“ mit Grund', 'zu groß' in out and 'Sperre' in out,
               out[:200])
-        view = library._FormatView(free, {'pdf': big}, {'pdf': 9 * 1024 * 1024})
+        view = library.views._FormatView(free, {'pdf': big}, {'pdf': 9 * 1024 * 1024})
         btn = view.children[0] if view.children else None
         check('Sperre an: Format-Button ohne 🔗 (kein Link-Stil)',
               btn is not None and '🔗' not in btn.label
-              and btn.style is not library.discord.ButtonStyle.success,
+              and btn.style is not library.views.discord.ButtonStyle.success,
               getattr(btn, 'label', None))
         if btn is not None:
             ia = make_interaction()
@@ -498,14 +498,14 @@ def test_pd_lock_share_link():
                   'pubshares' not in out and 'geheim123' not in out, out[:200])
 
         # --- gesperrtes Buch nur per ignore.json ausgeblendet: liegt trotzdem im Share ---
-        orig_excl = library._is_excluded
+        orig_excl = library.catalog._is_excluded
         try:
-            library._is_excluded = lambda e: e['id'] == 'b--gesperrt'
-            library._reload_library()
+            library.catalog._is_excluded = lambda e: e['id'] == 'b--gesperrt'
+            library.search._reload_library()
             check('ausgeblendetes gesperrtes Buch zaehlt mit (kein Link)',
                   'pubshares' not in _send(free))
         finally:
-            library._is_excluded = orig_excl
+            library.catalog._is_excluded = orig_excl
 
         # --- Sperre an, aber nichts (mehr) gesperrt: Link wie bisher ---
         _catalog([free, dict(locked, publicDomainFrom='1901-01-01')])
@@ -513,17 +513,17 @@ def test_pd_lock_share_link():
 
         # --- Sperre aus (Default): Link wie bisher, auch mit Zukunftsdatum im Katalog ---
         _catalog([free, locked])
-        library.LIBRARY_ENFORCE_PD = False
+        library.config.LIBRARY_ENFORCE_PD = False
         out = _send(free)
         check('Sperre aus: Share-Link wie bisher', 'pubshares' in out, out[:200])
-        view = library._FormatView(free, {'pdf': big}, {'pdf': 9 * 1024 * 1024})
+        view = library.views._FormatView(free, {'pdf': big}, {'pdf': 9 * 1024 * 1024})
         check('Sperre aus: Format-Button mit 🔗',
               view.children and '🔗' in view.children[0].label)
     finally:
-        (library.LIBRARY_ENFORCE_PD, library.LIBRARY_FILE, library._SFTPGO_BASE_URL,
-         library._SFTPGO_SHARE_ID, library._SFTPGO_SHARE_PASSWORD) = orig
-        library.stats.inc = orig_inc
-        library._reload_library()
+        (library.config.LIBRARY_ENFORCE_PD, library.config.LIBRARY_FILE, library.config._SFTPGO_BASE_URL,
+         library.config._SFTPGO_SHARE_ID, library.config._SFTPGO_SHARE_PASSWORD) = orig
+        library.views.stats.inc = orig_inc
+        library.search._reload_library()
         shutil.rmtree(tmpdir, ignore_errors=True)
     print()
 
@@ -544,11 +544,11 @@ def test_library_view_no_loop_io():
     if not cmd:
         return
     tmpdir = tempfile.mkdtemp(prefix='lib_loopio_')
-    orig_search = lib_mod._search_library
+    orig_search = lib_mod.search._search_library
     orig_isfile, orig_getsize = os.path.isfile, os.path.getsize
-    orig_sftp = (lib_mod._SFTPGO_BASE_URL, lib_mod._SFTPGO_SHARE_ID)
-    orig_base, orig_lstat = lib_mod._LOCAL_BASE, os.lstat
-    orig_inc = lib_mod.stats.inc
+    orig_sftp = (lib_mod.config._SFTPGO_BASE_URL, lib_mod.config._SFTPGO_SHARE_ID)
+    orig_base, orig_lstat = lib_mod.config._LOCAL_BASE, os.lstat
+    orig_inc = lib_mod.views.stats.inc
     loop_calls = []
 
     def _guard(real, name):
@@ -566,7 +566,7 @@ def test_library_view_no_loop_io():
                 fh.truncate((i + 1) * 1024 * 1024)
             entries.append({'id': f'b{i}', 'title': f'Buch {i:02d}', 'author': 'A',
                             'tags': [], 'file_type': 'pdf', 'files': [f]})
-        lib_mod._search_library = lambda q, limit=25: entries
+        lib_mod.search._search_library = lambda q, limit=25: entries
         os.path.isfile = _guard(orig_isfile, 'isfile')
         os.path.getsize = _guard(orig_getsize, 'getsize')
 
@@ -578,7 +578,7 @@ def test_library_view_no_loop_io():
         check('/bibliothek: Embed zeigt Formate (stat lief im Thread)',
               embed is not None and 'PDF' in embed.fields[0]['value'])
         select = next((c for c in getattr(view, 'children', [])
-                       if isinstance(c, lib_mod._BookSelect)), None)
+                       if isinstance(c, lib_mod.views._BookSelect)), None)
         descs = [o.description for o in getattr(select, 'options', [])] if select else []
         check('/bibliothek: Auswahl zeigt weiter die Dateigroesse',
               len(descs) == 10 and '1.0 MB' in descs[0] and '10.0 MB' in descs[9], str(descs[:2]))
@@ -590,23 +590,23 @@ def test_library_view_no_loop_io():
         edit = ia2.response.calls[0] if ia2.response.calls else {}
         check('Weiter: kein Datei-stat im Event-Loop', not loop_calls, str(loop_calls[:4]))
         select2 = next((c for c in getattr(view, 'children', [])
-                        if isinstance(c, lib_mod._BookSelect)), None)
+                        if isinstance(c, lib_mod.views._BookSelect)), None)
         descs2 = [o.description for o in getattr(select2, 'options', [])] if select2 else []
         check('Weiter: Seite 2 mit Groessen und neuem Embed',
               edit.get('type') == 'edit_message' and len(descs2) == 2 and '11.0 MB' in descs2[0]
               and edit.get('embed') is not None and 'Seite 2/2' in edit['embed'].footer.text,
               str(descs2))
         check('Weiter: genau eine Auswahl in der View',
-              sum(isinstance(c, lib_mod._BookSelect) for c in getattr(view, 'children', [])) == 1)
+              sum(isinstance(c, lib_mod.views._BookSelect) for c in getattr(view, 'children', [])) == 1)
 
         # Format-Button mit SFTPGo-Link: Groesse kommt aus dem View-Bau, kein getsize im Loop;
         # der Link-Bau (_sftpgo_rel_path -> Path.resolve, ein lstat je Pfadteil) laeuft im Thread.
-        lib_mod._SFTPGO_BASE_URL, lib_mod._SFTPGO_SHARE_ID = 'https://sftp.example', 's1'
-        lib_mod._LOCAL_BASE = tmpdir
+        lib_mod.config._SFTPGO_BASE_URL, lib_mod.config._SFTPGO_SHARE_ID = 'https://sftp.example', 's1'
+        lib_mod.config._LOCAL_BASE = tmpdir
         os.lstat = _guard(orig_lstat, 'lstat')
-        lib_mod.stats.inc = lambda *a, **k: None
+        lib_mod.views.stats.inc = lambda *a, **k: None
         big = entries[9]['files'][0]
-        fv = lib_mod._FormatView(entries[9], {'pdf': big}, {'pdf': 10 * 1024 * 1024})
+        fv = lib_mod.views._FormatView(entries[9], {'pdf': big}, {'pdf': 10 * 1024 * 1024})
         loop_calls.clear()
         ia3 = make_interaction()
         run_async(fv.children[0].callback(ia3))
@@ -617,10 +617,10 @@ def test_library_view_no_loop_io():
     finally:
         os.path.isfile, os.path.getsize = orig_isfile, orig_getsize
         os.lstat = orig_lstat
-        lib_mod._LOCAL_BASE = orig_base
-        lib_mod._search_library = orig_search
-        lib_mod._SFTPGO_BASE_URL, lib_mod._SFTPGO_SHARE_ID = orig_sftp
-        lib_mod.stats.inc = orig_inc
+        lib_mod.config._LOCAL_BASE = orig_base
+        lib_mod.search._search_library = orig_search
+        lib_mod.config._SFTPGO_BASE_URL, lib_mod.config._SFTPGO_SHARE_ID = orig_sftp
+        lib_mod.views.stats.inc = orig_inc
         shutil.rmtree(tmpdir, ignore_errors=True)
     print()
 
@@ -638,7 +638,7 @@ def test_library_view_page_race():
     import library as lib_mod
 
     tmpdir = tempfile.mkdtemp(prefix='lib_race_')
-    orig_sizes = lib_mod._first_file_sizes
+    orig_sizes = lib_mod.views._first_file_sizes
     try:
         entries = []
         for i in range(25):   # 3 Seiten: 10 / 10 / 5
@@ -654,11 +654,11 @@ def test_library_view_page_race():
             if ents and ents[0]['id'] == 'r10':
                 time.sleep(0.3)
             return orig_sizes(ents)
-        lib_mod._first_file_sizes = _slow_page2
+        lib_mod.views._first_file_sizes = _slow_page2
 
         for steps, want_page in (((1, 1), 3), ((1, -1), 1)):
             label = '+'.join('Weiter' if st > 0 else 'Zurueck' for st in steps)
-            view = lib_mod.LibraryPaginationView(pages, query='race', sizes=first_sizes)
+            view = lib_mod.views.LibraryPaginationView(pages, query='race', sizes=first_sizes)
             edits = []   # (Embed-Seite, Embed-Titel, Auswahl-Labels, Auswahl-Beschreibungen)
 
             def _ia():
@@ -668,7 +668,7 @@ def test_library_view_page_race():
                 async def _edit(**kw):
                     # Stand im Moment des Edits festhalten (discord.py serialisiert die View hier)
                     emb, v = kw.get('embed'), kw.get('view')
-                    sel = next((c for c in v.children if isinstance(c, lib_mod._BookSelect)), None)
+                    sel = next((c for c in v.children if isinstance(c, lib_mod.views._BookSelect)), None)
                     foot = emb.footer.text if emb is not None and emb.footer else ''
                     edits.append((foot, [fl['name'] for fl in emb.fields],
                                   [o.label for o in sel.options] if sel else [],
@@ -705,9 +705,9 @@ def test_library_view_page_race():
                   last == f'Seite {want_page}/3' and view.current == want_page - 1,
                   f'{last!r} current={view.current}')
             check(f'{label}: genau eine Auswahl in der View',
-                  sum(isinstance(c, lib_mod._BookSelect) for c in view.children) == 1)
+                  sum(isinstance(c, lib_mod.views._BookSelect) for c in view.children) == 1)
     finally:
-        lib_mod._first_file_sizes = orig_sizes
+        lib_mod.views._first_file_sizes = orig_sizes
         shutil.rmtree(tmpdir, ignore_errors=True)
     print()
 
@@ -715,14 +715,14 @@ def test_library_view_page_race():
 def test_library_cache_threadsafe():
     """Bug-First: _ensure_library darf bei nebenläufigen Aufrufen (asyncio.to_thread liest aus
     mehreren Worker-Threads) NUR EINMAL laden und einen konsistenten Cache liefern — ohne Lock
-    baut ein Race einen teilgefüllten Cache. Deckt den Lock in library._ensure_library ab."""
+    baut ein Race einen teilgefüllten Cache. Deckt den Lock in library.search._ensure_library ab."""
     print('[library cache threadsafe]')
     import threading
     import time
     import library as lib_mod
 
-    orig_load = lib_mod._load_library
-    orig_excl = lib_mod._is_excluded
+    orig_load = lib_mod.catalog._load_library
+    orig_excl = lib_mod.catalog._is_excluded
     try:
         calls = {'n': 0}
         lock = threading.Lock()
@@ -733,15 +733,15 @@ def test_library_cache_threadsafe():
             time.sleep(0.05)   # Fenster für die Race
             return [{'id': f'b{i}', 'title': f'B{i}'} for i in range(5)]
 
-        lib_mod._load_library = _slow_load
-        lib_mod._is_excluded = lambda e: False
-        lib_mod._reload_library()   # Cache invalidieren (loaded=False)
+        lib_mod.catalog._load_library = _slow_load
+        lib_mod.catalog._is_excluded = lambda e: False
+        lib_mod.search._reload_library()   # Cache invalidieren (loaded=False)
 
         results = []
         rlock = threading.Lock()
 
         def _worker():
-            r = lib_mod._ensure_library()
+            r = lib_mod.search._ensure_library()
             with rlock:
                 results.append(r)
 
@@ -755,9 +755,9 @@ def test_library_cache_threadsafe():
         check('alle Aufrufe liefern denselben Cache', all(r is results[0] for r in results))
         check('Cache vollständig (5 Einträge)', len(results[0]) == 5)
     finally:
-        lib_mod._load_library = orig_load
-        lib_mod._is_excluded = orig_excl
-        lib_mod._reload_library()
+        lib_mod.catalog._load_library = orig_load
+        lib_mod.catalog._is_excluded = orig_excl
+        lib_mod.search._reload_library()
     print()
 
 
@@ -770,7 +770,7 @@ def test_format_view_missing_file():
 
     entry = {'title': 'Test', 'author': 'A', 'files': [], 'tags': []}
     try:
-        view = lib_mod._FormatView(entry, {'pdf': '/nonexistent/dir/gone.pdf'})
+        view = lib_mod.views._FormatView(entry, {'pdf': '/nonexistent/dir/gone.pdf'})
         check('View-Bau ohne Datei crasht nicht', True)
         check('Button vorhanden', len(getattr(view, 'children', [])) == 1)
     except OSError as e:
@@ -845,11 +845,11 @@ def test_library_catalog_golden():
     import library
 
     tmpdir = tempfile.mkdtemp(prefix='lib_golden_')
-    orig = (library.LIBRARY_INDEX, library.LIBRARY_FILE, library._LOCAL_BASE)
+    orig = (library.config.LIBRARY_INDEX, library.config.LIBRARY_FILE, library.config._LOCAL_BASE)
     try:
-        library.LIBRARY_INDEX = os.path.join(tmpdir, 'index.txt')
-        library.LIBRARY_FILE = os.path.join(tmpdir, 'library.json')
-        library._LOCAL_BASE = tmpdir
+        library.config.LIBRARY_INDEX = os.path.join(tmpdir, 'index.txt')
+        library.config.LIBRARY_FILE = os.path.join(tmpdir, 'library.json')
+        library.config._LOCAL_BASE = tmpdir
         os.makedirs(os.path.join(tmpdir, 'Tartakower'))
         with open(os.path.join(tmpdir, 'Tartakower', 'Some Book.json'), 'w', encoding='utf-8') as f:
             json.dump({'title': 'Best Games', 'author': ['Savielly Tartakower', 'Julius du Mont'],
@@ -858,44 +858,44 @@ def test_library_catalog_golden():
         os.makedirs(os.path.join(tmpdir, 'Privat'))
         with open(os.path.join(tmpdir, 'Privat', 'ignore.json'), 'w', encoding='utf-8') as f:
             json.dump(['*.pgn'], f)
-        with open(library.LIBRARY_INDEX, 'w', encoding='utf-8') as f:
+        with open(library.config.LIBRARY_INDEX, 'w', encoding='utf-8') as f:
             f.write('\n'.join(_GOLDEN_INDEX) + '\n')
         # Alter Katalog: ein Eintrag wird aktualisiert (Zusatzfeld bleibt), einer entfernt
-        with open(library.LIBRARY_FILE, 'w', encoding='utf-8') as f:
+        with open(library.config.LIBRARY_FILE, 'w', encoding='utf-8') as f:
             json.dump([
                 {'id': 'kasparov garry--my great predecessors', 'title': 'alt',
                  'author': 'Kasparov, Garry', 'year': 1999, 'tags': ['alt'], 'note': 'bleibt'},
                 {'id': 'weg--nicht mehr da', 'title': 'Weg', 'author': 'Weg',
                  'files': ['/data/schach/Weg/x.pdf']},
             ], f)
-        library._reload_library()
+        library.search._reload_library()
 
-        result = library.build_library_catalog()
+        result = library.catalog.build_library_catalog()
         check('golden: (dateien, buecher, neu, aktualisiert, entfernt)',
               result == (13, 7, 6, 1, 1), detail=str(result))
-        with open(library.LIBRARY_FILE, encoding='utf-8') as f:
+        with open(library.config.LIBRARY_FILE, encoding='utf-8') as f:
             written = f.read()
         check('golden: library.json byte-gleich',
               written == json.dumps(_GOLDEN_LIBRARY, ensure_ascii=False, indent=2),
               detail=written[:400])
 
         # ignore.json blendet aus der Suche aus, library.json bleibt vollstaendig
-        library._reload_library()
-        ids = [e['id'] for e in library._ensure_library()]
+        library.search._reload_library()
+        ids = [e['id'] for e in library.search._ensure_library()]
         check('ignore.json: *.pgn im Ordner Privat ausgeblendet',
               'privat--secret' not in ids and len(ids) == 6, detail=str(ids))
         check('Tags ohne ausgeblendete Eintraege',
-              library._all_tags() == ['Angriff', 'Deutsch', 'Endspiel', 'Klassiker',
+              library.search._all_tags() == ['Angriff', 'Deutsch', 'Endspiel', 'Klassiker',
                                       'Sizilianisch', 'Taktik', 'Video', 'eBook'],
-              detail=str(library._all_tags()))
+              detail=str(library.search._all_tags()))
         check('Autoren sortiert',
-              library._all_authors() == ['Kasparov, Garry', 'Mueller', 'Nunn',
+              library.search._all_authors() == ['Kasparov, Garry', 'Mueller', 'Nunn',
                                          'Savielly Tartakower, Julius du Mont', 'Silman',
                                          'Unknown'],
-              detail=str(library._all_authors()))
+              detail=str(library.search._all_authors()))
 
         def _ids(q):
-            return [e['id'] for e in library._search_library(q)]
+            return [e['id'] for e in library.search._search_library(q)]
 
         check('Suche: sicilian', _ids('sicilian') == ['mueller--sicilian attack'])
         check('Suche: endgame (Gleichstand → Autor)',
@@ -907,7 +907,7 @@ def test_library_catalog_golden():
         check('Suche: ausgeblendet → nichts', _ids('secret') == [])
         check('Suche: nur Satzzeichen → nichts', _ids('!!') == [])
     finally:
-        library.LIBRARY_INDEX, library.LIBRARY_FILE, library._LOCAL_BASE = orig
-        library._reload_library()
+        library.config.LIBRARY_INDEX, library.config.LIBRARY_FILE, library.config._LOCAL_BASE = orig
+        library.search._reload_library()
         shutil.rmtree(tmpdir, ignore_errors=True)
     print()
