@@ -781,6 +781,25 @@ def test_dm_log_internals():
             check('Altbestand → dl-Token nachtraeglich maskiert',
                   [e['text'] for e in data.get('66', [])]
                   == ['alt: https://rh.example/puzzles/book/7?dl=***'])
+
+            # N10-003: SFTPGo-Share-Passwort nie im Klartext im DM-Log (Format der Passwort-DM
+            # aus library.sharing._sftpgo_password_message; Altbestand heilt beim Schreiben mit).
+            from library import config as lib_cfg, sharing as lib_sharing
+            old_pw = lib_cfg._SFTPGO_SHARE_PASSWORD
+            try:
+                lib_cfg._SFTPGO_SHARE_PASSWORD = 'Ge-heim_42'
+                pw_msg = lib_sharing._sftpgo_password_message()
+                aw2(dm_log_mod.DM_LOG_FILE, {
+                    '55': [{'ts': '2099-01-01T00:00:00+00:00', 'text': pw_msg}],
+                })
+                dm_log_mod._append(12345, dm_log_mod._describe(pw_msg))
+                data = atomic_read(dm_log_mod.DM_LOG_FILE)
+                texts = [e['text'] for e in data.get('12345', [])] + [e['text'] for e in data.get('55', [])]
+                check('Share-Passwort im DM-Log maskiert',
+                      not any('Ge-heim_42' in t for t in texts) and any('||`***`||' in t for t in texts),
+                      str(texts[-2:]))
+            finally:
+                lib_cfg._SFTPGO_SHARE_PASSWORD = old_pw
         finally:
             dm_log_mod.DM_LOG_FILE = old_file
     finally:

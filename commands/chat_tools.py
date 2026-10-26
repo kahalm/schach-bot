@@ -811,11 +811,13 @@ async def _tool_send_library_book(tool_input, ctx) -> str:
                 content=f'📖 **{title}** — {author} `[{fmt.upper()}]`',
                 file=book_file)
         elif await asyncio.to_thread(_lib_sharing._sftpgo_link_allowed):
-            await channel.send(
-                await asyncio.to_thread(_lib_sharing._sftpgo_message, entry, path, fmt, size))
-            pw_msg = _lib_sharing._sftpgo_password_message()
-            if pw_msg:
-                await channel.send(pw_msg)
+            # N10-003: Share-Link + Passwort NICHT als bleibende DM aus dem Chat — /bibliothek
+            # zeigt beides ephemer (library.views); hier nur der Verweis dorthin.
+            return json.dumps(
+                {'error': f'Datei zu gross fuer Discord ({size_mb} MB, Limit 8 MB). '
+                          f'Den Download-Link gibt es ueber /bibliothek (Suche: {title}).',
+                 'title': title},
+                ensure_ascii=False)
         else:
             return json.dumps(
                 {'error': f'Datei zu gross ({size_mb} MB, Discord-Limit 8 MB)',

@@ -847,9 +847,13 @@ def test_tool_send_library_book():
             result_str = run_async(_tool_send_library_book(
                 {'query': 'Test'}, ctx2))
             result = json.loads(result_str)
-        check('grosse Datei+SFTPGo → sent=True', result.get('sent') is True)
-        check('grosse Datei+SFTPGo → Link gesendet',
-              len(channel2.sent) == 1 and channel2.sent[0].content == '🔗 Download-Link')
+        # N10-003: kein Share-Link/Passwort als bleibende DM aus dem Chat-Werkzeug — Verweis auf
+        # /bibliothek (dort Link + Passwort ephemer).
+        check('grosse Datei+SFTPGo → nicht gesendet', result.get('sent') is not True and 'error' in result)
+        check('grosse Datei+SFTPGo → kein Link/Passwort im DM-Kanal', len(channel2.sent) == 0,
+              [m.content for m in channel2.sent])
+        check('grosse Datei+SFTPGo → Verweis auf /bibliothek', '/bibliothek' in result.get('error', ''))
+        check('grosse Datei+SFTPGo → kein Download gezaehlt', not mock_inc2.called)
 
         # 3. Treffer + grosse Datei ohne SFTPGo → Fehler
         channel3 = FakeChannel()
@@ -861,6 +865,7 @@ def test_tool_send_library_book():
                 {'query': 'Test'}, ctx3))
             result = json.loads(result_str)
         check('grosse Datei ohne SFTPGo → error', 'error' in result)
+        check('grosse Datei ohne SFTPGo → kein /bibliothek-Verweis', '/bibliothek' not in result.get('error', ''))
         check('grosse Datei ohne SFTPGo → title', result.get('title') == 'Test Book')
 
         # 4. Kein Treffer → error
@@ -983,9 +988,8 @@ def test_tool_send_library_book():
              patch('core.stats.inc'):
             result = json.loads(run_async(_tool_send_library_book(
                 {'query': 'Test'}, {'user_id': 42, 'channel': channel11})))
-        check('Chat-Tool: Suche/Formate/Link ohne Datei-I/O im Event-Loop',
-              not loop_hits and result.get('sent') is True
-              and [m.content for m in channel11.sent] == ['🔗 Download-Link'],
+        check('Chat-Tool: Suche/Formate/Link-Freigabe ohne Datei-I/O im Event-Loop',
+              not loop_hits and '/bibliothek' in result.get('error', '') and not channel11.sent,
               f'{loop_hits} {result}')
 
     finally:

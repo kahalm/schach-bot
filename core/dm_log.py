@@ -6,7 +6,7 @@ geändert werden. Eingehende DMs schreibt ``bot.on_message`` über
 ``log_incoming()`` (Prefix ``[IN]``).
 
 Umfang (Datenschutzerklärung, S4-008): Text auf 300 Zeichen gekürzt, ``?dl=``-Tokens
-maskiert, Einträge älter als 30 Tage fallen beim nächsten Schreiben weg; lesbar nur per
+und das SFTPGo-Share-Passwort maskiert, Einträge älter als 30 Tage fallen beim nächsten Schreiben weg; lesbar nur per
 ``/dm-log`` (Admins/Moderatoren). Der Inhalt bleibt in dieser Datei – nach Elasticsearch
 geht aus diesem Modul nichts (die Slacker-DM im Motivations-Watch loggt nur die Länge).
 
@@ -22,6 +22,7 @@ JSON-Format:
 
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 
 import discord
@@ -33,6 +34,22 @@ from core.paths import CONFIG_DIR
 log = logging.getLogger('schach-bot')
 
 DM_LOG_FILE = os.path.join(CONFIG_DIR, 'dm_log.json')
+
+# Passwort-DM des SFTPGo-Shares (library.sharing._sftpgo_password_message): „🔑 Passwort: ||`…`||“.
+_SHARE_PASSWORD_RE = re.compile(r'(Passwort: \|\|`)[^`]*(`\|\|)')
+
+
+def _mask(text: str | None) -> str | None:
+    """Was nicht ins DM-Log gehoert: ``?dl=``-Tokens und das SFTPGo-Share-Passwort (N10-003) –
+    das Format der Passwort-DM und, falls gesetzt, der Wert aus ``SFTPGO_SHARE_PASSWORD``."""
+    text = mask_dl_tokens(text)
+    if not text:
+        return text
+    text = _SHARE_PASSWORD_RE.sub(r'\1***\2', text)
+    pw = os.environ.get('SFTPGO_SHARE_PASSWORD', '')
+    if len(pw) >= 4:
+        text = text.replace(pw, '***')
+    return text
 
 _DM_LOG_MAX_AGE_DAYS = 30
 
@@ -65,9 +82,9 @@ def _append(user_id: int, text: str):
     Entfernt Einträge älter als 30 Tage — für ALLE User, nicht nur den
     aktuellen: sonst lingern Einträge inaktiver User für immer und jede
     einzelne DM schreibt eine monoton wachsende Datei komplett neu.
-    Persoenliche ``?dl=``-Verknuepfungstokens werden vorher maskiert (das Log ist per
-    ``/dm-log`` fuer Admins/Moderatoren lesbar)."""
-    text = mask_dl_tokens(text)
+    Persoenliche ``?dl=``-Verknuepfungstokens und das Share-Passwort werden vorher maskiert
+    (das Log ist per ``/dm-log`` fuer Admins/Moderatoren lesbar)."""
+    text = _mask(text)
     cutoff = (datetime.now(timezone.utc) - timedelta(days=_DM_LOG_MAX_AGE_DAYS)).isoformat()
 
     def _update(data):
@@ -80,7 +97,7 @@ def _append(user_id: int, text: str):
             pruned = [e for e in data[k] if e.get('ts', '') >= cutoff]
             for e in pruned:   # Altbestand (vor der Maskierung geschrieben) gleich mit heilen
                 if isinstance(e.get('text'), str):
-                    e['text'] = mask_dl_tokens(e['text'])
+                    e['text'] = _mask(e['text'])
             if pruned:
                 data[k] = pruned
             else:
