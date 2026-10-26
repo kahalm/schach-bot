@@ -47,21 +47,19 @@ def _fetch_termine() -> list[dict]:
 
     from core.version import VERSION
     headers = {'User-Agent': f'schach-bot/{VERSION}'}
-    resp = None
     last_exc: Exception | None = None
     for attempt in range(3):
         try:
             resp = requests.get(RALLYE_URL, timeout=15, headers=headers)
             resp.raise_for_status()
-            break
+            # Nur eine erfolgreiche Antwort parsen — nie die Fehlerseite des letzten Versuchs.
+            return termine.parse_termine(resp.text)
         except requests.RequestException as e:
             last_exc = e
             log.warning('Termine-Fetch Versuch %d/3 fehlgeschlagen: %s', attempt + 1, e)
             if attempt < 2:
                 _time_mod.sleep(2 ** attempt)  # 1s, 2s Backoff (laeuft im Thread)
-    if resp is None:
-        raise last_exc if last_exc else RuntimeError('Termine-Fetch fehlgeschlagen')
-    return termine.parse_termine(resp.text)
+    raise last_exc if last_exc else RuntimeError('Termine-Fetch fehlgeschlagen')
 
 
 # ---------------------------------------------------------------------------

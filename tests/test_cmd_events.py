@@ -991,6 +991,36 @@ def test_fetch_termine_golden():
     print()
 
 
+def test_fetch_termine_http_error():
+    """3x raise_for_status-Fehler: Ausnahme wird weitergereicht, Fehlerseite nicht geparst."""
+    print('[fetch_termine_http_error]')
+    import sys as _sys
+    fake_resp = MagicMock()
+    fake_resp.text = _GOLDEN_TERMINE_HTML
+
+    class _FakeRequestException(Exception):
+        pass
+
+    err = _FakeRequestException('503 Service Unavailable')
+    fake_resp.raise_for_status = MagicMock(side_effect=err)
+    fake_get = MagicMock(return_value=fake_resp)
+    raised = None
+    req = _sys.modules['requests']
+    with _mock.patch.object(req, 'get', fake_get), \
+            _mock.patch.object(req, 'RequestException', _FakeRequestException), \
+            _mock.patch('time.sleep'):
+        try:
+            events = turnier_loops_mod._fetch_termine()
+        except Exception as e:  # noqa: BLE001
+            raised = e
+            events = None
+    check('http-error: Ausnahme weitergereicht', raised is err,
+          detail=f'raised={raised!r} events={events!r}')
+    check('http-error: 3 Versuche', fake_get.call_count == 3,
+          detail=str(fake_get.call_count))
+    print()
+
+
 class _FlakyChannel(FakeChannel):
     """FakeChannel, dessen send() auf Wunsch scheitert."""
 

@@ -33,7 +33,7 @@ from test_cmd_community import (
 from test_cmd_events import (
     test_schachrallye, test_turnier_sub, test_turnier_prune,
     test_turnier_review, test_turnier_approve_modal, test_guild_order_home_first,
-    test_fetch_termine_golden, test_rallye_loops, test_termine_table,
+    test_fetch_termine_golden, test_fetch_termine_http_error, test_rallye_loops, test_termine_table,
 )
 from test_cmd_weeklypost import (
     test_weekly_announcer, test_weekly_results_format, test_weekly_results_modes,
@@ -152,6 +152,7 @@ def main():
     test_turnier_approve_modal()
     test_guild_order_home_first()
     test_fetch_termine_golden()
+    test_fetch_termine_http_error()
     test_rallye_loops()
     test_termine_table()
     test_posted_reset_per_pool()
