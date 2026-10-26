@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.36] - 2026-10-26
+### Fixed
+- **Turnier-Import:** Antwortet die Terminquelle dreimal mit einem HTTP-Fehler, wird keine Fehlerseite mehr als leere
+  Terminliste eingelesen; die Ausnahme geht an den Aufrufer (`/turnier_parse` und der Auto-Parse fangen sie ab).
+- **Admin-Listen:** Der Hinweis „_(gekuerzt)_“ wird in die 4 096-Zeichen-Grenze eingerechnet; es fallen ganze Zeilen weg
+  statt das Discord-Limit zu reißen.
+- **Bibliothek:** Die Formatwahl ruft ohne übergebene Größen kein `getsize` mehr im Event-Loop auf (Rest von S4-025).
+
 ## [2.83.35] - 2026-10-25
 ### Fixed
 - **Bot startete nicht mehr (Absturzschleife seit 2.83.34):** Seit der Bibliothek-Zerlegung ist `library` ein Paket unter
