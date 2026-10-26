@@ -120,22 +120,14 @@ class _FormatView(discord.ui.View):
         """``sizes`` (fmt → Bytes) und ``link_ok`` (_sftpgo_link_allowed, laedt bei
         aktiver Sperre ggf. den Katalog) idealerweise vorab in einem Thread ermitteln
         (siehe _BookSelect.callback) — der Konstruktor laeuft im Event-Loop und
-        Buecher liegen auf Syncthing-/Netzpfaden."""
+        Buecher liegen auf Syncthing-/Netzpfaden. Fehlt eine Groesse, zaehlt sie als 0
+        (kein getsize hier; der Klick-Pfad meldet eine verschwundene Datei sauber)."""
         super().__init__(timeout=60)
         self.entry = entry
         if link_ok is None:
             link_ok = sharing._sftpgo_link_allowed()
         for fmt, path in formats.items():
-            if sizes is not None and fmt in sizes:
-                size = sizes[fmt]
-            else:
-                try:
-                    size = os.path.getsize(path)
-                except OSError:
-                    # Datei zwischen sharing._collect_formats und View-Bau verschwunden
-                    # (Sync/Reindex) — Button trotzdem bauen, der Klick-Pfad
-                    # meldet den Fehler sauber.
-                    size = 0
+            size = (sizes or {}).get(fmt, 0)
             mb    = size / (1024 * 1024)
             big   = size > config._MAX_UPLOAD
             link  = big and link_ok

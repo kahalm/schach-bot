@@ -5,6 +5,7 @@ import json
 import asyncio
 import tempfile
 import shutil
+from unittest import mock as _mock
 from unittest.mock import MagicMock
 
 import test_helpers as h
@@ -840,10 +841,22 @@ def test_format_view_missing_file():
     import library as lib_mod
 
     entry = {'title': 'Test', 'author': 'A', 'files': [], 'tags': []}
+    # Der Konstruktor laeuft im Event-Loop: ohne vorab ermittelte Groessen darf er
+    # nicht selbst stat-en (Syncthing-/Netzpfad) — fehlende Groesse zaehlt als 0.
+    stat_calls = []
+
+    def _no_stat(p):
+        stat_calls.append(p)
+        raise OSError('gone')
     try:
-        view = lib_mod.views._FormatView(entry, {'pdf': '/nonexistent/dir/gone.pdf'})
+        with _mock.patch.object(lib_mod.views.os.path, 'getsize', _no_stat):
+            view = lib_mod.views._FormatView(entry, {'pdf': '/nonexistent/dir/gone.pdf'},
+                                             link_ok=False)
         check('View-Bau ohne Datei crasht nicht', True)
         check('Button vorhanden', len(getattr(view, 'children', [])) == 1)
+        check('Konstruktor ruft kein getsize (Event-Loop)', stat_calls == [], str(stat_calls))
+        check('fehlende Groesse = 0 MB im Label',
+              '0.0 MB' in view.children[0].label, view.children[0].label)
     except OSError as e:
         check('View-Bau ohne Datei crasht nicht', False, f'OSError: {e}')
     print()
