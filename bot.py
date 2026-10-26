@@ -26,7 +26,7 @@ from core import command_sync
 from core import config as _config
 from core.json_store import atomic_read, atomic_update  # noqa: F401
 from core.paths import CONFIG_DIR
-from core.permissions import set_guild_id
+from core.permissions import set_guild_id, set_moderator_role_id
 from core.version import VERSION
 
 from dotenv import load_dotenv
@@ -272,6 +272,7 @@ def main():
         raise SystemExit(_config.TOKEN_MISSING)
     dm_log.install()
     set_guild_id(GUILD_ID)
+    set_moderator_role_id(CFG.moderator_role_id)
     bot.setup_hook = _setup_hook   # der SIGTERM-Handler braucht den laufenden Loop
     try:
         bot.run(DISCORD_TOKEN)

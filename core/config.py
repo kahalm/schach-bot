@@ -27,6 +27,7 @@ class BotConfig:
     daily_channel_lang: dict[int, str] = field(default_factory=dict)
     tournament_channel_id: int = 0
     guild_id: int = 0
+    moderator_role_id: int = 0
     wochenpost_channel_id: int = 0
     puzzle_hour: int = 9
     puzzle_minute: int = 0
@@ -94,6 +95,8 @@ def load(env: Mapping[str, str] | None = None) -> BotConfig:
         daily_channel_lang=daily_langs,
         tournament_channel_id=tournament,
         guild_id=_int(env, 'GUILD_ID', '0'),
+        # Moderator-Rolle per ID (Heim-Server); 0 = Rueckfall auf den Rollennamen „moderator“.
+        moderator_role_id=_int(env, 'MODERATOR_ROLE_ID', '0', raw=env.get('MODERATOR_ROLE_ID') or '0'),
         wochenpost_channel_id=_int(env, 'WOCHENPOST_CHANNEL_ID', '0'),
         puzzle_hour=hour,
         puzzle_minute=minute,

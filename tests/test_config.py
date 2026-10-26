@@ -49,6 +49,8 @@ def test_defaults():
     check('Defaults: Webhook 0.0.0.0:9000 ohne Secret',
           (cfg.webhook_bind_host, cfg.webhook_port, cfg.webhook_secret) == ('0.0.0.0', 9000, ''))
     check('Defaults: GUILD_ID 0, Sprache de', cfg.guild_id == 0 and cfg.daily_default_lang == 'de')
+    check('Defaults: MODERATOR_ROLE_ID 0 (auch leer)', cfg.moderator_role_id == 0
+          and config.load({'MODERATOR_ROLE_ID': ''}).moderator_role_id == 0)
 
 
 def test_values():
@@ -68,6 +70,7 @@ def test_values():
                      cfg.webhook_port) == (42, 88, 7, 30, 9100))
     check('Secret + Web-URL ohne Slash', cfg.webhook_secret == 'geheim'
           and cfg.rookhub_web_url == 'https://rookhub.test')
+    check('MODERATOR_ROLE_ID', config.load({'MODERATOR_ROLE_ID': '555'}).moderator_role_id == 555)
     check('Platzhalter-Secret zaehlt wie leer',
           config.load({'WEBHOOK_SECRET': 'change_me_webhook'}).webhook_secret == '')
 
@@ -77,6 +80,8 @@ def test_invalid():
     check('CHANNEL_ID ungueltig', _exit_msg({'CHANNEL_ID': 'abc'})
           == "CHANNEL_ID ungültig: 'abc' — muss eine Zahl sein")
     check('GUILD_ID ungueltig', _exit_msg({'GUILD_ID': 'x'}) == "GUILD_ID ungültig: 'x' — muss eine Zahl sein")
+    check('MODERATOR_ROLE_ID ungueltig', _exit_msg({'MODERATOR_ROLE_ID': 'mod'})
+          == "MODERATOR_ROLE_ID ungültig: 'mod' — muss eine Zahl sein")
     check('TOURNAMENT_CHANNEL_ID ungueltig', _exit_msg({'TOURNAMENT_CHANNEL_ID': 't'})
           == "TOURNAMENT_CHANNEL_ID ungültig: 't' — muss eine Zahl sein")
     check('WEBHOOK_PORT ungueltig', _exit_msg({'WEBHOOK_PORT': 'p'})

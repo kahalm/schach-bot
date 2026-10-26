@@ -65,6 +65,7 @@ from test_cmd_admin import (
     test_daily, test_ignore_kapitel, test_test_cmd, test_announce,
     test_greeted, test_stats, test_dm_log, test_log,
     test_dm_log_internals, test_dm_log_incoming, test_dm_permissions, test_intents_minimal,
+    test_privileged_home_guild,
     test_greeting_home_guild_only,
     test_suppress_empty_fen, test_es_tags, test_bot_helpers_characterization,
 )
@@ -198,6 +199,7 @@ def main():
     test_dm_log_internals()
     test_dm_log_incoming()
     test_dm_permissions()
+    test_privileged_home_guild()
     test_intents_minimal()
     test_greeting_home_guild_only()
     test_suppress_empty_fen()

@@ -1019,6 +1019,66 @@ def test_dm_permissions():
     print()
 
 
+def test_privileged_home_guild():
+    """S4-006: bei gesetzter GUILD_ID zaehlen nur Rechte/Rollen im Heim-Server; Moderator per Rollen-ID."""
+    print('[Privileg nur im Heim-Server, Moderator-Rolle per ID]')
+    from core import permissions
+    from core.permissions import is_privileged
+
+    HOME, FREMD = 12345, 999
+    old = (permissions._guild_id, permissions._moderator_role_id)
+
+    class _Guild:
+        def __init__(self, gid, members):
+            self.id, self._m = gid, members
+
+        def get_member(self, uid):
+            return self._m.get(uid)
+
+    def ia_in(guild, user, home):
+        ia = make_interaction(user=user)
+        ia.guild = guild
+        ia.client.get_guild = lambda gid: home if gid == HOME else None
+        return ia
+
+    try:
+        permissions._guild_id = HOME
+        permissions._moderator_role_id = 0
+        # Admin bzw. „moderator“-Rolle in einer FREMDEN Guild, im Heim-Server nur einfaches Mitglied
+        home = _Guild(HOME, {42: FakeMember(uid=42, admin=False)})
+        fremd_admin = FakeMember(uid=42, admin=True)
+        check('Admin nur in Fremd-Guild → nicht privilegiert',
+              not is_privileged(ia_in(_Guild(FREMD, {42: fremd_admin}), fremd_admin, home)))
+        fremd_mod = FakeMember(uid=42, admin=False, roles=[FakeRole('Moderator')])
+        check('„moderator“ nur in Fremd-Guild → nicht privilegiert',
+              not is_privileged(ia_in(_Guild(FREMD, {42: fremd_mod}), fremd_mod, home)))
+        # nicht im Heim-Server → nicht privilegiert
+        check('Fremd-Admin ohne Heim-Mitgliedschaft → nicht privilegiert',
+              not is_privileged(ia_in(_Guild(FREMD, {}), fremd_admin, _Guild(HOME, {}))))
+        # Heim-Admin ruft in der Fremd-Guild auf → Rechte aus dem Heim-Server zaehlen
+        home_admin = _Guild(HOME, {42: FakeMember(uid=42, admin=True)})
+        check('Heim-Admin in Fremd-Guild → privilegiert',
+              is_privileged(ia_in(_Guild(FREMD, {}), FakeMember(uid=42), home_admin)))
+        # Heim-Server-Aufruf wie bisher
+        m = FakeMember(uid=7, admin=False, roles=[FakeRole('Moderator', rid=555)])
+        home_mod = _Guild(HOME, {7: m})
+        check('Heim-Moderator (Name, ohne MODERATOR_ROLE_ID) → privilegiert',
+              is_privileged(ia_in(home_mod, m, home_mod)))
+        # MODERATOR_ROLE_ID gesetzt: Rollen-ID zaehlt, der Name allein nicht mehr
+        permissions.set_moderator_role_id(555)
+        check('MODERATOR_ROLE_ID passt → privilegiert', is_privileged(ia_in(home_mod, m, home_mod)))
+        fake = FakeMember(uid=8, admin=False, roles=[FakeRole('moderator', rid=666)])
+        g8 = _Guild(HOME, {8: fake})
+        check('Rolle heisst „moderator“, falsche ID → nicht privilegiert',
+              not is_privileged(ia_in(g8, fake, g8)))
+        anders = FakeMember(uid=9, admin=False, roles=[FakeRole('Mods', rid=555)])
+        g9 = _Guild(HOME, {9: anders})
+        check('Rolle mit passender ID, anderer Name → privilegiert', is_privileged(ia_in(g9, anders, g9)))
+    finally:
+        permissions._guild_id, permissions._moderator_role_id = old
+    print()
+
+
 def test_suppress_empty_fen():
     """Tests fuer core/log_setup.py _SuppressEmptyFen Filter."""
     print('[SuppressEmptyFen]')

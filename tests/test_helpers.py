@@ -366,8 +366,9 @@ class FakePermissions:
 
 
 class FakeRole:
-    def __init__(self, name='member'):
+    def __init__(self, name='member', rid=0):
         self.name = name
+        self.id = rid
 
 
 class FakeUser:

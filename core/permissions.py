@@ -4,12 +4,19 @@ import discord
 
 _MODERATOR_ROLE = 'moderator'
 _guild_id = 0
+_moderator_role_id = 0
 
 
 def set_guild_id(gid: int):
-    """Setzt die Heim-Server-ID fuer DM-Berechtigungen."""
+    """Setzt die Heim-Server-ID: Privilegien zaehlen nur dort (auch im DM-Kontext)."""
     global _guild_id
     _guild_id = gid
+
+
+def set_moderator_role_id(rid: int):
+    """Moderator-Rolle per ID (``MODERATOR_ROLE_ID``); 0 = Rueckfall auf den Rollennamen ``moderator``."""
+    global _moderator_role_id
+    _moderator_role_id = int(rid or 0)
 
 
 def iter_guilds_home_first(bot, home_only: bool = False):
@@ -59,17 +66,41 @@ def _member(interaction: discord.Interaction):
     return member
 
 
+def _home_member(interaction: discord.Interaction):
+    """Der Aufrufer als Member des HEIM-Servers (S4-006) oder ``None``.
+
+    Bei gesetzter GUILD_ID zaehlen nur Rechte und Rollen im Heim-Server — auch wenn der Befehl
+    in einer anderen Guild laeuft (``/puzzle`` ist global registriert); dort koennte sich jeder
+    selbst Admin oder eine Rolle „moderator“ geben. Ohne GUILD_ID wie ``_member``.
+    """
+    if not _guild_id:
+        return _member(interaction)
+    user = interaction.user
+    if isinstance(user, discord.Member) and getattr(interaction.guild, 'id', None) == _guild_id:
+        return user
+    home = interaction.client.get_guild(_guild_id)
+    member = home.get_member(user.id) if home else None
+    return member if isinstance(member, discord.Member) else None
+
+
+def _is_moderator_role(role) -> bool:
+    if _moderator_role_id:
+        return getattr(role, 'id', None) == _moderator_role_id
+    return role.name.lower() == _MODERATOR_ROLE
+
+
 def is_privileged(interaction: discord.Interaction) -> bool:
     """True wenn der User Server-Admin ist oder die Moderator-Rolle hat.
 
-    Im DM-Kontext wird bei gesetzter GUILD_ID der Heim-Server nachgeschlagen.
+    Bei gesetzter GUILD_ID immer am Member des Heim-Servers geprueft (auch im DM-Kontext und
+    in fremden Guilds). Moderator-Rolle per ``MODERATOR_ROLE_ID``, sonst per Name ``moderator``.
     """
-    member = _member(interaction)
+    member = _home_member(interaction)
     if member is None:
         return False
     if member.guild_permissions.administrator:
         return True
-    return any(r.name.lower() == _MODERATOR_ROLE for r in member.roles)
+    return any(_is_moderator_role(r) for r in member.roles)
 
 
 # Die EINE Ablehnung fuer Admin-Befehle (vorher vier Schreibweisen an 13 Stellen).

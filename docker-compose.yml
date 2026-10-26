@@ -5,6 +5,8 @@ services:
     environment:
       - DISCORD_TOKEN=${DISCORD_TOKEN}
       - GUILD_ID=${GUILD_ID:-0}
+      # Moderator-Rolle per ID; 0 = Rueckfall auf den Rollennamen „moderator“.
+      - MODERATOR_ROLE_ID=${MODERATOR_ROLE_ID:-0}
       - CHANNEL_ID=${CHANNEL_ID}
       # Spiegel-Channels fuer das Tagespuzzle (ID oder ID:sprache, komma-getrennt); leer = nur CHANNEL_ID.
       - DAILY_EXTRA_CHANNEL_IDS=${DAILY_EXTRA_CHANNEL_IDS:-}
