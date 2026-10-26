@@ -46,8 +46,11 @@ cmds = H.registered_commands(bot.tree)
 user = []
 for b in H.BEREICHE:
     user += [sig.split()[0][1:] for sig, _ in H.help_fields(b, None, cmds)[1]]
+_am = bot.bot.allowed_mentions
 print('RESULT ' + json.dumps({
     'runs': len(_runs),
+    'mentions': None if _am is None else {'everyone': _am.everyone, 'roles': _am.roles is True,
+                                           'users': _am.users is True},
     'has_main': callable(getattr(bot, 'main', None)),
     'names': sorted(c.name for c in cmds),
     'areas': {c.name: c.extras.get('help', '<fehlt>') for c in cmds},
@@ -140,6 +143,10 @@ def test_import_without_token():
         return
     check('import ruft bot.run nicht auf', res['runs'] == 0, str(res['runs']))
     check('bot.main() vorhanden', res['has_main'])
+    # S4-004: /resourcen, /youtube, /wanted wiederholen Freitext oeffentlich → global keine
+    # @everyone/@here- und Rollen-Pings, Nutzer-Erwaehnungen bleiben.
+    check('allowed_mentions global: everyone/roles aus, users an',
+          res['mentions'] == {'everyone': False, 'roles': False, 'users': True}, str(res['mentions']))
     _check_names('Befehlsliste == erwarteter Bestand (ohne CLAUDE_API_KEY, KI-Chat aus)',
                  res['names'], EXPECTED_COMMANDS)
 

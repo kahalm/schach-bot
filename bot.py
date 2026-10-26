@@ -63,7 +63,10 @@ intents = discord.Intents.default()
 intents.message_content = False
 intents.members = True
 intents.presences = activity_watch_needs_presences()
-bot = commands.Bot(command_prefix=commands.when_mentioned, intents=intents)
+# S4-004: /resourcen, /youtube und /wanted wiederholen Freitext oeffentlich. Global keine
+# @everyone/@here- und Rollen-Pings; Nutzer-Erwaehnungen (Begruessung, Erinnerungen) bleiben.
+bot = commands.Bot(command_prefix=commands.when_mentioned, intents=intents,
+                   allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True))
 bot._task_loops = {}
 tree = bot.tree
 
