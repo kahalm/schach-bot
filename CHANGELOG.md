@@ -4,6 +4,15 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.83.37] - 2026-10-26
+### Security
+- **Freitext-Echos:** `/resourcen`, `/youtube` und `/wanted` können niemanden mehr per @everyone, @here oder Rolle anpingen
+  (`AllowedMentions` global am Bot, Codereview S4-004).
+- **Rechte nur im Heim-Server:** Mit gesetzter `GUILD_ID` zählen Admin- und Moderator-Rechte nur noch am Mitglied des
+  Heim-Servers; die Moderator-Rolle lässt sich per `MODERATOR_ROLE_ID` festlegen (0/leer = Name „moderator“), Codereview S4-006.
+- **KI-Chat:** Bei großen Büchern verweist das Chat-Werkzeug auf `/bibliothek`, statt Link und Share-Passwort als bleibende DM zu
+  senden; das Passwort steht nicht mehr im DM-Log (Codereview N10-003).
+
 ## [2.83.36] - 2026-10-26
 ### Fixed
 - **Turnier-Import:** Antwortet die Terminquelle dreimal mit einem HTTP-Fehler, wird keine Fehlerseite mehr als leere
