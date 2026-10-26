@@ -58,6 +58,19 @@ def _display_name_cached(uid, guild=None):
 _MAX_EMBEDS = 10  # Discord-Limit pro Nachricht
 
 
+_TRUNCATED_HINT = '\n\n_(gekuerzt)_'
+
+
+def _truncated(buf: str, max_len: int) -> str:
+    """Puffer + Kuerzungs-Hinweis, hintere ganze Zeilen abgeworfen, bis beides <= max_len passt."""
+    desc = buf.rstrip()
+    while len(desc) + len(_TRUNCATED_HINT) > max_len and '\n' in desc:
+        desc = desc.rsplit('\n', 1)[0].rstrip()
+    if len(desc) + len(_TRUNCATED_HINT) > max_len:
+        desc = desc[:max(0, max_len - len(_TRUNCATED_HINT))]
+    return desc + _TRUNCATED_HINT
+
+
 def _paginate_lines(header: str, lines: list[str],
                     max_len: int = 4096) -> list[discord.Embed]:
     """Teilt Zeilen auf mehrere Embeds auf, wenn >max_len Zeichen."""
@@ -69,7 +82,7 @@ def _paginate_lines(header: str, lines: list[str],
             embeds.append(discord.Embed(description=buf.rstrip(), color=EMBED_COLOR))
             if len(embeds) >= _MAX_EMBEDS:
                 embeds[-1] = discord.Embed(
-                    description=buf.rstrip() + '\n\n_(gekuerzt)_', color=EMBED_COLOR)
+                    description=_truncated(buf, max_len), color=EMBED_COLOR)
                 return embeds
             buf = line + '\n'
         else:

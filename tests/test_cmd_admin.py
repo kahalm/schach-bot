@@ -1220,9 +1220,12 @@ def test_bot_helpers_characterization():
     split = pag('K\n', lines, max_len=1000)
     check('_paginate_lines: Aufteilung an max_len', len(split) == 10 and all(
         len(e.description) <= 1000 for e in split[:-1]), str([len(e.description) for e in split]))
-    # Heutiges Verhalten (gemeldet, nicht geaendert): der Kuerzungs-Hinweis kommt UEBER max_len.
-    check('_paginate_lines: gekuerztes Embed = max_len-Puffer + Hinweis (14 Zeichen)',
-          len(split[-1].description) == 999 + 14, str(len(split[-1].description)))
+    # Der Kuerzungs-Hinweis wird in den Deckel eingerechnet (frueher 999 + 14 > max_len).
+    check('_paginate_lines: gekuerztes Embed inkl. Hinweis <= max_len',
+          len(split[-1].description) <= 1000, str(len(split[-1].description)))
+    check('_paginate_lines: Kuerzung wirft ganze Zeilen ab',
+          split[-1].description.split('\n\n_(gekuerzt)_')[0].endswith('x' * 96),
+          split[-1].description[-40:])
     check('_paginate_lines: 10 Embeds voll → letztes gekuerzt',
           split[-1].description.endswith('\n\n_(gekuerzt)_'), split[-1].description[-30:])
     check('_paginate_lines: erstes Embed beginnt mit Kopf', split[0].description.startswith('K\n000'))
