@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.84.0] - 2026-10-29
+### Fixed
+- **Tagespuzzle:** Wer ein früheres Daily erst nach dem nächsten Post löst, erscheint jetzt trotzdem in dessen Löser-Liste.
+  `daily_post.json` merkt sich die letzten 7 Dailys unter `history`; der `puzzle-attempt`-Webhook aktualisiert auch diese
+  Posts (vorher „not current daily“ verworfen), und nach dem Start holt `refresh_history()` verpasste Stände nach.
+
 ## [2.83.37] - 2026-10-26
 ### Security
 - **Freitext-Echos:** `/resourcen`, `/youtube` und `/wanted` können niemanden mehr per @everyone, @here oder Rolle anpingen

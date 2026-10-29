@@ -139,14 +139,12 @@ def _make_handler(bot, secret: str):
         if not _is_int(puzzle_id):
             return web.Response(status=400, text='missing puzzleId')
 
-        cur = daily_results.current()
+        # Aktuelles ODER frueheres Daily (History): wer das gestrige Puzzle erst heute
+        # loest, soll trotzdem im gestrigen Post stehen.
+        cur = daily_results.find(puzzle_id)
         if not cur:
-            log.debug('Webhook fuer puzzle %s erhalten, aber kein aktueller Daily-Post.', puzzle_id)
-            return web.Response(status=200, text='no current daily')
-        if cur.get('puzzle_id') != puzzle_id:
-            log.debug('Webhook fuer puzzle %s passt nicht zum aktuellen Daily (%s).',
-                      puzzle_id, cur.get('puzzle_id'))
-            return web.Response(status=200, text='not current daily')
+            log.debug('Webhook fuer puzzle %s passt zu keinem gemerkten Daily-Post.', puzzle_id)
+            return web.Response(status=200, text='not a tracked daily')
 
         # RookHub liefert ein Sub-Objekt ``results`` mit den Solver-Daten,
         # akzeptiert aber auch eine flache Form (alle Keys auf Top-Level) —

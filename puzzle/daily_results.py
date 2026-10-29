@@ -28,6 +28,9 @@ DAILY_FILE = os.path.join(CONFIG_DIR, 'daily_post.json')
 # puzzle.embed.DAILY_SOLVER_FIELD.
 SOLVER_FIELD = i18n.t('daily.solver_field', 'de')
 MAX_NAMES = 15
+# So viele fruehere Dailys behaelt daily_post.json unter ``history``: wer ein altes
+# Tagespuzzle spaeter loest, landet trotzdem in dessen Post (Webhook + Start-Refresh).
+HISTORY_MAX = 7
 
 
 def _today() -> str:
@@ -85,6 +88,11 @@ def remember(channel_id, message_id, puzzle_id, lang: str = 'de') -> None:
     else:
         posts.append({'channel_id': channel_id, 'message_id': message_id, 'lang': lang})
     primary = posts[0]
+    hist = [h for h in data.get('history') or [] if h.get('puzzle_id') != puzzle_id]
+    if not same and data.get('puzzle_id') and _posts_of(data):
+        # Das bisherige Daily wandert in die History (neueste zuerst).
+        hist.insert(0, {'puzzle_id': data['puzzle_id'], 'date': data.get('date'),
+                        'posts': _posts_of(data)})
     atomic_write(DAILY_FILE, {
         # `date` bleibt der Tag des ERSTEN Posts dieses Puzzles (der Daily-
         # Regenerate-Webhook vergleicht dagegen), nicht der jeder Spiegelung.
@@ -96,6 +104,7 @@ def remember(channel_id, message_id, puzzle_id, lang: str = 'de') -> None:
         'posts': posts,
         'channel_id': primary['channel_id'],
         'message_id': primary['message_id'],
+        'history': hist[:HISTORY_MAX],
     })
 
 
@@ -163,6 +172,29 @@ def current() -> dict | None:
     data.setdefault('channel_id', posts[0]['channel_id'])
     data.setdefault('message_id', posts[0]['message_id'])
     return data
+
+
+def history(cur: dict | None = None) -> list[dict]:
+    """Fruehere Dailys (neueste zuerst) als ``{puzzle_id, date, posts}`` mit normalisierter
+    ``posts``-Liste; Eintraege ohne Posts fallen weg."""
+    if cur is None:
+        cur = current()
+    out = []
+    for h in (cur or {}).get('history') or []:
+        posts = _posts_of({'posts': h.get('posts')})
+        if h.get('puzzle_id') and posts:
+            out.append({'puzzle_id': h['puzzle_id'], 'date': h.get('date'), 'posts': posts})
+    return out
+
+
+def find(puzzle_id) -> dict | None:
+    """Gemerkter Daily-Post zu ``puzzle_id``: das aktuelle Daily oder eines aus der History."""
+    cur = current()
+    if not cur:
+        return None
+    if cur.get('puzzle_id') == puzzle_id:
+        return cur
+    return next((h for h in history(cur) if h['puzzle_id'] == puzzle_id), None)
 
 
 def _fmt_time(seconds: int) -> str:
@@ -306,3 +338,15 @@ async def refresh(bot) -> None:
     if results is None:
         return
     await apply_solver_update(bot, cur, results)
+
+
+async def refresh_history(bot) -> None:
+    """Wie :func:`refresh`, aber fuer die frueheren Dailys — nur nach dem Bot-Start, um
+    waehrend der Offline-Zeit verpasste Webhooks zu alten Puzzles nachzuholen."""
+    import asyncio
+    import puzzle.rookhub as rookhub
+
+    for h in history():
+        results = await asyncio.to_thread(rookhub.get_daily_results, h['puzzle_id'])
+        if results is not None:
+            await apply_solver_update(bot, h, results)

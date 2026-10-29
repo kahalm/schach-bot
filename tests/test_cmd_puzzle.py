@@ -1015,9 +1015,12 @@ def test_webhook_handler_dispatches_to_apply_solver_update():
     secret = 'unit-test-secret'
     captured = {}
 
-    # Patch: current() liefert einen aktuellen Daily-Post mit puzzle_id=42.
+    # Patch: current() liefert einen aktuellen Daily-Post mit puzzle_id=42 und das
+    # gestrige Daily 41 in der History.
     orig_current = dr.current
-    dr.current = lambda: {'channel_id': 1, 'message_id': 555, 'puzzle_id': 42}
+    dr.current = lambda: {'channel_id': 1, 'message_id': 555, 'puzzle_id': 42,
+                          'history': [{'puzzle_id': 41, 'date': '2026-10-28',
+                                       'posts': [{'channel_id': 1, 'message_id': 444}]}]}
     orig_apply = dr.apply_solver_update
     async def fake_apply(bot, cur, results):
         captured['args'] = (cur, results)
@@ -1072,6 +1075,16 @@ def test_webhook_handler_dispatches_to_apply_solver_update():
     resp = run_async(post_request(other_payload))
     check('non-current puzzleId → status 200', resp.status == 200)
     check('non-current puzzleId → kein apply', 'args' not in captured)
+
+    # 3b) puzzleId = gestriges Daily (History) → dessen Post wird aktualisiert.
+    captured.clear()
+    resp = run_async(post_request({'puzzleId': 41, 'results': payload['results']}))
+    check('gestriges Daily → status 200', resp.status == 200)
+    check('gestriges Daily → apply aufgerufen', 'args' in captured)
+    if 'args' in captured:
+        cur, _ = captured['args']
+        check('gestriges Daily → dessen Post', cur.get('puzzle_id') == 41
+              and cur['posts'][0]['message_id'] == 444)
 
     # 4) Flacher Payload (results direkt auf Top-Level, ohne ``results``-Wrapper).
     captured.clear()
@@ -1277,6 +1290,47 @@ def test_daily_remember_multichannel():
         cur = dr.current()
         check('Alt-Format migriert zu posts',
               cur['posts'] == [{'channel_id': 5, 'message_id': 6, 'lang': 'de'}])
+    finally:
+        dr.DAILY_FILE = orig_file
+        teardown_temp_config(tmpdir)
+    print()
+
+
+def test_daily_history_keeps_old_posts():
+    """Ein neues Daily schiebt das alte in ``history`` (statt es zu vergessen), damit wer
+    das gestrige Puzzle spaeter loest, trotzdem im gestrigen Post auftaucht. find() liefert
+    aktuelles wie altes Daily, die Liste ist auf HISTORY_MAX gedeckelt."""
+    print('[daily_results history]')
+    from puzzle import daily_results as dr
+
+    tmpdir = setup_temp_config()
+    orig_file = dr.DAILY_FILE
+    dr.DAILY_FILE = os.path.join(tmpdir, 'daily_post.json')
+    try:
+        dr.remember(111, 1001, 42)
+        dr.remember(222, 2002, 42, 'en')
+        dr.remember(111, 3003, 99)
+        cur = dr.current()
+        check('Neues Daily ist aktuell', cur['puzzle_id'] == 99 and len(cur['posts']) == 1)
+        old = dr.find(42)
+        check('Altes Daily per find() gefunden', old is not None and old['puzzle_id'] == 42)
+        check('Altes Daily behaelt beide Posts samt Sprache',
+              old and [(p['channel_id'], p['message_id'], p['lang']) for p in old['posts']]
+              == [(111, 1001, 'de'), (222, 2002, 'en')])
+        check('find(aktuell) = aktuelles Daily', dr.find(99)['puzzle_id'] == 99)
+        check('find(unbekannt) = None', dr.find(12345) is None)
+
+        # Re-Post desselben Puzzles legt keinen History-Eintrag an
+        dr.remember(111, 3004, 99)
+        check('Re-Post: History unveraendert', [h['puzzle_id'] for h in dr.history()] == [42])
+
+        # Deckel: aelteste fallen raus, neueste zuerst
+        for pid in range(100, 100 + dr.HISTORY_MAX + 2):
+            dr.remember(111, pid * 10, pid)
+        hist = [h['puzzle_id'] for h in dr.history()]
+        check('History gedeckelt', len(hist) == dr.HISTORY_MAX)
+        check('History neueste zuerst', hist[0] == 100 + dr.HISTORY_MAX)
+        check('Aeltestes Daily vergessen', dr.find(42) is None)
     finally:
         dr.DAILY_FILE = orig_file
         teardown_temp_config(tmpdir)

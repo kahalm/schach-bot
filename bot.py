@@ -175,6 +175,7 @@ async def on_ready():
     try:
         from puzzle import daily_results
         await daily_results.refresh(bot)
+        await daily_results.refresh_history(bot)
     except Exception:
         log.warning('Initialer daily_results.refresh fehlgeschlagen')
     # ...und den Tagespuzzle-POST selbst nachholen, wenn er heute ausgefallen ist (Bot war
