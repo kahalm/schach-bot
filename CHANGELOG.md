@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.84.2] - 2026-11-09
+### Security
+- **KI-Chat:** Der Bot antwortet per DM nur noch Mitgliedern des Heim-Servers (`GUILD_ID`) oder Nutzern auf der
+  Chat-Whitelist — wie die Begrüßungs-DM; ohne `GUILD_ID` unverändert alle (Review G4-001).
+### Fixed
+- **Bibliothek:** Ergeben zwei Autor-Ordner über das Beiblatt dieselbe Katalog-Id, werden ihre Dateien beim Reindex
+  zusammengeführt statt dass eine Gruppe still aus dem Katalog fällt; die Kollision steht im Log (G4-005).
+
 ## [2.84.1] - 2026-11-09
 ### Fixed
 - **Tagespuzzle:** Nach einem Neustart und für spät gelöste frühere Dailys gibt es keine „Du hast das heutige Tagespuzzle
