@@ -150,7 +150,10 @@ def _make_handler(bot, secret: str):
         # akzeptiert aber auch eine flache Form (alle Keys auf Top-Level) —
         # so kann RookHub den Payload-Schaden des aufrufenden Codes minimal halten.
         results = payload.get('results') if isinstance(payload.get('results'), dict) else payload
-        await daily_results.apply_solver_update(bot, cur, results)
+        # Reinforcement-DMs („heutiges Tagespuzzle gelöst“) nur fuers aktuelle Daily;
+        # ein spaet geloestes fruehers Daily aktualisiert nur dessen Post (S2-004).
+        await daily_results.apply_solver_update(
+            bot, cur, results, notify=daily_results.is_current(puzzle_id))
         return web.Response(status=200, text='ok')
 
     return handle

@@ -1022,8 +1022,9 @@ def test_webhook_handler_dispatches_to_apply_solver_update():
                           'history': [{'puzzle_id': 41, 'date': '2026-10-28',
                                        'posts': [{'channel_id': 1, 'message_id': 444}]}]}
     orig_apply = dr.apply_solver_update
-    async def fake_apply(bot, cur, results):
+    async def fake_apply(bot, cur, results, notify=True):
         captured['args'] = (cur, results)
+        captured['notify'] = notify
     dr.apply_solver_update = fake_apply
 
     handler = webhook_server._make_handler(bot=MagicMock(), secret=secret)
@@ -1055,6 +1056,7 @@ def test_webhook_handler_dispatches_to_apply_solver_update():
         cur, results = captured['args']
         check('valid → results durchgereicht (solvedCount)', results.get('solvedCount') == 1)
         check('valid → cur passt', cur.get('puzzle_id') == 42)
+        check('aktuelles Daily → mit Reinforcement-DMs', captured.get('notify') is True)
 
     # 2) Falsche Signatur → 401, kein apply.
     captured.clear()
@@ -1085,6 +1087,8 @@ def test_webhook_handler_dispatches_to_apply_solver_update():
         cur, _ = captured['args']
         check('gestriges Daily → dessen Post', cur.get('puzzle_id') == 41
               and cur['posts'][0]['message_id'] == 444)
+        # S2-004: keine „heutiges Tagespuzzle gelöst“-DM fuer ein frueheres Daily.
+        check('gestriges Daily → ohne Reinforcement-DMs', captured.get('notify') is False)
 
     # 4) Flacher Payload (results direkt auf Top-Level, ohne ``results``-Wrapper).
     captured.clear()
@@ -1830,4 +1834,57 @@ def test_post_rookhub_puzzle_board_vs_link():
         (posting.rookhub.get_puzzle, posting.safe_render_board,
          posting._resilient_send, posting._register_puzzle_msg, posting.discord.DMChannel) = orig
         teardown_temp_config(tmpdir)
+    print()
+
+
+def test_refresh_history_sends_no_reinforcement_dms():
+    """S2-004: refresh_history (Bot-Start) zieht nur die Posts alter Dailys nach — keine
+    „heute gelöst“-DMs je altem Puzzle; refresh() fuers aktuelle Daily weiter mit DM."""
+    print('[daily_results.refresh_history ohne DMs]')
+    import asyncio
+    from unittest.mock import MagicMock, AsyncMock
+    from puzzle import daily_results as dr
+    import puzzle.rookhub as rookhub
+    from core import reinforcement
+
+    class FakeEmbed:
+        def __init__(self): self.fields = []
+        def add_field(self, name, value, inline=False): self.fields.append({'name': name})
+        def set_field_at(self, i, name, value, inline=False): self.fields[i] = {'name': name}
+        def set_image(self, url=None): pass
+
+    def make_channel():
+        ch = MagicMock()
+        m = MagicMock()
+        m.embeds = [FakeEmbed()]
+        m.edit = AsyncMock()
+        ch.fetch_message = AsyncMock(return_value=m)
+        return ch
+
+    fake_bot = MagicMock()
+    fake_bot.get_channel = MagicMock(side_effect=lambda cid: make_channel())
+
+    spawned = []
+    orig = (dr.current, rookhub.get_daily_results, reinforcement.new_puzzle_solvers,
+            reinforcement.spawn_dm)
+    dr.current = lambda: {'puzzle_id': 42, 'posts': [{'channel_id': 1, 'message_id': 5}],
+                          'history': [{'puzzle_id': p, 'date': '2026-10-2%d' % i,
+                                       'posts': [{'channel_id': 1, 'message_id': 10 + i}]}
+                                      for i, p in enumerate((41, 40))]}
+    rookhub.get_daily_results = lambda pid: {'solvers': [{'discordId': 777, 'timeSeconds': 9}],
+                                             'solvedCount': 1, 'attemptCount': 1}
+    reinforcement.new_puzzle_solvers = lambda pid, solvers: list(solvers)
+
+    def fake_spawn(coro):
+        spawned.append(coro)
+        coro.close()
+    reinforcement.spawn_dm = fake_spawn
+    try:
+        run_async(dr.refresh_history(fake_bot))
+        check('refresh_history: 0 DMs fuer 2 alte Dailys', len(spawned) == 0, f'{len(spawned)}')
+        run_async(dr.refresh(fake_bot))
+        check('refresh (aktuelles Daily): 1 DM', len(spawned) == 1, f'{len(spawned)}')
+    finally:
+        (dr.current, rookhub.get_daily_results, reinforcement.new_puzzle_solvers,
+         reinforcement.spawn_dm) = orig
     print()

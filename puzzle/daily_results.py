@@ -187,6 +187,12 @@ def history(cur: dict | None = None) -> list[dict]:
     return out
 
 
+def is_current(puzzle_id) -> bool:
+    """True, wenn ``puzzle_id`` das aktuelle (zuletzt gepostete) Daily ist."""
+    cur = current()
+    return bool(cur) and cur.get('puzzle_id') == puzzle_id
+
+
 def find(puzzle_id) -> dict | None:
     """Gemerkter Daily-Post zu ``puzzle_id``: das aktuelle Daily oder eines aus der History."""
     cur = current()
@@ -284,7 +290,7 @@ async def _edit_post_embed(bot, channel_id: int, message_id: int, line: str, lan
                     extra={'es_fields': {'tags': ['daily', 'puzzle']}})
 
 
-async def apply_solver_update(bot, cur: dict, results: dict) -> None:
+async def apply_solver_update(bot, cur: dict, results: dict, notify: bool = True) -> None:
     """Wendet einen Solver-Stand auf ALLE gemerkten Daily-Posts an (Embed editieren).
     Wird sowohl vom Polling (refresh) als auch vom RookHub-Webhook (webhook_server)
     aufgerufen.
@@ -296,12 +302,17 @@ async def apply_solver_update(bot, cur: dict, results: dict) -> None:
     Die Solver-Daten sind global (pro Puzzle), also fuer alle gespiegelten Channels
     identisch. Neue Solver werden EINMAL ermittelt → Reinforcement-DMs feuern genau
     einmal pro Loeser, unabhaengig von der Channel-Anzahl.
+
+    notify=False: nur die Embeds aktualisieren, keine Reinforcement-DMs (und kein Claim).
+    Fuer fruehere Dailys (History) — die DM sagt „heutiges Tagespuzzle gelöst“ und soll
+    nicht beim Nachholen nach einem Neustart je altem Puzzle feuern (S2-004).
     """
     from core import reinforcement
 
     # Neue Solver vor dem Embed-Update ermitteln (State-Check ist synchron).
     puzzle_id = cur.get('puzzle_id')
-    new_solvers = reinforcement.new_puzzle_solvers(puzzle_id, results.get('solvers') or [])
+    new_solvers = (reinforcement.new_puzzle_solvers(puzzle_id, results.get('solvers') or [])
+                   if notify else [])
 
     # Solver-Zeile pro Post in dessen Sprache rendern (Channels koennen de/en mischen).
     for post in _posts_of(cur):
@@ -349,4 +360,5 @@ async def refresh_history(bot) -> None:
     for h in history():
         results = await asyncio.to_thread(rookhub.get_daily_results, h['puzzle_id'])
         if results is not None:
-            await apply_solver_update(bot, h, results)
+            # Nur die Posts nachziehen — keine „heute gelöst“-DMs fuer alte Puzzles (S2-004).
+            await apply_solver_update(bot, h, results, notify=False)
