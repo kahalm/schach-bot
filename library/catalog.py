@@ -232,17 +232,18 @@ def build_library_catalog() -> tuple[int, int, int, int, int]:
                 groups[target].extend(groups.pop(other))
 
     # IDs aus index.txt ermitteln — Eintrag mit Sidecar als "best" bevorzugen
-    index_ids: dict[str, tuple] = {}
-    for key, entries in groups.items():
+    def _order(entries):
+        """Format-Priorität, dann den ersten Eintrag mit Sidecar nach vorne (= "best")."""
         entries.sort(key=lambda e: _FILE_PRIO.get(e[3], 99))
-        # Eintrag mit Sidecar nach vorne
-        best_idx = 0
         for i, e in enumerate(entries):
             if _load_sidecar(e[4]):
-                best_idx = i
+                if i:
+                    entries.insert(0, entries.pop(i))
                 break
-        if best_idx:
-            entries.insert(0, entries.pop(best_idx))
+
+    index_ids: dict[str, tuple] = {}
+    for key, entries in groups.items():
+        _order(entries)
         best = entries[0]
         author, title, year, ext, path, stem = best
         sidecar = _load_sidecar(path)
@@ -253,6 +254,16 @@ def build_library_catalog() -> tuple[int, int, int, int, int]:
             else:
                 author = str(raw_sc or author)
         entry_id = _normalize_for_dedup(author) + '--' + _normalize_for_dedup(stem)
+        if entry_id in index_ids:
+            # Zwei Gruppen (verschiedene Autor-Ordner) ergeben über den Sidecar-Autor dieselbe
+            # Id: zusammenführen statt still überschreiben, sonst fielen die Dateien der ersten
+            # Gruppe aus dem Katalog (Review G4-005).
+            prev_key, prev_entries = index_ids[entry_id]
+            log.warning('Bibliothek: Katalog-Id %s aus zwei Gruppen (%s, %s) — zusammengeführt',
+                        entry_id, prev_key, key)
+            prev_entries.extend(entries)
+            _order(prev_entries)
+            continue
         index_ids[entry_id] = (key, entries)
 
     # Einträge ergänzen / aktualisieren

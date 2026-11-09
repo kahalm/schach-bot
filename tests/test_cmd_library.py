@@ -343,6 +343,41 @@ def test_build_library_catalog():
     print()
 
 
+def test_build_library_catalog_id_collision():
+    """G4-005: Zwei Gruppen aus verschiedenen Autor-Ordnern mit gleicher Katalog-Id (über den
+    Sidecar-Autor) werden zusammengeführt statt still überschrieben."""
+    print('[build_library_catalog Id-Kollision]')
+    import library
+
+    tmpdir = tempfile.mkdtemp(prefix='lib_coll_')
+    orig = (library.config.LIBRARY_INDEX, library.config.LIBRARY_FILE, library.config._LOCAL_BASE)
+    try:
+        index_file = os.path.join(tmpdir, 'index.txt')
+        library.config.LIBRARY_INDEX = index_file
+        library.config.LIBRARY_FILE = os.path.join(tmpdir, 'library.json')
+        library.config._LOCAL_BASE = tmpdir
+        bookdir = os.path.join(tmpdir, 'Kasparov')
+        os.makedirs(bookdir, exist_ok=True)
+        with open(os.path.join(bookdir, 'My Book.json'), 'w', encoding='utf-8') as f:
+            json.dump({'title': 'My Book', 'author': 'Kasparov, Garry'}, f)
+        with open(index_file, 'w', encoding='utf-8') as f:
+            f.write('/data/schach/Kasparov/My Book.pdf\n')
+            f.write('/data/schach/Kasparov, Garry/My Book (2010).epub\n')
+
+        result = library.catalog.build_library_catalog()
+        cat = library.catalog._load_library()
+        check('ein Buch statt zwei überschriebener', result[1] == 1 and len(cat) == 1,
+              f'{result} {[e["id"] for e in cat]}')
+        files = cat[0]['files'] if cat else []
+        check('beide Dateien im Eintrag', len(files) == 2, str(files))
+        check('PDF mit Sidecar bleibt "best"', files and files[0].endswith('My Book.pdf'), str(files))
+        check('Autor aus dem Sidecar', cat and cat[0]['author'] == 'Kasparov, Garry')
+    finally:
+        library.config.LIBRARY_INDEX, library.config.LIBRARY_FILE, library.config._LOCAL_BASE = orig
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    print()
+
+
 def test_public_domain_from():
     """publicDomainFrom: Lock-Logik, Sidecar→Katalog-Durchreichung, Embed-🔒."""
     print('[public_domain_from]')
