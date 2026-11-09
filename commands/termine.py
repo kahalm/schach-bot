@@ -15,6 +15,11 @@ from urllib.parse import urlparse
 
 from core.datetime_utils import parse_datum as _parse_datum
 
+# Alle Tags, die parse_termine (und /rallye_add: schachrallye) vergibt — /turnier_sub nimmt nur
+# diese an (S2-013). Neue Stichwoerter unten in parse_termine hier mit eintragen; ein Test prueft
+# den Gleichlauf am Golden-Fixture.
+KNOWN_TAGS = ('schachrallye', 'schnellschach', 'blitz', '960', 'jugend', 'senioren', 'klassisch')
+
 
 def _is_valid_url(url: str) -> bool:
     """Prueft ob ein String eine gueltige http/https URL ist."""

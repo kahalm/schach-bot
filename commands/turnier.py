@@ -6,6 +6,7 @@ Je Befehl eine Funktion; Name, Beschreibung und Hilfe-Bereich registriert
 Daten: ``commands/turnier_store.py``.
 """
 
+import asyncio
 import logging
 from datetime import date
 
@@ -27,7 +28,7 @@ async def cmd_turnier_sub(interaction: discord.Interaction,
 
     # Ohne Tag: eigene Subs anzeigen
     if not tag:
-        data = turnier_store.read()
+        data = await asyncio.to_thread(turnier_store.read)
         if not data:
             data = turnier_store._fresh_default()
         subs = data.get('subscribers', {})
@@ -42,6 +43,15 @@ async def cmd_turnier_sub(interaction: discord.Interaction,
                 'Du hast noch keine Turnier-Tags abonniert.\n'
                 'Nutze `/turnier_sub tag:schnellschach` um einen Tag zu abonnieren.',
                 ephemeral=True)
+        return
+
+    # Nur Tags, die der Termin-Import tatsaechlich vergibt — ein Tippfehler abonnierte sonst
+    # still etwas, das nie gepingt wird, und jeder Freitext legte einen Dauer-Eintrag an (S2-013).
+    if tag not in termine.KNOWN_TAGS:
+        await interaction.response.send_message(
+            f'\u26a0\ufe0f Unbekannter Tag `{tag[:40]}`. Moegliche Tags: '
+            + ', '.join(f'`{t}`' for t in termine.KNOWN_TAGS),
+            ephemeral=True)
         return
 
     if user and not is_privileged(interaction):
@@ -63,7 +73,7 @@ async def cmd_turnier_sub(interaction: discord.Interaction,
         subs.append(target.id)
         return data
 
-    turnier_store.update(_sub)
+    await asyncio.to_thread(turnier_store.update, _sub)
     if result['already']:
         name = f'**{target.display_name}**' if user else 'Du bist'
         suffix = f'ist bereits fuer `{tag}` subscribed.' if user else f'bereits fuer `{tag}` subscribed.'
@@ -116,7 +126,7 @@ async def cmd_turnier_unsub(interaction: discord.Interaction,
             result['was_subbed'] = True
         return data
 
-    turnier_store.update(_unsub)
+    await asyncio.to_thread(turnier_store.update, _unsub)
     if result['was_subbed']:
         if user:
             await interaction.response.send_message(
@@ -172,7 +182,7 @@ async def cmd_turnier_parse(interaction: discord.Interaction):
 
 
 async def cmd_turnier(interaction: discord.Interaction):
-    data = turnier_store.read()
+    data = await asyncio.to_thread(turnier_store.read)
     if not data:
         data = turnier_store._fresh_default()
     events = data.get('events', [])
@@ -224,7 +234,7 @@ async def cmd_turnier_review(interaction: discord.Interaction):
             result['action'] = 'sub'
         return data
 
-    turnier_store.update(_toggle)
+    await asyncio.to_thread(turnier_store.update, _toggle)
 
     if result['action'] == 'sub':
         await interaction.response.send_message(
@@ -243,7 +253,7 @@ async def cmd_turnier_pending(interaction: discord.Interaction):
     if not await require_privileged(interaction):
         return
 
-    data = turnier_store.read()
+    data = await asyncio.to_thread(turnier_store.read)
     if not data:
         data = turnier_store._fresh_default()
     events = data.get('events', [])

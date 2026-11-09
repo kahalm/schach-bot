@@ -426,6 +426,29 @@ def test_turnier_sub():
         content = (ia.response.calls[0].get('content') or '').lower()
         check('turnier_unsub user ohne Admin → Fehler', 'admin' in content)
 
+        # S2-013: unbekannter Tag (Tippfehler) → ephemere Ablehnung, kein Eintrag, keine DM
+        typo_user = FakeMember(uid=66666, name='Typo')
+        typo_dm = FakeChannel()
+        typo_user.create_dm = AsyncMock(return_value=typo_dm)
+        ia = make_interaction(user=typo_user)
+        run_async(cmd_sub(ia, tag='Schnelschach', user=None))
+        call = ia.response.calls[0]
+        content = (call.get('content') or '').lower()
+        check('turnier_sub unbekannter Tag → Ablehnung mit Tag-Liste',
+              'unbekannt' in content and '`schnellschach`' in content, content)
+        check('turnier_sub unbekannter Tag → ephemeral', call.get('ephemeral') is True)
+        tdata = atomic_read(turnier_store_mod.TURNIER_FILE, default=dict)
+        check('turnier_sub unbekannter Tag → nichts gespeichert',
+              'schnelschach' not in tdata.get('subscribers', {}), str(tdata.get('subscribers')))
+        check('turnier_sub unbekannter Tag → keine DM', not typo_dm.sent)
+
+        # S2-013: Datei-Zugriffe der Turnier-Befehle laufen per asyncio.to_thread, nicht im Loop.
+        import inspect, re as _re
+        import commands.turnier as _turnier_cmds
+        src = inspect.getsource(_turnier_cmds)
+        check('turnier.py: turnier_store nur per asyncio.to_thread',
+              not _re.search(r'(?<!to_thread\()turnier_store\.(read\(\)|update\()', src))
+
     finally:
         teardown_temp_config(tmpdir)
 
@@ -982,6 +1005,18 @@ def test_fetch_termine_golden():
         events = turnier_loops_mod._fetch_termine()
     check('golden: Event-Liste unveraendert', events == _GOLDEN_TERMINE,
           detail=json.dumps(events, ensure_ascii=False))
+    # S2-013: /turnier_sub nimmt nur termine.KNOWN_TAGS an — jeder vergebene Tag muss dort stehen.
+    from commands import termine as _termine
+    used = {t for e in events for t in e.get('tags', [])}
+    check('golden: alle Tags in termine.KNOWN_TAGS', used <= set(_termine.KNOWN_TAGS),
+          detail=str(used - set(_termine.KNOWN_TAGS)))
+    import inspect, re as _re
+    src = inspect.getsource(_termine.parse_termine)
+    literal = set(_re.findall(r"tags\.append\('([^']+)'\)", src))
+    literal |= set(_re.findall(r"'([a-z0-9]+)'", src[src.index("for keyword in"):].split(']')[0]))
+    literal.discard('rallye')  # wird zu schachrallye
+    check('parse_termine: jeder Tag-Literal in KNOWN_TAGS', literal <= set(_termine.KNOWN_TAGS),
+          detail=str(literal - set(_termine.KNOWN_TAGS)))
     args, kwargs = fake_get.call_args
     check('golden: URL = tirol.chess.at/termine/',
           args == ('https://tirol.chess.at/termine/',), detail=str(args))
