@@ -188,9 +188,40 @@ def test_shutdown_without_worker_is_noop():
     check('ES aus: kein Worker, shutdown ohne Fehler', es_client._worker_thread is None)
 
 
+def test_message_template_label():
+    """S2-012: jede ES-Zeile traegt labels.MessageTemplate — mit args das unformatierte Template
+    (PII-arm), ohne args (f-String) der Text mit normalisierten Zahlen."""
+    print('== test_message_template_label ==')
+    from core.log_setup import _ESHandler
+    _reset(_Session([]))
+    es_client._worker_started = True  # kein Worker-Thread, Dokumente bleiben in der Queue
+    handler = _ESHandler()
+    handler.setFormatter(logging.Formatter('%(message)s'))
+
+    def doc_for(msg, args):
+        while not es_client._queue.empty():
+            es_client._queue.get_nowait()
+        handler.emit(logging.LogRecord('schach-bot', logging.ERROR, __file__, 1, msg, args, None))
+        return es_client._queue.get_nowait()[1]
+
+    d = doc_for('Daily-Post-Update fehlgeschlagen (Channel %s): %s', (123456789012345678, 'Forbidden'))
+    check('mit args: Template unformatiert',
+          d.get('labels', {}).get('MessageTemplate') == 'Daily-Post-Update fehlgeschlagen (Channel %s): %s',
+          str(d.get('labels')))
+    check('mit args: message weiter formatiert', '123456789012345678' in d.get('message', ''))
+    d = doc_for('DM an 728550010496745472 fehlgeschlagen nach 3 Versuchen', None)
+    check('ohne args: Zahlen normalisiert',
+          d.get('labels', {}).get('MessageTemplate') == 'DM an {n} fehlgeschlagen nach {n} Versuchen',
+          str(d.get('labels')))
+    d = doc_for('x' * 1000, None)
+    check('Template gedeckelt', len(d['labels']['MessageTemplate']) == 300)
+    es_client._worker_started = False
+
+
 def main():
     for t in (test_rejected_and_failed_counted, test_shutdown_flushes_queue, test_queue_full_counted, test_warning_throttled_hourly,
-              test_shutdown_drops_rest_after_deadline, test_shutdown_without_worker_is_noop):
+              test_shutdown_drops_rest_after_deadline, test_shutdown_without_worker_is_noop,
+              test_message_template_label):
         t()
     print()
     if _failures:

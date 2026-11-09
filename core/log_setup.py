@@ -1,6 +1,7 @@
 """Logging-Setup: Rolling File-Log + Stream-Filter für python-chess Warnungen."""
 
 import logging
+import re
 import sys
 from logging.handlers import RotatingFileHandler
 
@@ -16,6 +17,24 @@ _LEVEL_MAP = {
 }
 
 
+_TEMPLATE_MAX = 300
+# Zahlenfolgen (Discord-/Puzzle-Ids, Zaehler, Zeiten) — in einem schon formatierten Text der
+# einzige verlaessliche Wechselteil; ohne Normalisierung waere jede Zeile eine eigene „Fehlerart“.
+_NUMBER_RE = re.compile(r'\d+')
+
+
+def message_template(record: logging.LogRecord) -> str:
+    """Gruppierschluessel fuer den log-watcher (``labels.MessageTemplate``, S2-012).
+
+    Mit ``record.args`` (``log.warning('X %s', y)``) ist ``record.msg`` das unformatierte
+    Template — ohne eingesetzte Werte, also auch PII-arm. Ohne args (f-String oder fester Text)
+    ist ``record.msg`` schon der fertige Text: dann Zahlenfolgen durch ``{n}`` ersetzen, damit
+    gleiche Meldungen mit anderen Ids zusammenfallen. Laenge gedeckelt."""
+    raw = str(record.msg)
+    tpl = raw if record.args else _NUMBER_RE.sub('{n}', raw)
+    return tpl[:_TEMPLATE_MAX]
+
+
 class _ESHandler(logging.Handler):
     """Sendet Log-Records fire-and-forget an Elasticsearch."""
 
@@ -23,7 +42,7 @@ class _ESHandler(logging.Handler):
         try:
             level = _LEVEL_MAP.get(record.levelno, 'Information')
             msg = self.format(record)
-            extra = {'logger': record.name}
+            extra = {'logger': record.name, 'MessageTemplate': message_template(record)}
             if record.exc_info:
                 import traceback
                 extra['exception'] = ''.join(traceback.format_exception(*record.exc_info))
