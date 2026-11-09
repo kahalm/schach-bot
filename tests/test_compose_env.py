@@ -11,6 +11,10 @@ DAILY_EXTRA_CHANNEL_IDS, DAILY_DEFAULT_LANG und LIBRARY_ENFORCE_PD standen in
 .env.example, fehlten aber in der Compose: gesetzt, aber still wirkungslos.
 Jeder neue Schluessel in .env.example muss deshalb in docker-compose.yml
 stehen oder hier mit Begruendung als Ausnahme.
+
+Umgekehrt (S2-009) muss jeder Schluessel, den die Compose an den Container gibt,
+in .env.example stehen — ES_URL/ES_INDEX_PREFIX fehlten dort, wer nach Vorlage
+aufsetzte, erfuhr nichts vom ES-Logging.
 """
 
 import os
@@ -79,6 +83,14 @@ def test_every_env_example_key_reaches_container():
           re.search(r'^\s*env_file\s*:', compose, re.M) is None)
 
 
+def test_every_compose_key_in_env_example():
+    env_keys = set(env_example_keys(_read('.env.example')))
+    missing = sorted(k for k in compose_keys(_read('docker-compose.yml')) if k not in env_keys)
+    check('jeder docker-compose.yml-Schluessel steht in .env.example', not missing, f'fehlen: {missing}')
+    for k in ('ES_URL', 'ES_INDEX_PREFIX', 'CHAT_DAILY_TOKEN_CAP'):
+        check(f'{k} in .env.example', k in env_keys)
+
+
 def test_exceptions_are_current():
     env_keys = set(env_example_keys(_read('.env.example')))
     in_compose = compose_keys(_read('docker-compose.yml'))
@@ -88,7 +100,8 @@ def test_exceptions_are_current():
 
 
 def main():
-    for t in (test_helpers, test_every_env_example_key_reaches_container, test_exceptions_are_current):
+    for t in (test_helpers, test_every_env_example_key_reaches_container,
+              test_every_compose_key_in_env_example, test_exceptions_are_current):
         print(f'== {t.__name__} ==')
         t()
     print()

@@ -27,6 +27,8 @@ services:
       # Gemeinfreiheits-Sperre (1/true/yes/on); leer = aus.
       - LIBRARY_ENFORCE_PD=${LIBRARY_ENFORCE_PD:-}
       - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      # Tages-Token-Limit je DM-Nutzer fuer den KI-Chat; 0 = aus. Leer waere ebenfalls „aus“ → Vorgabe.
+      - CHAT_DAILY_TOKEN_CAP=${CHAT_DAILY_TOKEN_CAP:-60000}
       - SFTPGO_BASE_URL=${SFTPGO_BASE_URL}
       - SFTPGO_SHARE_ID=${SFTPGO_SHARE_ID}
       - SFTPGO_SHARE_PASSWORD=${SFTPGO_SHARE_PASSWORD}
