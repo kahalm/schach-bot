@@ -4,6 +4,20 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.84.1] - 2026-11-09
+### Fixed
+- **Tagespuzzle:** Nach einem Neustart und für spät gelöste frühere Dailys gibt es keine „Du hast das heutige Tagespuzzle
+  gelöst“-DMs mehr — die alten Posts werden nur noch in der Löser-Liste aktualisiert (Review S2-004).
+- **Konfiguration:** Leere Werte für `GUILD_ID`, `CHANNEL_ID`, `WOCHENPOST_CHANNEL_ID` und `WEBHOOK_PORT` gelten als Vorgabe
+  statt den Start abzubrechen; die Compose reicht `CHANNEL_ID` mit Vorgabe `0` durch (S2-005).
+- **Turnier-Abos:** `/turnier_sub` nimmt nur noch Tags an, die der Termin-Import vergibt, und lehnt Tippfehler mit der
+  Tag-Liste ab; die Turnier-Befehle lesen und schreiben `turnier.json` außerhalb des Event-Loops (S2-013).
+### Added
+- **Logging:** Jede Zeile nach Elasticsearch trägt `labels.MessageTemplate` (unformatiertes Template bzw. Text mit
+  Zahlen als `{n}`) — der log-watcher erkennt Bot-Fehler damit als eigene Fehlerarten (S2-012).
+- **Vorlage:** `.env.example` nennt `ES_URL`, `ES_INDEX_PREFIX` und `CHAT_DAILY_TOKEN_CAP`; das Chat-Tageslimit ist per
+  Stack einstellbar (Vorgabe 60 000), der Compose-Test prüft beide Richtungen (S2-009).
+
 ## [2.84.0] - 2026-10-29
 ### Fixed
 - **Tagespuzzle:** Wer ein früheres Daily erst nach dem nächsten Post löst, erscheint jetzt trotzdem in dessen Löser-Liste.
