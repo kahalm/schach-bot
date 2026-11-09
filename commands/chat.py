@@ -13,7 +13,7 @@ from discord.ext import commands
 
 from core.paths import CONFIG_DIR
 from core.json_store import atomic_read, atomic_update
-from core.permissions import require_privileged
+from core.permissions import is_home_member, require_privileged
 from commands.chat_tools import TOOLS, execute_tool
 
 log = logging.getLogger('schach-bot')
@@ -495,6 +495,11 @@ def setup(bot: commands.Bot):
         if not message.content or message.content.startswith('/'):
             return
         whitelisted = await asyncio.to_thread(_is_whitelisted, message.author.id)
+        # Nur Mitglieder des Heim-Servers (oder Whitelist): Zusatz-Guilds bekommen bewusst nur
+        # /puzzle (core/command_sync.py) — der Chat bietet Bibliothek, Training und Claude-
+        # Kontingent, die es dort nicht gibt (Review G4-001). Stumm wie die Begruessungs-DM.
+        if not whitelisted and not is_home_member(bot, message.author.id):
+            return
         if not whitelisted and not _check_rate_limit(message.author.id):
             try:
                 await message.channel.send(_RATE_LIMIT_MSG)

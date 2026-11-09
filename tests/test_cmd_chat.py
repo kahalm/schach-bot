@@ -533,3 +533,101 @@ def test_chat_persist_false_badrequest():
     finally:
         chat_mod._client = orig_client
         teardown_temp_config(tmpdir)
+
+
+def test_chat_dm_home_guild_only():
+    """G4-001: KI-Chat per DM nur fuer Mitglieder des Heim-Servers (GUILD_ID) oder Whitelist;
+    Zusatz-Guilds bekommen bewusst nur /puzzle. Ohne GUILD_ID wie bisher alle."""
+    print('[chat DM nur Heim-Guild]')
+    import discord as _discord
+    from unittest.mock import MagicMock, patch
+    from core import permissions
+    from test_helpers import FakeChannel, FakeMember
+
+    HOME = 5000
+    tmpdir = setup_temp_config()
+    old_gid = permissions._guild_id
+    try:
+        class _Guild:
+            def __init__(self, gid, members=()):
+                self.id = gid
+                self.members = {m: FakeMember(uid=m) for m in members}
+
+            def get_member(self, uid):
+                return self.members.get(uid)
+
+        home = _Guild(HOME, members=[801])
+
+        class _Tree:
+            def command(self, **kwargs):
+                return lambda f: f
+
+        class _Bot:
+            tree = _Tree()
+            guilds = [home]
+
+            def __init__(self):
+                self.listener = None
+
+            def listen(self, event):
+                def deco(f):
+                    self.listener = f
+                    return f
+                return deco
+
+            def get_guild(self, gid):
+                return home if gid == HOME else None
+
+        class _DM(FakeChannel, _discord.DMChannel):
+            def typing(self):
+                class _Ctx:
+                    async def __aenter__(self):
+                        return None
+
+                    async def __aexit__(self, *a):
+                        return False
+                return _Ctx()
+
+        def _msg(uid):
+            m = type('Msg', (), {})()
+            m.author, m.channel, m.content = FakeUser(uid=uid), _DM(), 'Hallo Bot'
+            return m
+
+        calls = []
+
+        async def _fake_response(uid, text, channel=None):
+            calls.append(uid)
+            return 'Antwort'
+
+        bot = _Bot()
+        with patch.object(chat_mod, '_client', MagicMock()), \
+                patch.object(chat_mod, '_chat_response', _fake_response), \
+                patch.object(chat_mod, '_daily_tokens_left', lambda uid: True):
+            chat_mod.setup(bot)
+            listener = bot.listener
+            check('DM-Listener registriert', listener is not None)
+            permissions.set_guild_id(HOME)
+
+            m = _msg(802)  # nur in einer Zusatz-Guild
+            run_async(listener(m))
+            check('Nicht-Mitglied Heim-Guild → kein Chat', calls == [], str(calls))
+            check('Nicht-Mitglied → keine Antwort', m.channel.sent == [])
+
+            m = _msg(801)
+            run_async(listener(m))
+            check('Heim-Mitglied → Chat', calls == [801], str(calls))
+            check('Heim-Mitglied → Antwort', len(m.channel.sent) == 1)
+
+            atomic_write(chat_mod.CHAT_FILE, {'whitelist': [803]})
+            m = _msg(803)
+            run_async(listener(m))
+            check('Whitelist ohne Heim-Mitgliedschaft → Chat', calls[-1] == 803, str(calls))
+
+            permissions.set_guild_id(0)
+            m = _msg(804)
+            run_async(listener(m))
+            check('ohne GUILD_ID → Chat wie bisher', calls[-1] == 804, str(calls))
+    finally:
+        permissions.set_guild_id(old_gid)
+        teardown_temp_config(tmpdir)
+    print()

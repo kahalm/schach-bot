@@ -36,6 +36,18 @@ def iter_guilds_home_first(bot, home_only: bool = False):
             yield g
 
 
+def is_home_member(bot, uid) -> bool:
+    """Ist ``uid`` Mitglied des Heim-Servers (GUILD_ID, aus dem Member-Cache)?
+
+    Ohne GUILD_ID gibt es keinen Heim-Server → ``True`` (wie bisher alle). Heim-Server nicht
+    im Cache → ``False``. Fuer DM-Funktionen, die es in Zusatz-Guilds bewusst nicht gibt.
+    """
+    if not _guild_id:
+        return True
+    home = bot.get_guild(_guild_id)
+    return home is not None and home.get_member(int(uid)) is not None
+
+
 def display_name_cached(bot, uid, guild=None):
     """Server-Nick aus Cache (kein API-Call), Fallback auf globalen User-Cache.
 

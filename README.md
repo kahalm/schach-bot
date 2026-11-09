@@ -75,7 +75,7 @@ Alle Einstellungen in `.env` (siehe `.env.example`):
 | `CHANNEL_ID` | ja | Channel-ID fuer den taeglichen Puzzle-Post |
 | `PUZZLE_HOUR` / `PUZZLE_MINUTE` | nein | Post-Uhrzeit in UTC (Standard: 9:00) |
 | `BOOKS_DIR` | nein | PGN-Verzeichnis (Standard: `books/`) |
-| `GUILD_ID` | nein | Heim-Server: Admin-/Moderator-Rechte zählen nur dort (auch per DM und in anderen Guilds), Begrüßungs-DMs nur für dessen Mitglieder, alle Befehle außer `/puzzle` nur dort (0 = aus) |
+| `GUILD_ID` | nein | Heim-Server: Admin-/Moderator-Rechte zählen nur dort (auch per DM und in anderen Guilds), Begrüßungs-DMs und KI-Chat per DM nur für dessen Mitglieder, alle Befehle außer `/puzzle` nur dort (0 = aus) |
 | `MODERATOR_ROLE_ID` | nein | Moderator-Rolle im Heim-Server per ID (0 = Rückfall auf den Rollennamen `moderator`) |
 | `LICHESS_TOKEN` | nein | OAuth-Token (Scope: `study:write`) fuer Studien-Upload |
 | `PUZZLE_STUDY_ID` | nein | Feste Studie fuer alle Puzzles (empfohlen mit Token) |
@@ -443,7 +443,7 @@ Powered by Claude (`claude-sonnet-4-6`), aktiviert durch `CLAUDE_API_KEY` in `.e
 registriert der Bot weder `/chat_whitelist` und `/chat_clear` (sie fehlen dann auch in `/help`)
 noch den DM-Listener. Eine schon gespeicherte Historie bleibt in `config/chat.json` liegen.
 
-- **Zugang**: Per `/chat_whitelist` oder global freigeschaltet
+- **Zugang**: Mitglieder des Heim-Servers (`GUILD_ID`; ohne `GUILD_ID` alle) mit Rate- und Tageslimit, per `/chat_whitelist` ohne Limits; Nutzer, die den Bot nur über einen Zusatz-Server kennen, bekommen nur mit Whitelist eine Antwort
 - **Interaktion**: User schreiben dem Bot per DM, Claude antwortet
 - **Puzzle-Kontext**: Wenn der User gerade ein Puzzle bekommen hat, kennt Claude das Brett (FEN, Zug, Schwierigkeit, Loesung)
 - **Historie**: Max 20 Nachrichten (10 Austausche), loeschbar via `/chat_clear`
