@@ -38,11 +38,15 @@ class BotConfig:
 
 
 def _int(env: Mapping[str, str], name: str, default: str, raw: str | None = None) -> int:
-    value = env.get(name, default) if raw is None else raw
+    """Ganzzahl aus ``env[name]`` (bzw. ``raw``); fehlend, leer oder nur Leerzeichen = ``default``
+    (S2-005: ``GUILD_ID=`` brach den Start ab, obwohl die Vorlage „optional, 0 = aus“ sagt)."""
+    value = env.get(name) if raw is None else raw
+    if value is None or not value.strip():
+        value = default
     try:
         return int(value)
     except ValueError:
-        raise SystemExit(f'{name} ungültig: {env.get(name)!r} — muss eine Zahl sein')
+        raise SystemExit(f'{name} ungültig: {value!r} — muss eine Zahl sein')
 
 
 def _daily_channels(env: Mapping[str, str], channel_id: int,
@@ -77,7 +81,7 @@ def load(env: Mapping[str, str] | None = None) -> BotConfig:
     default_lang = i18n.norm(env.get('DAILY_DEFAULT_LANG', 'de'))
     daily_ids, daily_langs = _daily_channels(env, channel_id, default_lang)
     tournament = _int(env, 'TOURNAMENT_CHANNEL_ID', '0',
-                      raw=env.get('TOURNAMENT_CHANNEL_ID') or env.get('RALLYE_CHANNEL_ID', '0'))
+                      raw=env.get('TOURNAMENT_CHANNEL_ID') or env.get('RALLYE_CHANNEL_ID'))
     try:
         hour = int(env.get('PUZZLE_HOUR', '9'))
         minute = int(env.get('PUZZLE_MINUTE', '0'))
@@ -96,7 +100,7 @@ def load(env: Mapping[str, str] | None = None) -> BotConfig:
         tournament_channel_id=tournament,
         guild_id=_int(env, 'GUILD_ID', '0'),
         # Moderator-Rolle per ID (Heim-Server); 0 = Rueckfall auf den Rollennamen „moderator“.
-        moderator_role_id=_int(env, 'MODERATOR_ROLE_ID', '0', raw=env.get('MODERATOR_ROLE_ID') or '0'),
+        moderator_role_id=_int(env, 'MODERATOR_ROLE_ID', '0'),
         wochenpost_channel_id=_int(env, 'WOCHENPOST_CHANNEL_ID', '0'),
         puzzle_hour=hour,
         puzzle_minute=minute,

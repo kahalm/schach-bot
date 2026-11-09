@@ -53,6 +53,21 @@ def test_defaults():
           and config.load({'MODERATOR_ROLE_ID': ''}).moderator_role_id == 0)
 
 
+def test_empty_means_default():
+    # S2-005: gesetzt, aber leer (``GUILD_ID=``) = Vorgabe statt Startabbruch.
+    for key, attr, want in (('GUILD_ID', 'guild_id', 0), ('CHANNEL_ID', 'channel_id', 0),
+                            ('WOCHENPOST_CHANNEL_ID', 'wochenpost_channel_id', 0),
+                            ('WEBHOOK_PORT', 'webhook_port', 9000),
+                            ('TOURNAMENT_CHANNEL_ID', 'tournament_channel_id', 0),
+                            ('MODERATOR_ROLE_ID', 'moderator_role_id', 0)):
+        for raw in ('', '  '):
+            msg = _exit_msg({key: raw})
+            check(f'{key}={raw!r} → Vorgabe {want}', msg is None
+                  and getattr(config.load({key: raw}), attr) == want, msg or '')
+    check('RALLYE-Rueckfall: Meldung zeigt den gelesenen Wert',
+          _exit_msg({'RALLYE_CHANNEL_ID': 'r'}) == "TOURNAMENT_CHANNEL_ID ungültig: 'r' — muss eine Zahl sein")
+
+
 def test_values():
     cfg = config.load({
         'DISCORD_TOKEN': 'tok', 'CHANNEL_ID': '111', 'DAILY_DEFAULT_LANG': 'DE',
@@ -98,6 +113,7 @@ def test_invalid():
 if __name__ == '__main__':
     print('=== test_config.py ===\n')
     test_defaults()
+    test_empty_means_default()
     test_values()
     test_invalid()
     print(f'\n--- {total} checks, {failed} failed ---')

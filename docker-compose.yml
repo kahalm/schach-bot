@@ -7,7 +7,8 @@ services:
       - GUILD_ID=${GUILD_ID:-0}
       # Moderator-Rolle per ID; 0 = Rueckfall auf den Rollennamen „moderator“.
       - MODERATOR_ROLE_ID=${MODERATOR_ROLE_ID:-0}
-      - CHANNEL_ID=${CHANNEL_ID}
+      # Daily-Channel; leer/0 = kein Tagespuzzle-Post.
+      - CHANNEL_ID=${CHANNEL_ID:-0}
       # Spiegel-Channels fuer das Tagespuzzle (ID oder ID:sprache, komma-getrennt); leer = nur CHANNEL_ID.
       - DAILY_EXTRA_CHANNEL_IDS=${DAILY_EXTRA_CHANNEL_IDS:-}
       - DAILY_DEFAULT_LANG=${DAILY_DEFAULT_LANG:-de}
