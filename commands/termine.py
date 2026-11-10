@@ -50,6 +50,7 @@ def _parse_datum_flex(text: str) -> tuple[date | None, str]:
       03.06.-07.06.2026   → Bereich, verschiedene Monate
       20. + 21.06.2026    → Zwei Tage
       31.07.-02.08.2026   → Bereich ueber Monatswechsel
+      28.-1.02.2027       → Kurzform ueber Monatswechsel (Start 28.01.2027)
     """
     text = text.strip()
     d = _parse_datum(text)
@@ -57,9 +58,17 @@ def _parse_datum_flex(text: str) -> tuple[date | None, str]:
         return d, text
 
     # "20.-24.05.2026" oder "20. + 21.06.2026"
-    m = re.match(r'(\d{1,2})\.\s*[-+]\s*\d{1,2}\.(\d{2}\.\d{4})', text)
+    # Ist der Starttag groesser als der Endtag, liegt der Start im Vormonat
+    # ("28.-1.02.2027" → 28.01.2027; "28.-3.01.2027" → 28.12.2026).
+    m = re.match(r'(\d{1,2})\.\s*[-+]\s*(\d{1,2})\.(\d{2})\.(\d{4})', text)
     if m:
-        return _parse_datum(f'{m.group(1)}.{m.group(2)}'), text
+        start_tag, end_tag = int(m.group(1)), int(m.group(2))
+        monat, jahr = int(m.group(3)), int(m.group(4))
+        if start_tag > end_tag:
+            monat -= 1
+            if monat < 1:
+                monat, jahr = 12, jahr - 1
+        return _parse_datum(f'{start_tag:02d}.{monat:02d}.{jahr:04d}'), text
 
     # "22.05.-25.05.2026" oder "03.06.-07.06.2026"
     m = re.match(r'(\d{1,2}\.\d{2}\.)\s*-\s*\d{1,2}\.\d{2}\.(\d{4})', text)

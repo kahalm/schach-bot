@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.84.4] - 2026-11-10
+### Fixed
+- **Termine:** Datumsbereiche in Kurzform „T.-T.MM.JJJJ“ über ein Monatsende wurden falsch gelesen (der Starttag
+  wurde auf den Endmonat bezogen: „28.-1.02.2027“ → 28.02.2027, „29.-2.02.2027“ → kein Datum). Ist der Starttag
+  größer als der Endtag, liegt der Start jetzt im Vormonat bzw. im Januar im Dezember des Vorjahres.
+
 ## [2.84.3] - 2026-11-10
 ### Fixed
 - **Tests:** Der Termin-Import-Test legte den Datumsbereich „T.-T.MM.JJJJ“ je nach Tagesdatum über eine
