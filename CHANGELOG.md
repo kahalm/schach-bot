@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen am Schach-Bot. Format angelehnt an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach
 [SemVer](https://semver.org/lang/de/) (`major.minor.bugfix`).
 
+## [2.84.3] - 2026-11-10
+### Fixed
+- **Tests:** Der Termin-Import-Test legte den Datumsbereich „T.-T.MM.JJJJ“ je nach Tagesdatum über eine
+  Monatsgrenze (z. B. „29.-2.02.2027“) und wurde dann rot; der Bereich liegt jetzt immer innerhalb eines Monats.
+
 ## [2.84.2] - 2026-11-09
 ### Security
 - **KI-Chat:** Der Bot antwortet per DM nur noch Mitgliedern des Heim-Servers (`GUILD_ID`) oder Nutzern auf der

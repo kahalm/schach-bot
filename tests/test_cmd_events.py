@@ -167,7 +167,9 @@ def test_schachrallye():
             future3 = (date.today() + timedelta(days=90)).strftime('%d.%m.%Y')
             future4 = date.today() + timedelta(days=70)
             future4_str = future4.strftime('%d.%m.%Y')
-            future5_start = date.today() + timedelta(days=80)
+            # Kurzform "T.-T.MM.JJJJ" gilt nur innerhalb eines Monats → Bereich
+            # nie ueber eine Monatsgrenze legen (sonst datumsabhaengig rot).
+            future5_start = (date.today() + timedelta(days=80)).replace(day=3)
             future5_end = future5_start + timedelta(days=4)
             future5_range = f'{future5_start.day}.-{future5_end.day}.{future5_end.strftime("%m.%Y")}'
             past_date = (date.today() - timedelta(days=30)).strftime('%d.%m.%Y')
